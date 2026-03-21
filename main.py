@@ -6,6 +6,19 @@ app = FastAPI()
 DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
 
 
+def to_number(series):
+    return pd.to_numeric(
+        series.astype(str)
+        .str.replace("\u00A0", "", regex=False)   # неразрывный пробел
+        .str.replace(" ", "", regex=False)        # обычный пробел
+        .str.replace(",", ".", regex=False)       # запятая -> точка
+        .str.replace("₴", "", regex=False)        # гривна
+        .str.replace("%", "", regex=False)        # проценты
+        .str.strip(),
+        errors="coerce"
+    ).fillna(0)
+
+
 @app.get("/")
 def root():
     return {"status": "ok"}
@@ -23,6 +36,7 @@ def get_data():
         return {
             "rows": int(len(df)),
             "columns": list(df.columns),
+            "sample": df.head(3).to_dict(orient="records")
         }
     except Exception as e:
         return {"error": str(e)}
@@ -47,9 +61,9 @@ def analyze(
 
         df["client"] = df["client"].astype(str)
         df["year"] = pd.to_numeric(df["year"], errors="coerce")
-        df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce").fillna(0)
-        df["finrez_pre"] = pd.to_numeric(df["finrez_pre"], errors="coerce").fillna(0)
-        df["finrez_total"] = pd.to_numeric(df["finrez_total"], errors="coerce").fillna(0)
+        df["revenue"] = to_number(df["revenue"])
+        df["finrez_pre"] = to_number(df["finrez_pre"])
+        df["finrez_total"] = to_number(df["finrez_total"])
 
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
