@@ -19,6 +19,47 @@ def to_number(series):
     ).fillna(0)
 
 
+def load_data():
+    df = pd.read_csv(DATA_URL)
+
+    required_cols = ["client", "year", "revenue", "finrez_pre", "finrez_total"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"В таблице отсутствуют обязательные колонки: {missing}. "
+            f"Доступные колонки: {list(df.columns)}"
+        )
+
+    df["client"] = df["client"].astype(str)
+    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    df["revenue"] = to_number(df["revenue"])
+    df["finrez_pre"] = to_number(df["finrez_pre"])
+    df["finrez_total"] = to_number(df["finrez_total"])
+
+    if "sku" in df.columns:
+        df["sku"] = df["sku"].astype(str)
+
+    if "category" in df.columns:
+        df["category"] = df["category"].astype(str)
+
+    return df
+
+
+def calc_metrics(filtered_df):
+    revenue = float(filtered_df["revenue"].sum())
+    finrez_pre = float(filtered_df["finrez_pre"].sum())
+    finrez_total = float(filtered_df["finrez_total"].sum())
+    margin = (finrez_pre / revenue) if revenue else 0
+
+    return {
+        "rows": int(len(filtered_df)),
+        "revenue": revenue,
+        "finrez_pre": finrez_pre,
+        "finrez_total": finrez_total,
+        "margin": margin
+    }
+
+
 @app.get("/")
 def root():
     return {"status": "ok"}
@@ -32,14 +73,18 @@ def test():
 @app.get("/data")
 def get_data():
     try:
-        df = pd.read_csv(DATA_URL)
+        df = load_data()
         return {
+            "source_lock": True,
             "rows": int(len(df)),
             "columns": list(df.columns),
             "sample": df.head(3).to_dict(orient="records")
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
 
 
 @app.get("/analyze")
@@ -48,22 +93,7 @@ def analyze(
     year: int = Query(..., description="Год")
 ):
     try:
-        df = pd.read_csv(DATA_URL)
-
-        required_cols = ["client", "year", "revenue", "finrez_pre", "finrez_total"]
-        missing = [c for c in required_cols if c not in df.columns]
-        if missing:
-            return {
-                "error": "В таблице отсутствуют обязательные колонки",
-                "missing_columns": missing,
-                "available_columns": list(df.columns),
-            }
-
-        df["client"] = df["client"].astype(str)
-        df["year"] = pd.to_numeric(df["year"], errors="coerce")
-        df["revenue"] = to_number(df["revenue"])
-        df["finrez_pre"] = to_number(df["finrez_pre"])
-        df["finrez_total"] = to_number(df["finrez_total"])
+        df = load_data()
 
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
@@ -75,23 +105,78 @@ def analyze(
                 "source_lock": False,
                 "error": "NO DATA",
                 "client": client,
-                "year": year,
+                "year": year
             }
 
-        revenue = float(filtered["revenue"].sum())
-        finrez_pre = float(filtered["finrez_pre"].sum())
-        finrez_total = float(filtered["finrez_total"].sum())
+        metrics = calc_metrics(filtered)
 
         return {
             "source_lock": True,
             "client": client,
             "year": int(year),
-            "rows": int(len(filtered)),
-            "revenue": revenue,
-            "finrez_pre": finrez_pre,
-            "finrez_total": finrez_total,
-            "margin": (finrez_pre / revenue) if revenue else 0,
+            **metrics
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
+
+
+@app.get("/compare")
+def compare(
+    client: str = Query(..., description="Название сети"),
+    year1: int = Query(..., description="Первый год"),
+    year2: int = Query(..., description="Второй год")
+):
+    try:
+        df = load_data()
+
+        filtered_1 = df[
+            df["client"].str.contains(client, case=False, na=False) &
+            (df["year"] == year1)
+        ]
+
+        filtered_2 = df[
+            df["client"].str.contains(client, case=False, na=False) &
+            (df["year"] == year2)
+        ]
+
+        if filtered_1.empty or filtered_2.empty:
+            return {
+                "source_lock": False,
+                "error": "NO DATA FOR ONE OR BOTH YEARS",
+                "client": client,
+                "year1": year1,
+                "year2": year2
+            }
+
+        m1 = calc_metrics(filtered_1)
+        m2 = calc_metrics(filtered_2)
+
+        delta_revenue = m1["revenue"] - m2["revenue"]
+        delta_finrez_pre = m1["finrez_pre"] - m2["finrez_pre"]
+        delta_finrez_total = m1["finrez_total"] - m2["finrez_total"]
+        delta_margin = m1["margin"] - m2["margin"]
+
+        return {
+            "source_lock": True,
+            "client": client,
+            "year1": int(year1),
+            "year2": int(year2),
+            "year1_metrics": m1,
+            "year2_metrics": m2,
+            "delta": {
+                "revenue": delta_revenue,
+                "finrez_pre": delta_finrez_pre,
+                "finrez_total": delta_finrez_total,
+                "margin": delta_margin
+            }
+        }
+
+    except Exception as e:
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
