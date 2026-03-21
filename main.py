@@ -1,19 +1,28 @@
 from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 import pandas as pd
+import json
 
 app = FastAPI()
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
 
 
+def safe_json(data):
+    return JSONResponse(
+        content=json.loads(json.dumps(data, ensure_ascii=False)),
+        media_type="application/json; charset=utf-8"
+    )
+
+
 def to_number(series):
     return pd.to_numeric(
         series.astype(str)
-        .str.replace("\u00A0", "", regex=False)   # неразрывный пробел
-        .str.replace(" ", "", regex=False)        # обычный пробел
-        .str.replace(",", ".", regex=False)       # запятая -> точка
-        .str.replace("₴", "", regex=False)        # гривна
-        .str.replace("%", "", regex=False)        # проценты
+        .str.replace("\u00A0", "", regex=False)
+        .str.replace(" ", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.replace("₴", "", regex=False)
+        .str.replace("%", "", regex=False)
         .str.strip(),
         errors="coerce"
     ).fillna(0)
@@ -54,23 +63,28 @@ def load_data():
             f"Доступные колонки: {list(df.columns)}"
         )
 
-    df["client"] = df["client"].astype(str)
+    df["client"] = df["client"].astype(str).str.strip()
     df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0)
     df["revenue"] = to_number(df["revenue"])
     df["finrez_pre"] = to_number(df["finrez_pre"])
     df["finrez_total"] = to_number(df["finrez_total"])
 
     if "sku" in df.columns:
-        df["sku"] = df["sku"].astype(str).fillna("UNKNOWN")
+        df["sku"] = df["sku"].astype(str).fillna("UNKNOWN").str.strip()
     else:
         df["sku"] = "UNKNOWN"
 
     if "category" in df.columns:
-        df["category"] = df["category"].astype(str).fillna("UNKNOWN")
+        df["category"] = df["category"].astype(str).fillna("UNKNOWN").str.strip()
     else:
         df["category"] = "UNKNOWN"
 
-    # Убираем NaN перед возвратом JSON
+    if "month" in df.columns:
+        df["month"] = pd.to_numeric(df["month"], errors="coerce").fillna(0)
+
+    if "period" in df.columns:
+        df["period"] = df["period"].astype(str).fillna("")
+
     df = df.fillna(0)
 
     return df
@@ -93,12 +107,12 @@ def calc_metrics(filtered_df):
 
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return safe_json({"status": "ok"})
 
 
 @app.get("/test")
 def test():
-    return {"message": "Bon Buasson API работает"}
+    return safe_json({"message": "Bon Buasson API работает"})
 
 
 @app.get("/data")
@@ -107,17 +121,17 @@ def get_data():
         df = load_data()
         sample = df.head(10).fillna(0).to_dict(orient="records")
 
-        return {
+        return safe_json({
             "source_lock": True,
             "rows": int(len(df)),
             "columns": list(df.columns),
             "sample": sample
-        }
+        })
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
 
 
 @app.get("/analyze")
@@ -134,28 +148,28 @@ def analyze(
         ]
 
         if filtered.empty:
-            return {
+            return safe_json({
                 "source_lock": False,
                 "error": "NO DATA",
                 "client": client,
                 "year": year
-            }
+            })
 
         metrics = calc_metrics(filtered)
 
-        return {
+        return safe_json({
             "source_lock": True,
             "client": client,
             "year": int(year),
             "status": network_status(metrics["margin"]),
             **metrics
-        }
+        })
 
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
 
 
 @app.get("/compare")
@@ -178,23 +192,18 @@ def compare(
         ]
 
         if filtered_1.empty or filtered_2.empty:
-            return {
+            return safe_json({
                 "source_lock": False,
                 "error": "NO DATA FOR ONE OR BOTH YEARS",
                 "client": client,
                 "year1": year1,
                 "year2": year2
-            }
+            })
 
         m1 = calc_metrics(filtered_1)
         m2 = calc_metrics(filtered_2)
 
-        delta_revenue = m1["revenue"] - m2["revenue"]
-        delta_finrez_pre = m1["finrez_pre"] - m2["finrez_pre"]
-        delta_finrez_total = m1["finrez_total"] - m2["finrez_total"]
-        delta_margin = m1["margin"] - m2["margin"]
-
-        return {
+        return safe_json({
             "source_lock": True,
             "client": client,
             "year1": int(year1),
@@ -208,18 +217,18 @@ def compare(
                 "status": network_status(m2["margin"])
             },
             "delta": {
-                "revenue": delta_revenue,
-                "finrez_pre": delta_finrez_pre,
-                "finrez_total": delta_finrez_total,
-                "margin": delta_margin
+                "revenue": m1["revenue"] - m2["revenue"],
+                "finrez_pre": m1["finrez_pre"] - m2["finrez_pre"],
+                "finrez_total": m1["finrez_total"] - m2["finrez_total"],
+                "margin": m1["margin"] - m2["margin"]
             }
-        }
+        })
 
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
 
 
 @app.get("/sku")
@@ -236,12 +245,12 @@ def sku_analysis(
         ]
 
         if filtered.empty:
-            return {
+            return safe_json({
                 "source_lock": False,
                 "error": "NO DATA",
                 "client": client,
                 "year": year
-            }
+            })
 
         grouped = (
             filtered.groupby("sku", dropna=False)
@@ -258,22 +267,21 @@ def sku_analysis(
             axis=1
         )
         grouped["status"] = grouped["margin"].apply(classify_margin)
-        grouped = grouped.fillna(0)
-        grouped = grouped.sort_values(by="revenue", ascending=False)
+        grouped = grouped.fillna(0).sort_values(by="revenue", ascending=False)
 
-        return {
+        return safe_json({
             "source_lock": True,
             "client": client,
             "year": int(year),
             "rows": int(len(grouped)),
             "items": grouped.to_dict(orient="records")
-        }
+        })
 
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
 
 
 @app.get("/category")
@@ -290,12 +298,12 @@ def category_analysis(
         ]
 
         if filtered.empty:
-            return {
+            return safe_json({
                 "source_lock": False,
                 "error": "NO DATA",
                 "client": client,
                 "year": year
-            }
+            })
 
         grouped = (
             filtered.groupby("category", dropna=False)
@@ -312,22 +320,21 @@ def category_analysis(
             axis=1
         )
         grouped["status"] = grouped["margin"].apply(classify_margin)
-        grouped = grouped.fillna(0)
-        grouped = grouped.sort_values(by="revenue", ascending=False)
+        grouped = grouped.fillna(0).sort_values(by="revenue", ascending=False)
 
-        return {
+        return safe_json({
             "source_lock": True,
             "client": client,
             "year": int(year),
             "rows": int(len(grouped)),
             "items": grouped.to_dict(orient="records")
-        }
+        })
 
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
 
 
 @app.get("/diagnostic")
@@ -344,12 +351,12 @@ def diagnostic(
         ]
 
         if filtered.empty:
-            return {
+            return safe_json({
                 "source_lock": False,
                 "error": "NO DATA",
                 "client": client,
                 "year": year
-            }
+            })
 
         metrics = calc_metrics(filtered)
         gap = metrics["finrez_pre"] - metrics["finrez_total"]
@@ -363,7 +370,7 @@ def diagnostic(
         else:
             diagnosis = "сеть убыточная"
 
-        return {
+        return safe_json({
             "source_lock": True,
             "client": client,
             "year": int(year),
@@ -374,10 +381,10 @@ def diagnostic(
             "gap": gap,
             "status": network_status(metrics["margin"]),
             "diagnosis": diagnosis
-        }
+        })
 
     except Exception as e:
-        return {
+        return safe_json({
             "source_lock": False,
             "error": str(e)
-        }
+        })
