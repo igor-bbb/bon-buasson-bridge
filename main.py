@@ -19,6 +19,30 @@ def to_number(series):
     ).fillna(0)
 
 
+def classify_margin(margin):
+    if margin < 0:
+        return "убыток"
+    elif margin < 0.05:
+        return "инвестиция"
+    elif margin < 0.10:
+        return "слабый"
+    elif margin < 0.15:
+        return "норма"
+    else:
+        return "сильный"
+
+
+def network_status(margin):
+    if margin < 0:
+        return "убыточная"
+    elif margin < 0.10:
+        return "контракт давит"
+    elif margin < 0.15:
+        return "норма"
+    else:
+        return "сильная"
+
+
 def load_data():
     df = pd.read_csv(DATA_URL)
 
@@ -38,9 +62,13 @@ def load_data():
 
     if "sku" in df.columns:
         df["sku"] = df["sku"].astype(str)
+    else:
+        df["sku"] = "UNKNOWN"
 
     if "category" in df.columns:
         df["category"] = df["category"].astype(str)
+    else:
+        df["category"] = "UNKNOWN"
 
     return df
 
@@ -114,6 +142,7 @@ def analyze(
             "source_lock": True,
             "client": client,
             "year": int(year),
+            "status": network_status(metrics["margin"]),
             **metrics
         }
 
@@ -165,14 +194,185 @@ def compare(
             "client": client,
             "year1": int(year1),
             "year2": int(year2),
-            "year1_metrics": m1,
-            "year2_metrics": m2,
+            "year1_metrics": {
+                **m1,
+                "status": network_status(m1["margin"])
+            },
+            "year2_metrics": {
+                **m2,
+                "status": network_status(m2["margin"])
+            },
             "delta": {
                 "revenue": delta_revenue,
                 "finrez_pre": delta_finrez_pre,
                 "finrez_total": delta_finrez_total,
                 "margin": delta_margin
             }
+        }
+
+    except Exception as e:
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
+
+
+@app.get("/sku")
+def sku_analysis(
+    client: str = Query(..., description="Название сети"),
+    year: int = Query(..., description="Год")
+):
+    try:
+        df = load_data()
+
+        filtered = df[
+            df["client"].str.contains(client, case=False, na=False) &
+            (df["year"] == year)
+        ]
+
+        if filtered.empty:
+            return {
+                "source_lock": False,
+                "error": "NO DATA",
+                "client": client,
+                "year": year
+            }
+
+        grouped = (
+            filtered.groupby("sku", dropna=False)
+            .agg({
+                "revenue": "sum",
+                "finrez_pre": "sum",
+                "finrez_total": "sum"
+            })
+            .reset_index()
+        )
+
+        grouped["margin"] = grouped.apply(
+            lambda row: (row["finrez_pre"] / row["revenue"]) if row["revenue"] else 0,
+            axis=1
+        )
+        grouped["status"] = grouped["margin"].apply(classify_margin)
+
+        grouped = grouped.sort_values(by="revenue", ascending=False)
+
+        result = grouped.to_dict(orient="records")
+
+        return {
+            "source_lock": True,
+            "client": client,
+            "year": int(year),
+            "rows": int(len(grouped)),
+            "items": result
+        }
+
+    except Exception as e:
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
+
+
+@app.get("/category")
+def category_analysis(
+    client: str = Query(..., description="Название сети"),
+    year: int = Query(..., description="Год")
+):
+    try:
+        df = load_data()
+
+        filtered = df[
+            df["client"].str.contains(client, case=False, na=False) &
+            (df["year"] == year)
+        ]
+
+        if filtered.empty:
+            return {
+                "source_lock": False,
+                "error": "NO DATA",
+                "client": client,
+                "year": year
+            }
+
+        grouped = (
+            filtered.groupby("category", dropna=False)
+            .agg({
+                "revenue": "sum",
+                "finrez_pre": "sum",
+                "finrez_total": "sum"
+            })
+            .reset_index()
+        )
+
+        grouped["margin"] = grouped.apply(
+            lambda row: (row["finrez_pre"] / row["revenue"]) if row["revenue"] else 0,
+            axis=1
+        )
+        grouped["status"] = grouped["margin"].apply(classify_margin)
+
+        grouped = grouped.sort_values(by="revenue", ascending=False)
+
+        result = grouped.to_dict(orient="records")
+
+        return {
+            "source_lock": True,
+            "client": client,
+            "year": int(year),
+            "rows": int(len(grouped)),
+            "items": result
+        }
+
+    except Exception as e:
+        return {
+            "source_lock": False,
+            "error": str(e)
+        }
+
+
+@app.get("/diagnostic")
+def diagnostic(
+    client: str = Query(..., description="Название сети"),
+    year: int = Query(..., description="Год")
+):
+    try:
+        df = load_data()
+
+        filtered = df[
+            df["client"].str.contains(client, case=False, na=False) &
+            (df["year"] == year)
+        ]
+
+        if filtered.empty:
+            return {
+                "source_lock": False,
+                "error": "NO DATA",
+                "client": client,
+                "year": year
+            }
+
+        metrics = calc_metrics(filtered)
+        gap = metrics["finrez_pre"] - metrics["finrez_total"]
+
+        if metrics["margin"] >= 0.15 and metrics["finrez_total"] < 0:
+            diagnosis = "продукт сильный, контракт съедает прибыль"
+        elif metrics["margin"] >= 0.10:
+            diagnosis = "сеть рабочая, требует контроля условий"
+        elif metrics["margin"] >= 0:
+            diagnosis = "сеть слабая, контракт давит"
+        else:
+            diagnosis = "сеть убыточная"
+
+        return {
+            "source_lock": True,
+            "client": client,
+            "year": int(year),
+            "revenue": metrics["revenue"],
+            "finrez_pre": metrics["finrez_pre"],
+            "finrez_total": metrics["finrez_total"],
+            "margin": metrics["margin"],
+            "gap": gap,
+            "status": network_status(metrics["margin"]),
+            "diagnosis": diagnosis
         }
 
     except Exception as e:
