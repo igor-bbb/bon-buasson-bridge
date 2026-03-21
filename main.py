@@ -67,4 +67,7 @@ def analyze(
         "finrez_pre": finrez_pre,
         "finrez_total": finrez_total,
         "margin": (finrez_pre / revenue) if revenue else 0
-    }
+    } 
+    @app.get("/data")
+def get_data():
+    return {"message": "DATA endpoint works"}
