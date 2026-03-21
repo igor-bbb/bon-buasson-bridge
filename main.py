@@ -55,20 +55,23 @@ def load_data():
         )
 
     df["client"] = df["client"].astype(str)
-    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0)
     df["revenue"] = to_number(df["revenue"])
     df["finrez_pre"] = to_number(df["finrez_pre"])
     df["finrez_total"] = to_number(df["finrez_total"])
 
     if "sku" in df.columns:
-        df["sku"] = df["sku"].astype(str)
+        df["sku"] = df["sku"].astype(str).fillna("UNKNOWN")
     else:
         df["sku"] = "UNKNOWN"
 
     if "category" in df.columns:
-        df["category"] = df["category"].astype(str)
+        df["category"] = df["category"].astype(str).fillna("UNKNOWN")
     else:
         df["category"] = "UNKNOWN"
+
+    # Убираем NaN перед возвратом JSON
+    df = df.fillna(0)
 
     return df
 
@@ -102,11 +105,13 @@ def test():
 def get_data():
     try:
         df = load_data()
+        sample = df.head(10).fillna(0).to_dict(orient="records")
+
         return {
             "source_lock": True,
             "rows": int(len(df)),
             "columns": list(df.columns),
-            "sample": df.head(3).to_dict(orient="records")
+            "sample": sample
         }
     except Exception as e:
         return {
@@ -253,17 +258,15 @@ def sku_analysis(
             axis=1
         )
         grouped["status"] = grouped["margin"].apply(classify_margin)
-
+        grouped = grouped.fillna(0)
         grouped = grouped.sort_values(by="revenue", ascending=False)
-
-        result = grouped.to_dict(orient="records")
 
         return {
             "source_lock": True,
             "client": client,
             "year": int(year),
             "rows": int(len(grouped)),
-            "items": result
+            "items": grouped.to_dict(orient="records")
         }
 
     except Exception as e:
@@ -309,17 +312,15 @@ def category_analysis(
             axis=1
         )
         grouped["status"] = grouped["margin"].apply(classify_margin)
-
+        grouped = grouped.fillna(0)
         grouped = grouped.sort_values(by="revenue", ascending=False)
-
-        result = grouped.to_dict(orient="records")
 
         return {
             "source_lock": True,
             "client": client,
             "year": int(year),
             "rows": int(len(grouped)),
-            "items": result
+            "items": grouped.to_dict(orient="records")
         }
 
     except Exception as e:
