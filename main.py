@@ -388,3 +388,108 @@ def diagnostic(
             "source_lock": False,
             "error": str(e)
         })
+import re
+import pandas as pd
+from fastapi import Query
+
+# ===== SKU GLOBAL =====
+
+def normalize_text(text: str) -> str:
+    if text is None:
+        return ""
+
+    text = str(text).lower().strip()
+    text = " ".join(text.split())
+
+    text = text.replace(" л", "l")
+    text = text.replace("л", "l")
+    text = text.replace(" l", "l")
+
+    text = text.replace(".", " ")
+    text = text.replace(",", " ")
+    text = " ".join(text.split())
+
+    return text
+
+
+def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year: int | None = None):
+    required_columns = {"year", "client", "sku", "revenue", "finrez_pre"}
+    missing = required_columns - set(df.columns)
+
+    if missing:
+        return {"status": "error", "message": f"Нет колонок: {missing}"}
+
+    if not sku_query:
+        return {"status": "error", "message": "sku_required"}
+
+    if not year:
+        return {"status": "error", "message": "year_required"}
+
+    df = df.copy()
+
+    df["sku_norm"] = df["sku"].astype(str).apply(normalize_text)
+    sku_query_norm = normalize_text(sku_query)
+
+    df = df[df["sku_norm"].str.contains(re.escape(sku_query_norm), na=False)]
+
+    if df.empty:
+        return {"status": "not_found"}
+
+    matched_skus = df["sku"].unique().tolist()
+
+    if len(matched_skus) > 1:
+        return {
+            "status": "ambiguous",
+            "suggestions": matched_skus[:20]
+        }
+
+    years = [year]
+    if compare_year:
+        years.append(compare_year)
+
+    df = df[df["year"].isin(years)]
+
+    grouped = df.groupby(["sku", "year"]).agg({
+        "revenue": "sum",
+        "finrez_pre": "sum",
+        "client": "nunique"
+    }).reset_index()
+
+    pivot = grouped.pivot(index="sku", columns="year")
+
+    items = []
+
+    for sku_name in pivot.index:
+        row = pivot.loc[sku_name]
+
+        finrez_y = row["finrez_pre"].get(year, 0)
+        finrez_cy = row["finrez_pre"].get(compare_year, 0) if compare_year else None
+
+        delta = finrez_y - finrez_cy if compare_year else None
+        delta_pct = (delta / finrez_cy * 100) if compare_year and finrez_cy != 0 else None
+
+        items.append({
+            "sku_name": sku_name,
+            "finrez_pre_year": finrez_y,
+            "finrez_pre_compare_year": finrez_cy,
+            "delta_finrez_pre": delta,
+            "delta_finrez_pre_pct": delta_pct
+        })
+
+    return {
+        "mode": "sku_global",
+        "items": items
+    }
+
+
+# ===== ROUTE =====
+
+@app.get("/sku_global")
+def sku_global(
+    sku: str = Query(...),
+    year: int = Query(...),
+    compare_year: int = Query(None)
+):
+    df = load_data()  # ВАЖНО: у тебя уже есть эта функция
+
+    return process_sku_global(df, sku, year, compare_year)
