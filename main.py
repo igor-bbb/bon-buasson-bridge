@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 import pandas as pd
 import json
+import re
 
 app = FastAPI()
 
@@ -52,8 +53,29 @@ def network_status(margin):
         return "сильная"
 
 
+def normalize_text(text: str) -> str:
+    if text is None:
+        return ""
+
+    text = str(text).lower().strip()
+    text = " ".join(text.split())
+
+    text = text.replace(" л", "l")
+    text = text.replace("л", "l")
+    text = text.replace(" l", "l")
+
+    text = text.replace(".", " ")
+    text = text.replace(",", " ")
+    text = text.replace("«", " ")
+    text = text.replace("»", " ")
+    text = text.replace('"', " ")
+    text = " ".join(text.split())
+
+    return text
+
+
 def load_data():
-    df = pd.read_csv(DATA_URL)
+    df = pd.read_csv(DATA_URL, encoding="utf-8")
 
     required_cols = ["client", "year", "revenue", "finrez_pre", "finrez_total"]
     missing = [c for c in required_cols if c not in df.columns]
@@ -65,6 +87,7 @@ def load_data():
 
     df["client"] = df["client"].astype(str).str.strip()
     df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0)
+
     df["revenue"] = to_number(df["revenue"])
     df["finrez_pre"] = to_number(df["finrez_pre"])
     df["finrez_total"] = to_number(df["finrez_total"])
@@ -86,7 +109,6 @@ def load_data():
         df["period"] = df["period"].astype(str).fillna("")
 
     df = df.fillna(0)
-
     return df
 
 
@@ -105,6 +127,136 @@ def calc_metrics(filtered_df):
     }
 
 
+def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year: int = None):
+    required_columns = {"year", "client", "sku", "revenue", "finrez_pre"}
+    missing = required_columns - set(df.columns)
+
+    if missing:
+        return {
+            "status": "error",
+            "message": f"Нет колонок: {sorted(list(missing))}"
+        }
+
+    if not sku_query:
+        return {"status": "error", "message": "sku_required"}
+
+    if not year:
+        return {"status": "error", "message": "year_required"}
+
+    work_df = df.copy()
+    work_df["sku_norm"] = work_df["sku"].astype(str).apply(normalize_text)
+    sku_query_norm = normalize_text(sku_query)
+
+    matched_df = work_df[work_df["sku_norm"].str.contains(re.escape(sku_query_norm), na=False)]
+
+    if matched_df.empty:
+        return {"status": "not_found"}
+
+    matched_skus = sorted(matched_df["sku"].dropna().astype(str).unique().tolist())
+
+    exact_matches = [s for s in matched_skus if normalize_text(s) == sku_query_norm]
+
+    if exact_matches:
+        matched_df = matched_df[matched_df["sku"].isin(exact_matches)]
+        matched_skus = exact_matches
+    elif len(matched_skus) > 1:
+        return {
+            "status": "ambiguous",
+            "suggestions": matched_skus[:20]
+        }
+
+    years = [year]
+    if compare_year is not None:
+        years.append(compare_year)
+
+    matched_df = matched_df[matched_df["year"].isin(years)]
+
+    if matched_df.empty:
+        return {"status": "not_found"}
+
+    grouped = (
+        matched_df.groupby(["sku", "year"], dropna=False)
+        .agg({
+            "revenue": "sum",
+            "finrez_pre": "sum",
+            "client": "nunique"
+        })
+        .reset_index()
+        .rename(columns={"client": "clients_count"})
+    )
+
+    items = []
+
+    for sku_name in grouped["sku"].dropna().astype(str).unique().tolist():
+        sku_rows = grouped[grouped["sku"] == sku_name]
+
+        row_year = sku_rows[sku_rows["year"] == year]
+        row_compare = sku_rows[sku_rows["year"] == compare_year] if compare_year is not None else pd.DataFrame()
+
+        revenue_year = float(row_year["revenue"].sum()) if not row_year.empty else 0.0
+        revenue_compare = float(row_compare["revenue"].sum()) if not row_compare.empty else 0.0
+
+        finrez_year = float(row_year["finrez_pre"].sum()) if not row_year.empty else 0.0
+        finrez_compare = float(row_compare["finrez_pre"].sum()) if not row_compare.empty else 0.0
+
+        clients_year = int(row_year["clients_count"].sum()) if not row_year.empty else 0
+        clients_compare = int(row_compare["clients_count"].sum()) if not row_compare.empty else 0
+
+        delta_finrez = None
+        delta_finrez_pct = None
+        delta_revenue = None
+
+        if compare_year is not None:
+            delta_finrez = finrez_year - finrez_compare
+            delta_revenue = revenue_year - revenue_compare
+            if finrez_compare != 0:
+                delta_finrez_pct = (delta_finrez / finrez_compare) * 100
+
+        items.append({
+            "sku_name": sku_name,
+            "sales_uah_year": revenue_year,
+            "sales_uah_compare_year": revenue_compare if compare_year is not None else None,
+            "finrez_pre_year": finrez_year,
+            "finrez_pre_compare_year": finrez_compare if compare_year is not None else None,
+            "delta_finrez_pre": delta_finrez,
+            "delta_finrez_pre_pct": delta_finrez_pct,
+            "delta_sales_uah": delta_revenue,
+            "clients_count_year": clients_year,
+            "clients_count_compare_year": clients_compare if compare_year is not None else None
+        })
+
+    items = sorted(items, key=lambda x: x["finrez_pre_year"], reverse=True)
+
+    summary = {
+        "matched_skus": len(items),
+        "clients_count": int(matched_df["client"].nunique()),
+        "finrez_pre_year": float(matched_df[matched_df["year"] == year]["finrez_pre"].sum()),
+        "finrez_pre_compare_year": float(
+            matched_df[matched_df["year"] == compare_year]["finrez_pre"].sum()
+        ) if compare_year is not None else None,
+        "delta_finrez_pre": None,
+        "delta_finrez_pre_pct": None
+    }
+
+    if compare_year is not None:
+        summary["delta_finrez_pre"] = summary["finrez_pre_year"] - summary["finrez_pre_compare_year"]
+        if summary["finrez_pre_compare_year"] not in (0, None):
+            summary["delta_finrez_pre_pct"] = (
+                summary["delta_finrez_pre"] / summary["finrez_pre_compare_year"]
+            ) * 100
+
+    return {
+        "mode": "sku_global",
+        "query": {
+            "sku": sku_query,
+            "year": year,
+            "compare_year": compare_year
+        },
+        "summary": summary,
+        "items": items
+    }
+
+
 @app.get("/")
 def root():
     return safe_json({"status": "ok"})
@@ -120,7 +272,6 @@ def get_data():
     try:
         df = load_data()
         sample = df.head(10).fillna(0).to_dict(orient="records")
-
         return safe_json({
             "source_lock": True,
             "rows": int(len(df)),
@@ -141,7 +292,6 @@ def analyze(
 ):
     try:
         df = load_data()
-
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
             (df["year"] == year)
@@ -164,7 +314,6 @@ def analyze(
             "status": network_status(metrics["margin"]),
             **metrics
         })
-
     except Exception as e:
         return safe_json({
             "source_lock": False,
@@ -223,7 +372,6 @@ def compare(
                 "margin": m1["margin"] - m2["margin"]
             }
         })
-
     except Exception as e:
         return safe_json({
             "source_lock": False,
@@ -238,7 +386,6 @@ def sku_analysis(
 ):
     try:
         df = load_data()
-
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
             (df["year"] == year)
@@ -276,7 +423,6 @@ def sku_analysis(
             "rows": int(len(grouped)),
             "items": grouped.to_dict(orient="records")
         })
-
     except Exception as e:
         return safe_json({
             "source_lock": False,
@@ -291,7 +437,6 @@ def category_analysis(
 ):
     try:
         df = load_data()
-
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
             (df["year"] == year)
@@ -329,7 +474,6 @@ def category_analysis(
             "rows": int(len(grouped)),
             "items": grouped.to_dict(orient="records")
         })
-
     except Exception as e:
         return safe_json({
             "source_lock": False,
@@ -344,7 +488,6 @@ def diagnostic(
 ):
     try:
         df = load_data()
-
         filtered = df[
             df["client"].str.contains(client, case=False, na=False) &
             (df["year"] == year)
@@ -382,114 +525,25 @@ def diagnostic(
             "status": network_status(metrics["margin"]),
             "diagnosis": diagnosis
         })
-
     except Exception as e:
         return safe_json({
             "source_lock": False,
             "error": str(e)
         })
-import re
-import pandas as pd
-from fastapi import Query
 
-# ===== SKU GLOBAL =====
-
-def normalize_text(text: str) -> str:
-    if text is None:
-        return ""
-
-    text = str(text).lower().strip()
-    text = " ".join(text.split())
-
-    text = text.replace(" л", "l")
-    text = text.replace("л", "l")
-    text = text.replace(" l", "l")
-
-    text = text.replace(".", " ")
-    text = text.replace(",", " ")
-    text = " ".join(text.split())
-
-    return text
-
-
-def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year: int | None = None):
-    required_columns = {"year", "client", "sku", "revenue", "finrez_pre"}
-    missing = required_columns - set(df.columns)
-
-    if missing:
-        return {"status": "error", "message": f"Нет колонок: {missing}"}
-
-    if not sku_query:
-        return {"status": "error", "message": "sku_required"}
-
-    if not year:
-        return {"status": "error", "message": "year_required"}
-
-    df = df.copy()
-
-    df["sku_norm"] = df["sku"].astype(str).apply(normalize_text)
-    sku_query_norm = normalize_text(sku_query)
-
-    df = df[df["sku_norm"].str.contains(re.escape(sku_query_norm), na=False)]
-
-    if df.empty:
-        return {"status": "not_found"}
-
-    matched_skus = df["sku"].unique().tolist()
-
-    if len(matched_skus) > 1:
-        return {
-            "status": "ambiguous",
-            "suggestions": matched_skus[:20]
-        }
-
-    years = [year]
-    if compare_year:
-        years.append(compare_year)
-
-    df = df[df["year"].isin(years)]
-
-    grouped = df.groupby(["sku", "year"]).agg({
-        "revenue": "sum",
-        "finrez_pre": "sum",
-        "client": "nunique"
-    }).reset_index()
-
-    pivot = grouped.pivot(index="sku", columns="year")
-
-    items = []
-
-    for sku_name in pivot.index:
-        row = pivot.loc[sku_name]
-
-        finrez_y = row["finrez_pre"].get(year, 0)
-        finrez_cy = row["finrez_pre"].get(compare_year, 0) if compare_year else None
-
-        delta = finrez_y - finrez_cy if compare_year else None
-        delta_pct = (delta / finrez_cy * 100) if compare_year and finrez_cy != 0 else None
-
-        items.append({
-            "sku_name": sku_name,
-            "finrez_pre_year": finrez_y,
-            "finrez_pre_compare_year": finrez_cy,
-            "delta_finrez_pre": delta,
-            "delta_finrez_pre_pct": delta_pct
-        })
-
-    return {
-        "mode": "sku_global",
-        "items": items
-    }
-
-
-# ===== ROUTE =====
 
 @app.get("/sku_global")
 def sku_global(
-    sku: str = Query(...),
-    year: int = Query(...),
-    compare_year: int = Query(None)
+    sku: str = Query(..., description="SKU или часть названия SKU"),
+    year: int = Query(..., description="Основной год анализа"),
+    compare_year: int = Query(None, description="Год сравнения")
 ):
-    df = load_data()  # ВАЖНО: у тебя уже есть эта функция
-
-    return process_sku_global(df, sku, year, compare_year)
+    try:
+        df = load_data()
+        result = process_sku_global(df, sku, year, compare_year)
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({
+            "status": "error",
+            "message": str(e)
+        })
