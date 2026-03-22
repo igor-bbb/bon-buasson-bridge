@@ -58,20 +58,74 @@ def normalize_text(text: str) -> str:
         return ""
 
     text = str(text).lower().strip()
+
+    replacements = {
+        "\u00A0": " ",
+        "«": " ",
+        "»": " ",
+        '"': " ",
+        "'": " ",
+        "ё": "е",
+        "’": " ",
+        "`": " ",
+        "_": " ",
+        "-": " ",
+        "/": " ",
+        "\\": " ",
+        ".": " ",
+        ",": " ",
+        ";": " ",
+        ":": " ",
+        "(": " ",
+        ")": " ",
+        "[": " ",
+        "]": " ",
+        "{": " ",
+        "}": " ",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    # унификация литража
+    text = re.sub(r"(\d)\s*[лl]\b", r"\1l", text)
+    text = re.sub(r"(\d)\s*[,\.]\s*(\d)\s*[лl]\b", r"\1.\2l", text)
+
+    # унификация самых частых слов
+    text = text.replace("бон буассон", "bon buasson")
+    text = text.replace("bonbuasson", "bon buasson")
+    text = text.replace("colafresh", "cola fresh")
+
     text = " ".join(text.split())
-
-    text = text.replace(" л", "l")
-    text = text.replace("л", "l")
-    text = text.replace(" l", "l")
-
-    text = text.replace(".", " ")
-    text = text.replace(",", " ")
-    text = text.replace("«", " ")
-    text = text.replace("»", " ")
-    text = text.replace('"', " ")
-    text = " ".join(text.split())
-
     return text
+
+
+def tokenize(text: str):
+    norm = normalize_text(text)
+    if not norm:
+        return []
+    return [token for token in norm.split() if token]
+
+
+def token_score(query_tokens, candidate_tokens):
+    if not query_tokens or not candidate_tokens:
+        return 0
+
+    candidate_set = set(candidate_tokens)
+    score = 0
+    for token in query_tokens:
+        if token in candidate_set:
+            score += 3
+        else:
+            # мягкое совпадение: token входит в слово кандидата или наоборот
+            partial = False
+            for cand in candidate_set:
+                if token in cand or cand in token:
+                    partial = True
+                    break
+            if partial:
+                score += 1
+    return score
 
 
 def load_data():
@@ -86,7 +140,7 @@ def load_data():
         )
 
     df["client"] = df["client"].astype(str).str.strip()
-    df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0)
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0).astype(int)
 
     df["revenue"] = to_number(df["revenue"])
     df["finrez_pre"] = to_number(df["finrez_pre"])
@@ -127,6 +181,79 @@ def calc_metrics(filtered_df):
     }
 
 
+def resolve_sku_candidates(work_df: pd.DataFrame, sku_query: str):
+    sku_query_norm = normalize_text(sku_query)
+    query_tokens = tokenize(sku_query)
+
+    if not sku_query_norm:
+        return {"status": "error", "message": "sku_required"}
+
+    sku_master = (
+        work_df[["sku"]]
+        .dropna()
+        .drop_duplicates()
+        .copy()
+    )
+
+    sku_master["sku"] = sku_master["sku"].astype(str)
+    sku_master["sku_norm"] = sku_master["sku"].apply(normalize_text)
+    sku_master["sku_tokens"] = sku_master["sku"].apply(tokenize)
+
+    # 1. точное нормализованное совпадение
+    exact_df = sku_master[sku_master["sku_norm"] == sku_query_norm]
+    if not exact_df.empty:
+        matches = exact_df["sku"].tolist()
+        return {"status": "resolved", "matches": matches}
+
+    # 2. contains в обе стороны
+    contains_df = sku_master[
+        sku_master["sku_norm"].str.contains(re.escape(sku_query_norm), na=False) |
+        sku_master["sku_norm"].apply(lambda x: sku_query_norm in x or x in sku_query_norm)
+    ].copy()
+
+    if not contains_df.empty:
+        if len(contains_df) == 1:
+            return {"status": "resolved", "matches": contains_df["sku"].tolist()}
+
+        contains_df["score"] = contains_df["sku_tokens"].apply(
+            lambda tokens: token_score(query_tokens, tokens)
+        )
+        contains_df = contains_df.sort_values(["score", "sku"], ascending=[False, True])
+
+        top_score = contains_df["score"].max()
+        top_df = contains_df[contains_df["score"] == top_score]
+
+        if len(top_df) == 1 and top_score > 0:
+            return {"status": "resolved", "matches": top_df["sku"].tolist()}
+
+        return {
+            "status": "ambiguous",
+            "suggestions": contains_df["sku"].head(20).tolist()
+        }
+
+    # 3. token-based fallback
+    sku_master["score"] = sku_master["sku_tokens"].apply(
+        lambda tokens: token_score(query_tokens, tokens)
+    )
+    sku_master = sku_master[sku_master["score"] > 0].copy()
+
+    if sku_master.empty:
+        return {"status": "not_found"}
+
+    sku_master = sku_master.sort_values(["score", "sku"], ascending=[False, True])
+
+    top_score = sku_master["score"].max()
+    top_df = sku_master[sku_master["score"] == top_score]
+
+    if len(top_df) == 1:
+        return {"status": "resolved", "matches": top_df["sku"].tolist()}
+
+    return {
+        "status": "ambiguous",
+        "suggestions": sku_master["sku"].head(20).tolist()
+    }
+
+
 def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year: int = None):
     required_columns = {"year", "client", "sku", "revenue", "finrez_pre"}
     missing = required_columns - set(df.columns)
@@ -144,26 +271,23 @@ def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year
         return {"status": "error", "message": "year_required"}
 
     work_df = df.copy()
-    work_df["sku_norm"] = work_df["sku"].astype(str).apply(normalize_text)
-    sku_query_norm = normalize_text(sku_query)
 
-    matched_df = work_df[work_df["sku_norm"].str.contains(re.escape(sku_query_norm), na=False)]
+    resolved = resolve_sku_candidates(work_df, sku_query)
 
-    if matched_df.empty:
+    if resolved["status"] == "error":
+        return resolved
+
+    if resolved["status"] == "not_found":
         return {"status": "not_found"}
 
-    matched_skus = sorted(matched_df["sku"].dropna().astype(str).unique().tolist())
-
-    exact_matches = [s for s in matched_skus if normalize_text(s) == sku_query_norm]
-
-    if exact_matches:
-        matched_df = matched_df[matched_df["sku"].isin(exact_matches)]
-        matched_skus = exact_matches
-    elif len(matched_skus) > 1:
+    if resolved["status"] == "ambiguous":
         return {
             "status": "ambiguous",
-            "suggestions": matched_skus[:20]
+            "suggestions": resolved["suggestions"]
         }
+
+    matched_skus = resolved["matches"]
+    matched_df = work_df[work_df["sku"].isin(matched_skus)].copy()
 
     years = [year]
     if compare_year is not None:
