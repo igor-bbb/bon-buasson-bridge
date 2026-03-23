@@ -1,673 +1,585 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+import os
+from typing import Optional, Dict, Any, List
+
 import pandas as pd
-import json
-import re
+from fastapi import FastAPI, HTTPException, Query
 
-app = FastAPI()
-
-DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
+app = FastAPI(title="FMCG AI / Vectra Core API", version="4.0")
 
 
-def safe_json(data):
-    return JSONResponse(
-        content=json.loads(json.dumps(data, ensure_ascii=False)),
-        media_type="application/json; charset=utf-8"
-    )
+# =========================================================
+# НАСТРОЙКИ
+# =========================================================
+
+DATA_FILE = os.getenv("DATA_FILE", "data.xlsx")
+DATA_SHEET = os.getenv("DATA_SHEET", "")  # если пусто -> первый лист
+TOP_LIMIT_DEFAULT = 20
 
 
-def to_number(series):
-    return pd.to_numeric(
-        series.astype(str)
-        .str.replace("\u00A0", "", regex=False)
-        .str.replace(" ", "", regex=False)
-        .str.replace(",", ".", regex=False)
-        .str.replace("₴", "", regex=False)
-        .str.replace("%", "", regex=False)
-        .str.strip(),
-        errors="coerce"
-    ).fillna(0)
+# =========================================================
+# ГЛОБАЛЬНЫЙ КЭШ
+# =========================================================
+
+DATAFRAME: Optional[pd.DataFrame] = None
+DATA_INFO: Dict[str, Any] = {}
 
 
-def classify_margin(margin):
-    if margin < 0:
-        return "убыток"
-    elif margin < 0.05:
-        return "инвестиция"
-    elif margin < 0.10:
-        return "слабый"
-    elif margin < 0.15:
-        return "норма"
-    else:
-        return "сильный"
+# =========================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# =========================================================
 
-
-def network_status(margin):
-    if margin < 0:
-        return "убыточная"
-    elif margin < 0.10:
-        return "контракт давит"
-    elif margin < 0.15:
-        return "норма"
-    else:
-        return "сильная"
-
-
-def normalize_text(text: str) -> str:
-    if text is None:
-        return ""
-
-    text = str(text).lower().strip()
-
-    replacements = {
-        "\u00A0": " ",
-        "«": " ",
-        "»": " ",
-        '"': " ",
-        "'": " ",
-        "ё": "е",
-        "’": " ",
-        "`": " ",
-        "_": " ",
-        "-": " ",
-        "/": " ",
-        "\\": " ",
-        ".": " ",
-        ",": " ",
-        ";": " ",
-        ":": " ",
-        "(": " ",
-        ")": " ",
-        "[": " ",
-        "]": " ",
-        "{": " ",
-        "}": " ",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    # унификация литража
-    text = re.sub(r"(\d)\s*[лl]\b", r"\1l", text)
-    text = re.sub(r"(\d)\s*[,\.]\s*(\d)\s*[лl]\b", r"\1.\2l", text)
-
-    # унификация самых частых слов
-    text = text.replace("бон буассон", "bon buasson")
-    text = text.replace("bonbuasson", "bon buasson")
-    text = text.replace("colafresh", "cola fresh")
-
-    text = " ".join(text.split())
+def clean_text(value):
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    if text.lower() in {"nan", "none", ""}:
+        return None
     return text
 
 
-def tokenize(text: str):
-    norm = normalize_text(text)
-    if not norm:
-        return []
-    return [token for token in norm.split() if token]
+def to_number(series: pd.Series) -> pd.Series:
+    # Безопасное приведение текстовых денег/процентов к числу
+    s = series.astype(str).str.replace("\xa0", "", regex=False).str.strip()
+    s = s.str.replace(" ", "", regex=False)
+    s = s.str.replace(",", ".", regex=False)
+    s = s.replace({"nan": None, "None": None, "": None})
+    return pd.to_numeric(s, errors="coerce").fillna(0)
 
 
-def token_score(query_tokens, candidate_tokens):
-    if not query_tokens or not candidate_tokens:
-        return 0
-
-    candidate_set = set(candidate_tokens)
-    score = 0
-    for token in query_tokens:
-        if token in candidate_set:
-            score += 3
-        else:
-            # мягкое совпадение: token входит в слово кандидата или наоборот
-            partial = False
-            for cand in candidate_set:
-                if token in cand or cand in token:
-                    partial = True
-                    break
-            if partial:
-                score += 1
-    return score
+def safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    denominator = denominator.replace(0, pd.NA)
+    result = numerator / denominator
+    return result.fillna(0)
 
 
-def load_data():
-    df = pd.read_csv(DATA_URL, encoding="utf-8")
+def classify_margin(value: float) -> str:
+    if pd.isna(value):
+        return "unknown"
+    if value < 0:
+        return "remove"
+    if value < 0.05:
+        return "invest_control"
+    if value < 0.10:
+        return "weak"
+    if value < 0.15:
+        return "base"
+    return "strong"
 
-    required_cols = ["client", "year", "revenue", "finrez_pre", "finrez_total"]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(
-            f"В таблице отсутствуют обязательные колонки: {missing}. "
-            f"Доступные колонки: {list(df.columns)}"
+
+def detect_sheet_name(file_path: str) -> str:
+    xls = pd.ExcelFile(file_path)
+    if DATA_SHEET and DATA_SHEET in xls.sheet_names:
+        return DATA_SHEET
+    return xls.sheet_names[0]
+
+
+def load_raw_dataframe(file_path: str) -> pd.DataFrame:
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"Файл DATA не найден: {file_path}. "
+            f"Положите Excel рядом с main.py или задайте переменную DATA_FILE."
         )
 
-    df["client"] = df["client"].astype(str).str.strip()
-    df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0).astype(int)
+    sheet_name = detect_sheet_name(file_path)
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
 
-    df["revenue"] = to_number(df["revenue"])
-    df["finrez_pre"] = to_number(df["finrez_pre"])
-    df["finrez_total"] = to_number(df["finrez_total"])
+    # Убираем полностью пустые строки
+    df = df.dropna(how="all").copy()
 
+    return df, sheet_name
+
+
+def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
+    # Карта исходных полей -> полей системы
+    rename_map = {
+        "Ответственный менеджер": "manager_national",
+        "Менеджер": "manager_kam",
+        "Сеть": "network",
+        "Бизнес": "business",
+        "Категория ТМЦ": "category",
+        "Группа ТМЦ": "tmc_group",
+        "Товар": "sku",
+        "Месяц Год": "period",
+        "Товарооб., грн": "revenue",
+        "Себест., грн": "cost_price",
+        "Вал. доход операц.": "markup_value",
+        "Наценка": "markup_percent",
+        "Ретробонус": "trade_invest",
+        "Логистика": "logistics_cost",
+        "Расходы на персонал": "staff_cost",
+        "Прочее": "other_cost",
+        "Распред. расходы": "allocated_cost",
+        "Итого расходы": "total_cost",
+        "Фин. рез. без распр. затрат": "finrez_pre",
+        "Фин рез без распр. затрат / ТО грн": "margin_pre",
+        "Финансовый результат": "finrez_total",
+        "Фин рез / ТО грн": "margin_total",
+    }
+
+    df = df_raw.rename(columns=rename_map).copy()
+
+    required_columns = [
+        "manager_national",
+        "manager_kam",
+        "network",
+        "business",
+        "category",
+        "tmc_group",
+        "sku",
+        "period",
+        "revenue",
+        "cost_price",
+        "markup_value",
+        "markup_percent",
+        "trade_invest",
+        "logistics_cost",
+        "staff_cost",
+        "other_cost",
+        "allocated_cost",
+        "total_cost",
+        "finrez_pre",
+        "margin_pre",
+        "finrez_total",
+        "margin_total",
+    ]
+
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"В DATA не хватает обязательных колонок: {missing}")
+
+    # Удаляем строку Total
     if "sku" in df.columns:
-        df["sku"] = df["sku"].astype(str).fillna("UNKNOWN").str.strip()
-    else:
-        df["sku"] = "UNKNOWN"
+        df["sku"] = df["sku"].apply(clean_text)
+        df = df[df["sku"].notna()].copy()
+        df = df[df["sku"].str.lower() != "total"].copy()
 
-    if "category" in df.columns:
-        df["category"] = df["category"].astype(str).fillna("UNKNOWN").str.strip()
-    else:
-        df["category"] = "UNKNOWN"
+    # Чистим текстовые колонки
+    text_columns = [
+        "manager_national",
+        "manager_kam",
+        "network",
+        "business",
+        "category",
+        "tmc_group",
+        "sku",
+    ]
+    for col in text_columns:
+        df[col] = df[col].apply(clean_text)
 
-    if "month" in df.columns:
-        df["month"] = pd.to_numeric(df["month"], errors="coerce").fillna(0)
+    # Дата
+    df["period"] = pd.to_datetime(df["period"], errors="coerce")
+    df = df[df["period"].notna()].copy()
+    df["year"] = df["period"].dt.year.astype(int)
+    df["month"] = df["period"].dt.month.astype(int)
+    df["period_str"] = df["period"].dt.strftime("%Y-%m")
 
-    if "period" in df.columns:
-        df["period"] = df["period"].astype(str).fillna("")
+    # Числовые поля
+    number_columns = [
+        "revenue",
+        "cost_price",
+        "markup_value",
+        "markup_percent",
+        "trade_invest",
+        "logistics_cost",
+        "staff_cost",
+        "other_cost",
+        "allocated_cost",
+        "total_cost",
+        "finrez_pre",
+        "margin_pre",
+        "finrez_total",
+        "margin_total",
+    ]
+    for col in number_columns:
+        df[col] = to_number(df[col])
 
-    df = df.fillna(0)
+    # Если проценты пришли как 12.5 вместо 0.125 -> нормализуем
+    # Логика: если медиана больше 1, значит это проценты в формате 12.5, а не 0.125
+    for percent_col in ["markup_percent", "margin_pre", "margin_total"]:
+        median_value = df[percent_col].median()
+        if pd.notna(median_value) and median_value > 1:
+            df[percent_col] = df[percent_col] / 100
+
+    # Защитный слой
+    df["structure_gap"] = df["markup_value"] - df["finrez_pre"]
+
+    # Рынок по группе ТМЦ
+    market_table = (
+        df.groupby("tmc_group", dropna=False)
+        .agg(
+            revenue_sum=("revenue", "sum"),
+            finrez_pre_sum=("finrez_pre", "sum"),
+        )
+        .reset_index()
+    )
+    market_table["market_avg_margin"] = safe_divide(
+        market_table["finrez_pre_sum"], market_table["revenue_sum"]
+    )
+
+    df = df.merge(
+        market_table[["tmc_group", "market_avg_margin"]],
+        on="tmc_group",
+        how="left",
+    )
+
+    # GAP
+    df["gap_client"] = df["margin_pre"] - 0.10
+    df["gap_market"] = df["margin_pre"] - df["market_avg_margin"].fillna(0)
+
+    # Классификация
+    df["sku_class"] = df["margin_pre"].apply(classify_margin)
+
     return df
 
 
-def calc_metrics(filtered_df):
-    revenue = float(filtered_df["revenue"].sum())
-    finrez_pre = float(filtered_df["finrez_pre"].sum())
-    finrez_total = float(filtered_df["finrez_total"].sum())
-    margin = (finrez_pre / revenue) if revenue else 0
-
+def build_data_info(df: pd.DataFrame, sheet_name: str, file_path: str) -> Dict[str, Any]:
     return {
-        "rows": int(len(filtered_df)),
-        "revenue": revenue,
-        "finrez_pre": finrez_pre,
-        "finrez_total": finrez_total,
-        "margin": margin
+        "file": file_path,
+        "sheet": sheet_name,
+        "rows": int(len(df)),
+        "columns": int(len(df.columns)),
+        "year_min": int(df["year"].min()) if len(df) else None,
+        "year_max": int(df["year"].max()) if len(df) else None,
+        "networks": int(df["network"].nunique(dropna=True)),
+        "sku_count": int(df["sku"].nunique(dropna=True)),
+        "tmc_groups": int(df["tmc_group"].nunique(dropna=True)),
+        "businesses": sorted([x for x in df["business"].dropna().unique().tolist()]),
     }
 
 
-def resolve_sku_candidates(work_df: pd.DataFrame, sku_query: str):
-    sku_query_norm = normalize_text(sku_query)
-    query_tokens = tokenize(sku_query)
+def ensure_loaded() -> pd.DataFrame:
+    global DATAFRAME, DATA_INFO
 
-    if not sku_query_norm:
-        return {"status": "error", "message": "sku_required"}
+    if DATAFRAME is None:
+        raw_df, sheet_name = load_raw_dataframe(DATA_FILE)
+        DATAFRAME = normalize_dataframe(raw_df)
+        DATA_INFO = build_data_info(DATAFRAME, sheet_name, DATA_FILE)
 
-    sku_master = (
-        work_df[["sku"]]
-        .dropna()
-        .drop_duplicates()
-        .copy()
-    )
+    return DATAFRAME
 
-    sku_master["sku"] = sku_master["sku"].astype(str)
-    sku_master["sku_norm"] = sku_master["sku"].apply(normalize_text)
-    sku_master["sku_tokens"] = sku_master["sku"].apply(tokenize)
 
-    # 1. точное нормализованное совпадение
-    exact_df = sku_master[sku_master["sku_norm"] == sku_query_norm]
-    if not exact_df.empty:
-        matches = exact_df["sku"].tolist()
-        return {"status": "resolved", "matches": matches}
+def filter_df(
+    df: pd.DataFrame,
+    year: Optional[int] = None,
+    network: Optional[str] = None,
+    sku: Optional[str] = None,
+    business: Optional[str] = None,
+    tmc_group: Optional[str] = None,
+) -> pd.DataFrame:
+    result = df.copy()
 
-    # 2. contains в обе стороны
-    contains_df = sku_master[
-        sku_master["sku_norm"].str.contains(re.escape(sku_query_norm), na=False) |
-        sku_master["sku_norm"].apply(lambda x: sku_query_norm in x or x in sku_query_norm)
-    ].copy()
+    if year is not None:
+        result = result[result["year"] == year]
 
-    if not contains_df.empty:
-        if len(contains_df) == 1:
-            return {"status": "resolved", "matches": contains_df["sku"].tolist()}
+    if network:
+        result = result[result["network"].fillna("").str.lower() == network.strip().lower()]
 
-        contains_df["score"] = contains_df["sku_tokens"].apply(
-            lambda tokens: token_score(query_tokens, tokens)
+    if sku:
+        result = result[result["sku"].fillna("").str.lower().str.contains(sku.strip().lower(), na=False)]
+
+    if business:
+        result = result[result["business"].fillna("").str.lower() == business.strip().lower()]
+
+    if tmc_group:
+        result = result[result["tmc_group"].fillna("").str.lower() == tmc_group.strip().lower()]
+
+    return result
+
+
+def make_diagnosis_block(row: Dict[str, Any]) -> Dict[str, Any]:
+    margin_pre = row.get("margin_pre", 0)
+    gap_client = row.get("gap_client", 0)
+    gap_market = row.get("gap_market", 0)
+    structure_gap = row.get("structure_gap", 0)
+    trade_invest = row.get("trade_invest", 0)
+    finrez_pre = row.get("finrez_pre", 0)
+    revenue = row.get("revenue", 0)
+
+    problem_parts: List[str] = []
+    reason_parts: List[str] = []
+    action_parts: List[str] = []
+    effect_parts: List[str] = []
+
+    if finrez_pre < 0:
+        problem_parts.append("финансовый результат до распределения отрицательный")
+    elif margin_pre < 0.05:
+        problem_parts.append("маржа до распределения слишком низкая")
+    else:
+        problem_parts.append("прибыльность ниже целевого уровня")
+
+    if gap_client < 0:
+        reason_parts.append("маржа ниже внутренней цели 10%")
+    if gap_market < 0:
+        reason_parts.append("маржа ниже среднего уровня по группе ТМЦ")
+    if structure_gap > 0:
+        reason_parts.append("базовая наценка теряется в затратах до finrez_pre")
+    if trade_invest > 0 and revenue > 0 and (trade_invest / revenue) > 0.05:
+        reason_parts.append("ретробонус занимает заметную долю выручки")
+    if not reason_parts:
+        reason_parts.append("нужна дополнительная детализация затрат и SKU-структуры")
+
+    if margin_pre < 0:
+        action_parts.append("рассмотреть вывод SKU или остановку инвестиций")
+    elif margin_pre < 0.05:
+        action_parts.append("оставить SKU только под жесткий контроль инвестиций")
+    elif margin_pre < 0.10:
+        action_parts.append("сократить затраты и пересобрать условия сети")
+    else:
+        action_parts.append("защитить сильную позицию и масштабировать удачную механику")
+
+    if structure_gap > 0:
+        action_parts.append("проверить логистику, персонал, прочие затраты и ретробонус")
+    if gap_market < 0:
+        action_parts.append("сравнить SKU с рынком внутри своей группы ТМЦ")
+
+    if finrez_pre < 0:
+        effect_parts.append("остановка потери прибыли")
+    else:
+        effect_parts.append("рост finrez_pre без роста выручки")
+    effect_parts.append("очистка ассортимента и концентрация на сильных SKU")
+
+    return {
+        "Проблема": "; ".join(problem_parts),
+        "Причина": "; ".join(reason_parts),
+        "Действие": "; ".join(action_parts),
+        "Эффект": "; ".join(effect_parts),
+    }
+
+
+def aggregate_sku(df: pd.DataFrame) -> pd.DataFrame:
+    result = (
+        df.groupby(["sku", "network"], dropna=False)
+        .agg(
+            revenue=("revenue", "sum"),
+            cost_price=("cost_price", "sum"),
+            markup_value=("markup_value", "sum"),
+            trade_invest=("trade_invest", "sum"),
+            logistics_cost=("logistics_cost", "sum"),
+            staff_cost=("staff_cost", "sum"),
+            other_cost=("other_cost", "sum"),
+            allocated_cost=("allocated_cost", "sum"),
+            total_cost=("total_cost", "sum"),
+            finrez_pre=("finrez_pre", "sum"),
+            finrez_total=("finrez_total", "sum"),
         )
-        contains_df = contains_df.sort_values(["score", "sku"], ascending=[False, True])
-
-        top_score = contains_df["score"].max()
-        top_df = contains_df[contains_df["score"] == top_score]
-
-        if len(top_df) == 1 and top_score > 0:
-            return {"status": "resolved", "matches": top_df["sku"].tolist()}
-
-        return {
-            "status": "ambiguous",
-            "suggestions": contains_df["sku"].head(20).tolist()
-        }
-
-    # 3. token-based fallback
-    sku_master["score"] = sku_master["sku_tokens"].apply(
-        lambda tokens: token_score(query_tokens, tokens)
-    )
-    sku_master = sku_master[sku_master["score"] > 0].copy()
-
-    if sku_master.empty:
-        return {"status": "not_found"}
-
-    sku_master = sku_master.sort_values(["score", "sku"], ascending=[False, True])
-
-    top_score = sku_master["score"].max()
-    top_df = sku_master[sku_master["score"] == top_score]
-
-    if len(top_df) == 1:
-        return {"status": "resolved", "matches": top_df["sku"].tolist()}
-
-    return {
-        "status": "ambiguous",
-        "suggestions": sku_master["sku"].head(20).tolist()
-    }
-
-
-def process_sku_global(df: pd.DataFrame, sku_query: str, year: int, compare_year: int = None):
-    required_columns = {"year", "client", "sku", "revenue", "finrez_pre"}
-    missing = required_columns - set(df.columns)
-
-    if missing:
-        return {
-            "status": "error",
-            "message": f"Нет колонок: {sorted(list(missing))}"
-        }
-
-    if not sku_query:
-        return {"status": "error", "message": "sku_required"}
-
-    if not year:
-        return {"status": "error", "message": "year_required"}
-
-    work_df = df.copy()
-
-    resolved = resolve_sku_candidates(work_df, sku_query)
-
-    if resolved["status"] == "error":
-        return resolved
-
-    if resolved["status"] == "not_found":
-        return {"status": "not_found"}
-
-    if resolved["status"] == "ambiguous":
-        return {
-            "status": "ambiguous",
-            "suggestions": resolved["suggestions"]
-        }
-
-    matched_skus = resolved["matches"]
-    matched_df = work_df[work_df["sku"].isin(matched_skus)].copy()
-
-    years = [year]
-    if compare_year is not None:
-        years.append(compare_year)
-
-    matched_df = matched_df[matched_df["year"].isin(years)]
-
-    if matched_df.empty:
-        return {"status": "not_found"}
-
-    grouped = (
-        matched_df.groupby(["sku", "year"], dropna=False)
-        .agg({
-            "revenue": "sum",
-            "finrez_pre": "sum",
-            "client": "nunique"
-        })
         .reset_index()
-        .rename(columns={"client": "clients_count"})
     )
 
-    items = []
+    result["margin_pre"] = safe_divide(result["finrez_pre"], result["revenue"])
+    result["margin_total"] = safe_divide(result["finrez_total"], result["revenue"])
+    result["structure_gap"] = result["markup_value"] - result["finrez_pre"]
+    result["sku_class"] = result["margin_pre"].apply(classify_margin)
 
-    for sku_name in grouped["sku"].dropna().astype(str).unique().tolist():
-        sku_rows = grouped[grouped["sku"] == sku_name]
+    return result.sort_values("finrez_pre", ascending=False)
 
-        row_year = sku_rows[sku_rows["year"] == year]
-        row_compare = sku_rows[sku_rows["year"] == compare_year] if compare_year is not None else pd.DataFrame()
 
-        revenue_year = float(row_year["revenue"].sum()) if not row_year.empty else 0.0
-        revenue_compare = float(row_compare["revenue"].sum()) if not row_compare.empty else 0.0
+def aggregate_network(df: pd.DataFrame) -> pd.DataFrame:
+    result = (
+        df.groupby(["network"], dropna=False)
+        .agg(
+            revenue=("revenue", "sum"),
+            markup_value=("markup_value", "sum"),
+            trade_invest=("trade_invest", "sum"),
+            logistics_cost=("logistics_cost", "sum"),
+            staff_cost=("staff_cost", "sum"),
+            other_cost=("other_cost", "sum"),
+            allocated_cost=("allocated_cost", "sum"),
+            total_cost=("total_cost", "sum"),
+            finrez_pre=("finrez_pre", "sum"),
+            finrez_total=("finrez_total", "sum"),
+            sku_count=("sku", "nunique"),
+        )
+        .reset_index()
+    )
 
-        finrez_year = float(row_year["finrez_pre"].sum()) if not row_year.empty else 0.0
-        finrez_compare = float(row_compare["finrez_pre"].sum()) if not row_compare.empty else 0.0
+    result["margin_pre"] = safe_divide(result["finrez_pre"], result["revenue"])
+    result["margin_total"] = safe_divide(result["finrez_total"], result["revenue"])
+    result["structure_gap"] = result["markup_value"] - result["finrez_pre"]
+    result["gap_client"] = result["margin_pre"] - 0.10
+    result["class"] = result["margin_pre"].apply(classify_margin)
 
-        clients_year = int(row_year["clients_count"].sum()) if not row_year.empty else 0
-        clients_compare = int(row_compare["clients_count"].sum()) if not row_compare.empty else 0
+    return result.sort_values("finrez_pre", ascending=False)
 
-        delta_finrez = None
-        delta_finrez_pct = None
-        delta_revenue = None
 
-        if compare_year is not None:
-            delta_finrez = finrez_year - finrez_compare
-            delta_revenue = revenue_year - revenue_compare
-            if finrez_compare != 0:
-                delta_finrez_pct = (delta_finrez / finrez_compare) * 100
+# =========================================================
+# ЗАГРУЗКА ПРИ СТАРТЕ
+# =========================================================
 
-        items.append({
-            "sku_name": sku_name,
-            "sales_uah_year": revenue_year,
-            "sales_uah_compare_year": revenue_compare if compare_year is not None else None,
-            "finrez_pre_year": finrez_year,
-            "finrez_pre_compare_year": finrez_compare if compare_year is not None else None,
-            "delta_finrez_pre": delta_finrez,
-            "delta_finrez_pre_pct": delta_finrez_pct,
-            "delta_sales_uah": delta_revenue,
-            "clients_count_year": clients_year,
-            "clients_count_compare_year": clients_compare if compare_year is not None else None
-        })
+@app.on_event("startup")
+def startup_event():
+    ensure_loaded()
 
-    items = sorted(items, key=lambda x: x["finrez_pre_year"], reverse=True)
 
-    summary = {
-        "matched_skus": len(items),
-        "clients_count": int(matched_df["client"].nunique()),
-        "finrez_pre_year": float(matched_df[matched_df["year"] == year]["finrez_pre"].sum()),
-        "finrez_pre_compare_year": float(
-            matched_df[matched_df["year"] == compare_year]["finrez_pre"].sum()
-        ) if compare_year is not None else None,
-        "delta_finrez_pre": None,
-        "delta_finrez_pre_pct": None
-    }
-
-    if compare_year is not None:
-        summary["delta_finrez_pre"] = summary["finrez_pre_year"] - summary["finrez_pre_compare_year"]
-        if summary["finrez_pre_compare_year"] not in (0, None):
-            summary["delta_finrez_pre_pct"] = (
-                summary["delta_finrez_pre"] / summary["finrez_pre_compare_year"]
-            ) * 100
-
-    return {
-        "mode": "sku_global",
-        "query": {
-            "sku": sku_query,
-            "year": year,
-            "compare_year": compare_year
-        },
-        "summary": summary,
-        "items": items
-    }
-
+# =========================================================
+# ENDPOINTS
+# =========================================================
 
 @app.get("/")
 def root():
-    return safe_json({"status": "ok"})
+    return {
+        "project": "FMCG AI / Vectra",
+        "status": "ok",
+        "version": "4.0",
+        "mode": "core",
+    }
 
 
-@app.get("/test")
-def test():
-    return safe_json({"message": "Bon Buasson API работает"})
+@app.get("/health")
+def health():
+    df = ensure_loaded()
+    return {
+        "status": "ok",
+        "rows": len(df),
+        "file": DATA_INFO.get("file"),
+        "sheet": DATA_INFO.get("sheet"),
+    }
 
 
-@app.get("/data")
-def get_data():
-    try:
-        df = load_data()
-        sample = df.head(10).fillna(0).to_dict(orient="records")
-        return safe_json({
-            "source_lock": True,
-            "rows": int(len(df)),
-            "columns": list(df.columns),
-            "sample": sample
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
+@app.get("/reload")
+def reload_data():
+    global DATAFRAME, DATA_INFO
+    DATAFRAME = None
+    DATA_INFO = {}
+    df = ensure_loaded()
+    return {
+        "status": "reloaded",
+        "rows": len(df),
+        "file": DATA_INFO.get("file"),
+        "sheet": DATA_INFO.get("sheet"),
+    }
 
 
-@app.get("/analyze")
-def analyze(
-    client: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
+@app.get("/data_info")
+def data_info():
+    ensure_loaded()
+    return DATA_INFO
+
+
+@app.get("/network_summary")
+def network_summary(
+    year: Optional[int] = Query(default=None),
+    business: Optional[str] = Query(default=None),
+    limit: int = Query(default=TOP_LIMIT_DEFAULT),
 ):
-    try:
-        df = load_data()
-        filtered = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year)
-        ]
+    df = ensure_loaded()
+    filtered = filter_df(df, year=year, business=business)
 
-        if filtered.empty:
-            return safe_json({
-                "source_lock": False,
-                "error": "NO DATA",
-                "client": client,
-                "year": year
-            })
+    if filtered.empty:
+        raise HTTPException(status_code=404, detail="Нет данных по заданному фильтру")
 
-        metrics = calc_metrics(filtered)
-
-        return safe_json({
-            "source_lock": True,
-            "client": client,
-            "year": int(year),
-            "status": network_status(metrics["margin"]),
-            **metrics
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
-
-
-@app.get("/compare")
-def compare(
-    client: str = Query(..., description="Название сети"),
-    year1: int = Query(..., description="Первый год"),
-    year2: int = Query(..., description="Второй год")
-):
-    try:
-        df = load_data()
-
-        filtered_1 = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year1)
-        ]
-
-        filtered_2 = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year2)
-        ]
-
-        if filtered_1.empty or filtered_2.empty:
-            return safe_json({
-                "source_lock": False,
-                "error": "NO DATA FOR ONE OR BOTH YEARS",
-                "client": client,
-                "year1": year1,
-                "year2": year2
-            })
-
-        m1 = calc_metrics(filtered_1)
-        m2 = calc_metrics(filtered_2)
-
-        return safe_json({
-            "source_lock": True,
-            "client": client,
-            "year1": int(year1),
-            "year2": int(year2),
-            "year1_metrics": {
-                **m1,
-                "status": network_status(m1["margin"])
-            },
-            "year2_metrics": {
-                **m2,
-                "status": network_status(m2["margin"])
-            },
-            "delta": {
-                "revenue": m1["revenue"] - m2["revenue"],
-                "finrez_pre": m1["finrez_pre"] - m2["finrez_pre"],
-                "finrez_total": m1["finrez_total"] - m2["finrez_total"],
-                "margin": m1["margin"] - m2["margin"]
-            }
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
-
-
-@app.get("/sku")
-def sku_analysis(
-    client: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
-):
-    try:
-        df = load_data()
-        filtered = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year)
-        ]
-
-        if filtered.empty:
-            return safe_json({
-                "source_lock": False,
-                "error": "NO DATA",
-                "client": client,
-                "year": year
-            })
-
-        grouped = (
-            filtered.groupby("sku", dropna=False)
-            .agg({
-                "revenue": "sum",
-                "finrez_pre": "sum",
-                "finrez_total": "sum"
-            })
-            .reset_index()
-        )
-
-        grouped["margin"] = grouped.apply(
-            lambda row: (row["finrez_pre"] / row["revenue"]) if row["revenue"] else 0,
-            axis=1
-        )
-        grouped["status"] = grouped["margin"].apply(classify_margin)
-        grouped = grouped.fillna(0).sort_values(by="revenue", ascending=False)
-
-        return safe_json({
-            "source_lock": True,
-            "client": client,
-            "year": int(year),
-            "rows": int(len(grouped)),
-            "items": grouped.to_dict(orient="records")
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
-
-
-@app.get("/category")
-def category_analysis(
-    client: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
-):
-    try:
-        df = load_data()
-        filtered = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year)
-        ]
-
-        if filtered.empty:
-            return safe_json({
-                "source_lock": False,
-                "error": "NO DATA",
-                "client": client,
-                "year": year
-            })
-
-        grouped = (
-            filtered.groupby("category", dropna=False)
-            .agg({
-                "revenue": "sum",
-                "finrez_pre": "sum",
-                "finrez_total": "sum"
-            })
-            .reset_index()
-        )
-
-        grouped["margin"] = grouped.apply(
-            lambda row: (row["finrez_pre"] / row["revenue"]) if row["revenue"] else 0,
-            axis=1
-        )
-        grouped["status"] = grouped["margin"].apply(classify_margin)
-        grouped = grouped.fillna(0).sort_values(by="revenue", ascending=False)
-
-        return safe_json({
-            "source_lock": True,
-            "client": client,
-            "year": int(year),
-            "rows": int(len(grouped)),
-            "items": grouped.to_dict(orient="records")
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
-
-
-@app.get("/diagnostic")
-def diagnostic(
-    client: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
-):
-    try:
-        df = load_data()
-        filtered = df[
-            df["client"].str.contains(client, case=False, na=False) &
-            (df["year"] == year)
-        ]
-
-        if filtered.empty:
-            return safe_json({
-                "source_lock": False,
-                "error": "NO DATA",
-                "client": client,
-                "year": year
-            })
-
-        metrics = calc_metrics(filtered)
-        gap = metrics["finrez_pre"] - metrics["finrez_total"]
-
-        if metrics["margin"] >= 0.15 and metrics["finrez_total"] < 0:
-            diagnosis = "продукт сильный, контракт съедает прибыль"
-        elif metrics["margin"] >= 0.10:
-            diagnosis = "сеть рабочая, требует контроля условий"
-        elif metrics["margin"] >= 0:
-            diagnosis = "сеть слабая, контракт давит"
-        else:
-            diagnosis = "сеть убыточная"
-
-        return safe_json({
-            "source_lock": True,
-            "client": client,
-            "year": int(year),
-            "revenue": metrics["revenue"],
-            "finrez_pre": metrics["finrez_pre"],
-            "finrez_total": metrics["finrez_total"],
-            "margin": metrics["margin"],
-            "gap": gap,
-            "status": network_status(metrics["margin"]),
-            "diagnosis": diagnosis
-        })
-    except Exception as e:
-        return safe_json({
-            "source_lock": False,
-            "error": str(e)
-        })
+    result = aggregate_network(filtered).head(limit)
+    return {
+        "filters": {
+            "year": year,
+            "business": business,
+            "limit": limit,
+        },
+        "rows": result.fillna("").to_dict(orient="records"),
+    }
 
 
 @app.get("/sku_global")
 def sku_global(
-    sku: str = Query(..., description="SKU или часть названия SKU"),
-    year: int = Query(..., description="Основной год анализа"),
-    compare_year: int = Query(None, description="Год сравнения")
+    year: Optional[int] = Query(default=None),
+    network: Optional[str] = Query(default=None),
+    business: Optional[str] = Query(default=None),
+    tmc_group: Optional[str] = Query(default=None),
+    limit: int = Query(default=TOP_LIMIT_DEFAULT),
+    mode: str = Query(default="top"),  # top / anti
 ):
-    try:
-        df = load_data()
-        result = process_sku_global(df, sku, year, compare_year)
-        return safe_json(result)
-    except Exception as e:
-        return safe_json({
-            "status": "error",
-            "message": str(e)
-        })
+    df = ensure_loaded()
+    filtered = filter_df(
+        df,
+        year=year,
+        network=network,
+        business=business,
+        tmc_group=tmc_group,
+    )
+
+    if filtered.empty:
+        raise HTTPException(status_code=404, detail="Нет данных по заданному фильтру")
+
+    result = aggregate_sku(filtered)
+
+    if mode == "anti":
+        result = result.sort_values("finrez_pre", ascending=True)
+
+    result = result.head(limit)
+
+    return {
+        "filters": {
+            "year": year,
+            "network": network,
+            "business": business,
+            "tmc_group": tmc_group,
+            "limit": limit,
+            "mode": mode,
+        },
+        "rows": result.fillna("").to_dict(orient="records"),
+    }
+
+
+@app.get("/diagnostics")
+def diagnostics(
+    year: Optional[int] = Query(default=None),
+    network: Optional[str] = Query(default=None),
+    sku: Optional[str] = Query(default=None),
+    business: Optional[str] = Query(default=None),
+):
+    df = ensure_loaded()
+    filtered = filter_df(
+        df,
+        year=year,
+        network=network,
+        sku=sku,
+        business=business,
+    )
+
+    if filtered.empty:
+        raise HTTPException(status_code=404, detail="Нет данных по заданному фильтру")
+
+    summary = {
+        "revenue": float(filtered["revenue"].sum()),
+        "markup_value": float(filtered["markup_value"].sum()),
+        "trade_invest": float(filtered["trade_invest"].sum()),
+        "logistics_cost": float(filtered["logistics_cost"].sum()),
+        "staff_cost": float(filtered["staff_cost"].sum()),
+        "other_cost": float(filtered["other_cost"].sum()),
+        "allocated_cost": float(filtered["allocated_cost"].sum()),
+        "finrez_pre": float(filtered["finrez_pre"].sum()),
+        "finrez_total": float(filtered["finrez_total"].sum()),
+    }
+
+    summary["margin_pre"] = (
+        summary["finrez_pre"] / summary["revenue"] if summary["revenue"] else 0
+    )
+    summary["margin_total"] = (
+        summary["finrez_total"] / summary["revenue"] if summary["revenue"] else 0
+    )
+    summary["gap_client"] = summary["margin_pre"] - 0.10
+
+    if filtered["tmc_group"].dropna().nunique() == 1:
+        summary["market_avg_margin"] = float(filtered["market_avg_margin"].iloc[0])
+    else:
+        summary["market_avg_margin"] = float(
+            (filtered["finrez_pre"].sum() / filtered["revenue"].sum())
+            if filtered["revenue"].sum()
+            else 0
+        )
+
+    summary["gap_market"] = summary["margin_pre"] - summary["market_avg_margin"]
+    summary["structure_gap"] = summary["markup_value"] - summary["finrez_pre"]
+    summary["class"] = classify_margin(summary["margin_pre"])
+
+    diagnosis = make_diagnosis_block(summary)
+
+    return {
+        "filters": {
+            "year": year,
+            "network": network,
+            "sku": sku,
+            "business": business,
+        },
+        "summary": summary,
+        "diagnosis": diagnosis,
+    }
