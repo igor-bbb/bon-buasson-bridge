@@ -126,70 +126,77 @@ def load_data(force_reload=False):
         "cost_price", "Себест., грн", "Себестоимость"
     ])
 
-    col_markup_value = find_first_existing_column(raw, [
-        "markup_value",
-        "Валовая прибыль",
-        "Вал. доход операц.",
-        "Вал. доход операц",
-        "Вал доход операц",
-        "Валовой доход",
-        "Вал доход"
-    ])
+ col_markup_value = find_first_existing_column(raw, [
+    "markup_value",
+    "Вал. доход операц.",
+    "Вал. доход операц",
+    "Вал доход операц",
+    "Валовой доход",
+    "Вал доход",
+    "Вал. доход"
+])
 
-    col_markup_percent = find_first_existing_column(raw, [
-        "markup_percent",
-        "Наценка",
-        "Наценка %",
-        "Маржа до распределения"
-    ])
+col_markup_percent = find_first_existing_column(raw, [
+    "markup_percent",
+    "Наценка",
+    "Наценка %",
+])
 
-    # ----- resolve costs -----
-    col_trade_invest = find_first_existing_column(raw, [
-        "trade_invest", "Ретробонус", "Инвестиции в сеть"
-    ])
-    col_logistics_cost = find_first_existing_column(raw, [
-        "logistics_cost", "Логистика"
-    ])
-    col_staff_cost = find_first_existing_column(raw, [
-        "staff_cost", "Персонал", "Расходы на персонал"
-    ])
-    col_other_cost = find_first_existing_column(raw, [
-        "other_cost", "Прочее", "Прочие затраты"
-    ])
-    col_allocated_cost = find_first_existing_column(raw, [
-        "allocated_cost", "Распределенные затраты", "Распределённые расходы"
-    ])
-    col_total_cost = find_first_existing_column(raw, [
-        "total_cost", "Итого затрат", "Итого расход", "Итого расходы"
-    ])
+col_trade_invest = find_first_existing_column(raw, [
+    "trade_invest",
+    "Ретробонус",
+    "Ретро бонус",
+    "Ретро"
+])
 
-    # ----- resolve results -----
-    col_finrez_pre = find_first_existing_column(raw, [
-        "finrez_pre",
-        "Финрез до распределения",
-        "Фин. рез. без распр. затрат",
-        "Финрез без распр. затрат",
-        "Финрез до распред."
-    ])
+col_logistics_cost = find_first_existing_column(raw, [
+    "logistics_cost",
+    "Логистика"
+])
 
-    col_margin_pre = find_first_existing_column(raw, [
-        "margin_pre",
-        "Маржа до распределения"
-    ])
+col_staff_cost = find_first_existing_column(raw, [
+    "staff_cost",
+    "Расходы на персонал",
+    "Персонал"
+])
 
-    col_finrez_total = find_first_existing_column(raw, [
-        "finrez_total",
-        "Финрез итог",
-        "Финансовый результат",
-        "Фин. рез.",
-        "Финрез"
-    ])
+col_other_cost = find_first_existing_column(raw, [
+    "other_cost",
+    "Прочее"
+])
 
-    col_margin_total = find_first_existing_column(raw, [
-        "margin_total",
-        "Маржа итог",
-        "Маржа итого"
-    ])
+col_allocated_cost = find_first_existing_column(raw, [
+    "allocated_cost",
+    "Распред. расходы",
+    "Распределенные расходы",
+    "Распределённые расходы"
+])
+
+col_total_cost = find_first_existing_column(raw, [
+    "total_cost",
+    "Итого расходы"
+])
+
+col_finrez_pre = find_first_existing_column(raw, [
+    "finrez_pre",
+    "Фин. рез. без распр. затрат",
+    "Финрез без распр. затрат"
+])
+
+col_margin_pre = find_first_existing_column(raw, [
+    "margin_pre",
+    "Фин рез без распр. затрат / ТО грн"
+])
+
+col_finrez_total = find_first_existing_column(raw, [
+    "finrez_total",
+    "Финансовый результат"
+])
+
+col_margin_total = find_first_existing_column(raw, [
+    "margin_total",
+    "Фин рез / ТО грн"
+])
 
     work = pd.DataFrame()
 
