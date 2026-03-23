@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 import pandas as pd
@@ -8,7 +7,7 @@ from typing import Optional
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="5.0"
+    version="5.1"
 )
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
@@ -36,6 +35,10 @@ def normalize_text(text):
         .replace("ё", "е")
         .replace("\n", "")
         .replace("\r", "")
+        .replace("«", "")
+        .replace("»", "")
+        .replace('"', "")
+        .replace("–", "-")
         .strip()
     )
 
@@ -112,8 +115,10 @@ def load_data(force_reload=False):
         return _DATA_CACHE.copy()
 
     raw = pd.read_csv(DATA_URL, encoding="utf-8")
-        def normalize_text(text):
-            
+
+    # очистка названий колонок
+    raw.columns = [str(col).strip() for col in raw.columns]
+
     # ----- resolve dimensions -----
     col_business = find_first_existing_column(raw, ["business", "Бизнес"])
     col_manager_national = find_first_existing_column(raw, ["manager_national", "Ответственный менеджер"])
@@ -130,83 +135,78 @@ def load_data(force_reload=False):
 
     # ----- resolve finance -----
     col_revenue = find_first_existing_column(raw, [
-        "revenue", "Выручка", "Товарооб., грн", "Товарооборот", "ТО грн"
+        "revenue", "Выручка", "Товарооб., грн", "Товарооб, грн", "Товарооборот", "ТО грн"
     ])
     col_cost_price = find_first_existing_column(raw, [
-        "cost_price", "Себест., грн", "Себестоимость"
+        "cost_price", "Себест., грн", "Себест, грн", "Себестоимость"
     ])
 
- col_markup_value = find_first_existing_column(raw, [
-    "markup_value",
-    "Вал. доход операц.",
-    "Вал. доход операц",
-    "Вал доход операц",
-    "Валовой доход",
-    "Вал доход",
-    "Вал. доход"
-])
+    col_markup_value = find_first_existing_column(raw, [
+        "markup_value",
+        "Вал. доход операц.",
+        "Вал. доход операц",
+        "Вал доход операц",
+        "Валовая прибыль",
+        "Валовой доход",
+        "Вал доход",
+        "Вал. доход"
+    ])
 
-col_markup_percent = find_first_existing_column(raw, [
-    "markup_percent",
-    "Наценка",
-    "Наценка %",
-])
+    col_markup_percent = find_first_existing_column(raw, [
+        "markup_percent",
+        "Наценка",
+        "Наценка %"
+    ])
 
-col_trade_invest = find_first_existing_column(raw, [
-    "trade_invest",
-    "Ретробонус",
-    "Ретро бонус",
-    "Ретро"
-])
+    # ----- resolve costs -----
+    col_trade_invest = find_first_existing_column(raw, [
+        "trade_invest",
+        "Ретробонус",
+        "Ретро бонус",
+        "Ретро"
+    ])
+    col_logistics_cost = find_first_existing_column(raw, [
+        "logistics_cost",
+        "Логистика"
+    ])
+    col_staff_cost = find_first_existing_column(raw, [
+        "staff_cost",
+        "Расходы на персонал",
+        "Персонал"
+    ])
+    col_other_cost = find_first_existing_column(raw, [
+        "other_cost",
+        "Прочее"
+    ])
+    col_allocated_cost = find_first_existing_column(raw, [
+        "allocated_cost",
+        "Распред. расходы",
+        "Распределенные расходы",
+        "Распределённые расходы"
+    ])
+    col_total_cost = find_first_existing_column(raw, [
+        "total_cost",
+        "Итого расходы"
+    ])
 
-col_logistics_cost = find_first_existing_column(raw, [
-    "logistics_cost",
-    "Логистика"
-])
-
-col_staff_cost = find_first_existing_column(raw, [
-    "staff_cost",
-    "Расходы на персонал",
-    "Персонал"
-])
-
-col_other_cost = find_first_existing_column(raw, [
-    "other_cost",
-    "Прочее"
-])
-
-col_allocated_cost = find_first_existing_column(raw, [
-    "allocated_cost",
-    "Распред. расходы",
-    "Распределенные расходы",
-    "Распределённые расходы"
-])
-
-col_total_cost = find_first_existing_column(raw, [
-    "total_cost",
-    "Итого расходы"
-])
-
-col_finrez_pre = find_first_existing_column(raw, [
-    "finrez_pre",
-    "Фин. рез. без распр. затрат",
-    "Финрез без распр. затрат"
-])
-
-col_margin_pre = find_first_existing_column(raw, [
-    "margin_pre",
-    "Фин рез без распр. затрат / ТО грн"
-])
-
-col_finrez_total = find_first_existing_column(raw, [
-    "finrez_total",
-    "Финансовый результат"
-])
-
-col_margin_total = find_first_existing_column(raw, [
-    "margin_total",
-    "Фин рез / ТО грн"
-])
+    # ----- resolve results -----
+    col_finrez_pre = find_first_existing_column(raw, [
+        "finrez_pre",
+        "Фин. рез. без распр. затрат",
+        "Финрез без распр. затрат"
+    ])
+    col_margin_pre = find_first_existing_column(raw, [
+        "margin_pre",
+        "Фин рез без распр. затрат / ТО грн"
+    ])
+    col_finrez_total = find_first_existing_column(raw, [
+        "finrez_total",
+        "Финансовый результат"
+    ])
+    col_margin_total = find_first_existing_column(raw, [
+        "margin_total",
+        "Фин рез / ТО грн"
+    ])
 
     work = pd.DataFrame()
 
@@ -272,7 +272,7 @@ col_margin_total = find_first_existing_column(raw, [
     work["source_lock"] = True
     work["status"] = "active"
 
-    # remove totals if present
+    # убираем total-строки
     work = work[work["manager_national"].astype(str).str.lower() != "total"]
 
     _DATA_CACHE = work.copy()
@@ -530,54 +530,6 @@ def build_sku_global(df, sku_query, year, compare_year=None):
     }
 
 
-def build_diagnostics(df, network_name, year):
-    summary = build_network_summary(df, network_name, year)
-    if summary.get("status") != "ok":
-        return summary
-
-    markup_percent_avg = summary["markup_percent_avg"]
-    margin_pre = summary["margin_pre"]
-    margin_total = summary["margin_total"]
-
-    if markup_percent_avg > 15 and margin_pre < 0.05:
-        cause = "хорошая базовая экономика, но прибыль съедается затратами или условиями"
-        action = "пересмотреть инвестиции, логистику и условия сети"
-    elif markup_percent_avg < 10 and margin_pre < 0.05:
-        cause = "слабая базовая экономика SKU"
-        action = "сократить слабые SKU и пересмотреть продуктовую матрицу"
-    elif margin_pre < 0:
-        cause = "сеть убыточна уже на уровне finrez_pre"
-        action = "пересмотреть контракт, условия входа и структуру SKU"
-    elif margin_pre > 0.15 and margin_total < 0:
-        cause = "сильная экономика до распределения, но итог съедается после аллокации затрат"
-        action = "разложить P&L по статьям: инвестиции, логистика, персонал, распределённые"
-    else:
-        cause = "сеть в рабочем диапазоне"
-        action = "удерживать сильные SKU и контролировать структуру затрат"
-
-    return {
-        "status": "ok",
-        "network": summary["network"],
-        "year": int(year),
-        "problem": f"Статус сети: {summary['class']}",
-        "cause": cause,
-        "action": action,
-        "effect": "рост управляемой прибыли и снижение потерь",
-        "context": {
-            "revenue": summary["revenue"],
-            "finrez_pre": summary["finrez_pre"],
-            "margin_pre": summary["margin_pre"],
-            "finrez_total": summary["finrez_total"],
-            "margin_total": summary["margin_total"],
-            "markup_value": summary["markup_value"],
-            "markup_percent_avg": summary["markup_percent_avg"]
-        }
-    }
-
-# =========================================================
-# NETWORK PNL
-# =========================================================
-
 def build_network_pnl(df, network_name, year):
     resolved = resolve_network_matches(df, network_name)
 
@@ -625,7 +577,6 @@ def build_network_pnl(df, network_name, year):
     margin_pre = (finrez_pre / revenue) if revenue else 0.0
     margin_total = (finrez_total / revenue) if revenue else 0.0
 
-    # what eats margin before allocation
     cost_items_pre = {
         "trade_invest": trade_invest,
         "logistics_cost": logistics_cost,
@@ -633,11 +584,9 @@ def build_network_pnl(df, network_name, year):
         "other_cost": other_cost
     }
 
-    # top driver before allocation
     top_pre_cost_name = max(cost_items_pre, key=cost_items_pre.get) if cost_items_pre else None
     top_pre_cost_value = cost_items_pre[top_pre_cost_name] if top_pre_cost_name else 0.0
 
-    # structure gaps
     gap_markup_to_pre = markup_value - finrez_pre
     gap_pre_to_total = finrez_pre - finrez_total
 
@@ -655,7 +604,6 @@ def build_network_pnl(df, network_name, year):
         "finrez_total": finrez_total
     }
 
-    # diagnostics
     if markup_value > 0 and finrez_pre < 0:
         diagnosis = "продукт дает валовую прибыль, но сеть убыточна до распределения"
         recommendation = "пересмотреть ретробонус, логистику, персонал и прочие прямые затраты"
@@ -673,7 +621,6 @@ def build_network_pnl(df, network_name, year):
         "status": "ok",
         "network": real_network,
         "year": int(year),
-
         "summary": {
             "revenue": revenue,
             "markup_value": markup_value,
@@ -683,7 +630,6 @@ def build_network_pnl(df, network_name, year):
             "finrez_total": finrez_total,
             "margin_total": margin_total
         },
-
         "costs": {
             "trade_invest": trade_invest,
             "logistics_cost": logistics_cost,
@@ -692,22 +638,65 @@ def build_network_pnl(df, network_name, year):
             "allocated_cost": allocated_cost,
             "total_cost": total_cost
         },
-
         "gaps": {
             "gap_markup_to_pre": gap_markup_to_pre,
             "gap_pre_to_total": gap_pre_to_total
         },
-
         "top_driver_pre": {
             "name": top_pre_cost_name,
             "value": top_pre_cost_value
         },
-
         "diagnosis": diagnosis,
         "recommendation": recommendation,
-
         "pnl_flow": pnl_flow
     }
+
+
+def build_diagnostics(df, network_name, year):
+    summary = build_network_summary(df, network_name, year)
+    if summary.get("status") != "ok":
+        return summary
+
+    markup_percent_avg = summary["markup_percent_avg"]
+    margin_pre = summary["margin_pre"]
+    margin_total = summary["margin_total"]
+
+    if markup_percent_avg > 15 and margin_pre < 0.05:
+        cause = "хорошая базовая экономика, но прибыль съедается затратами или условиями"
+        action = "пересмотреть инвестиции, логистику и условия сети"
+    elif markup_percent_avg < 10 and margin_pre < 0.05:
+        cause = "слабая базовая экономика SKU"
+        action = "сократить слабые SKU и пересмотреть продуктовую матрицу"
+    elif margin_pre < 0:
+        cause = "сеть убыточна уже на уровне finrez_pre"
+        action = "пересмотреть контракт, условия входа и структуру SKU"
+    elif margin_pre > 0.15 and margin_total < 0:
+        cause = "сильная экономика до распределения, но итог съедается после аллокации затрат"
+        action = "разложить P&L по статьям: инвестиции, логистика, персонал, распределённые"
+    else:
+        cause = "сеть в рабочем диапазоне"
+        action = "удерживать сильные SKU и контролировать структуру затрат"
+
+    return {
+        "status": "ok",
+        "network": summary["network"],
+        "year": int(year),
+        "problem": f"Статус сети: {summary['class']}",
+        "cause": cause,
+        "action": action,
+        "effect": "рост управляемой прибыли и снижение потерь",
+        "context": {
+            "revenue": summary["revenue"],
+            "finrez_pre": summary["finrez_pre"],
+            "margin_pre": summary["margin_pre"],
+            "finrez_total": summary["finrez_total"],
+            "margin_total": summary["margin_total"],
+            "markup_value": summary["markup_value"],
+            "markup_percent_avg": summary["markup_percent_avg"]
+        }
+    }
+
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -811,6 +800,7 @@ def sku_global(
             "message": str(e)
         })
 
+
 @app.get("/network_pnl")
 def network_pnl(
     network: str = Query(..., description="Название сети"),
@@ -825,6 +815,7 @@ def network_pnl(
             "status": "error",
             "message": str(e)
         })
+
 
 @app.get("/diagnostics")
 def diagnostics(
@@ -842,7 +833,7 @@ def diagnostics(
         })
 
 
-# backward compatibility for old GPT actions
+# backward compatibility
 @app.get("/analyze")
 def analyze(
     network: str = Query(..., description="Название сети"),
