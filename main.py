@@ -15,8 +15,7 @@ app = FastAPI(title="FMCG AI / Vectra Core API", version="4.1")
 # =========================================================
 
 # Сюда вставь ссылку на Google Sheet
-GOOGLE_SHEET_URL = "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_GOOGLE_SHEET"
-
+GOOGLE_SHEET_URL = https://docs.google.com/spreadsheets/d/1Irb8i9xqEiEOuPVZmU1Y8f1miPA_oG2SVaVD6uLh_2o/edit?usp=sharing
 # Если нужен конкретный лист, оставь его название здесь.
 # Если оставить пусто "", будет загружен первый лист.
 DATA_SHEET = ""
