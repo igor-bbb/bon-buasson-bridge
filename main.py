@@ -1,18 +1,26 @@
 import os
-from typing import Optional, Dict, Any, List
+import re
+import io
+from typing import Optional, Dict, Any, List, Tuple
 
 import pandas as pd
+import requests
 from fastapi import FastAPI, HTTPException, Query
 
-app = FastAPI(title="FMCG AI / Vectra Core API", version="4.0")
+app = FastAPI(title="FMCG AI / Vectra Core API", version="4.1")
 
 
 # =========================================================
 # НАСТРОЙКИ
 # =========================================================
 
-DATA_FILE = os.getenv("DATA_FILE", "data.xlsx")
-DATA_SHEET = os.getenv("DATA_SHEET", "")  # если пусто -> первый лист
+# Сюда вставь ссылку на Google Sheet
+GOOGLE_SHEET_URL = "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_GOOGLE_SHEET"
+
+# Если нужен конкретный лист, оставь его название здесь.
+# Если оставить пусто "", будет загружен первый лист.
+DATA_SHEET = ""
+
 TOP_LIMIT_DEFAULT = 20
 
 
@@ -38,7 +46,6 @@ def clean_text(value):
 
 
 def to_number(series: pd.Series) -> pd.Series:
-    # Безопасное приведение текстовых денег/процентов к числу
     s = series.astype(str).str.replace("\xa0", "", regex=False).str.strip()
     s = s.str.replace(" ", "", regex=False)
     s = s.str.replace(",", ".", regex=False)
@@ -66,31 +73,69 @@ def classify_margin(value: float) -> str:
     return "strong"
 
 
-def detect_sheet_name(file_path: str) -> str:
-    xls = pd.ExcelFile(file_path)
+def build_google_export_url(sheet_url: str) -> str:
+    if not sheet_url or "docs.google.com/spreadsheets/d/" not in sheet_url:
+        raise ValueError(
+            "Неверная ссылка Google Sheet. "
+            "Нужна обычная ссылка вида https://docs.google.com/spreadsheets/d/... "
+        )
+
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", sheet_url)
+    if not match:
+        raise ValueError("Не удалось извлечь ID таблицы из ссылки Google Sheet.")
+
+    spreadsheet_id = match.group(1)
+    export_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx"
+
+    gid_match = re.search(r"[#&?]gid=(\d+)", sheet_url)
+    if gid_match:
+        export_url += f"&gid={gid_match.group(1)}"
+
+    return export_url
+
+
+def download_google_sheet(sheet_url: str) -> Tuple[bytes, str]:
+    export_url = build_google_export_url(sheet_url)
+
+    try:
+        response = requests.get(export_url, timeout=60)
+        response.raise_for_status()
+    except Exception as e:
+        raise RuntimeError(f"Не удалось скачать Google Sheet: {e}")
+
+    content_type = response.headers.get("Content-Type", "")
+    if "html" in content_type.lower():
+        raise RuntimeError(
+            "Google Sheet вернул HTML вместо Excel. "
+            "Проверь, открыт ли доступ по ссылке: любой, у кого есть ссылка — читатель."
+        )
+
+    return response.content, export_url
+
+
+def detect_sheet_name_from_bytes(excel_bytes: bytes) -> str:
+    xls = pd.ExcelFile(io.BytesIO(excel_bytes))
     if DATA_SHEET and DATA_SHEET in xls.sheet_names:
         return DATA_SHEET
     return xls.sheet_names[0]
 
 
-def load_raw_dataframe(file_path: str) -> pd.DataFrame:
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(
-            f"Файл DATA не найден: {file_path}. "
-            f"Положите Excel рядом с main.py или задайте переменную DATA_FILE."
+def load_raw_dataframe() -> Tuple[pd.DataFrame, str, str]:
+    if GOOGLE_SHEET_URL == "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_GOOGLE_SHEET":
+        raise ValueError(
+            "Сначала вставь ссылку на Google Sheet в переменную GOOGLE_SHEET_URL в main.py"
         )
 
-    sheet_name = detect_sheet_name(file_path)
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    excel_bytes, export_url = download_google_sheet(GOOGLE_SHEET_URL)
+    sheet_name = detect_sheet_name_from_bytes(excel_bytes)
 
-    # Убираем полностью пустые строки
+    df = pd.read_excel(io.BytesIO(excel_bytes), sheet_name=sheet_name)
     df = df.dropna(how="all").copy()
 
-    return df, sheet_name
+    return df, sheet_name, export_url
 
 
 def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
-    # Карта исходных полей -> полей системы
     rename_map = {
         "Ответственный менеджер": "manager_national",
         "Менеджер": "manager_kam",
@@ -147,13 +192,11 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"В DATA не хватает обязательных колонок: {missing}")
 
-    # Удаляем строку Total
     if "sku" in df.columns:
         df["sku"] = df["sku"].apply(clean_text)
         df = df[df["sku"].notna()].copy()
         df = df[df["sku"].str.lower() != "total"].copy()
 
-    # Чистим текстовые колонки
     text_columns = [
         "manager_national",
         "manager_kam",
@@ -166,14 +209,12 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     for col in text_columns:
         df[col] = df[col].apply(clean_text)
 
-    # Дата
     df["period"] = pd.to_datetime(df["period"], errors="coerce")
     df = df[df["period"].notna()].copy()
     df["year"] = df["period"].dt.year.astype(int)
     df["month"] = df["period"].dt.month.astype(int)
     df["period_str"] = df["period"].dt.strftime("%Y-%m")
 
-    # Числовые поля
     number_columns = [
         "revenue",
         "cost_price",
@@ -193,17 +234,13 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     for col in number_columns:
         df[col] = to_number(df[col])
 
-    # Если проценты пришли как 12.5 вместо 0.125 -> нормализуем
-    # Логика: если медиана больше 1, значит это проценты в формате 12.5, а не 0.125
     for percent_col in ["markup_percent", "margin_pre", "margin_total"]:
         median_value = df[percent_col].median()
         if pd.notna(median_value) and median_value > 1:
             df[percent_col] = df[percent_col] / 100
 
-    # Защитный слой
     df["structure_gap"] = df["markup_value"] - df["finrez_pre"]
 
-    # Рынок по группе ТМЦ
     market_table = (
         df.groupby("tmc_group", dropna=False)
         .agg(
@@ -222,20 +259,18 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
         how="left",
     )
 
-    # GAP
     df["gap_client"] = df["margin_pre"] - 0.10
     df["gap_market"] = df["margin_pre"] - df["market_avg_margin"].fillna(0)
-
-    # Классификация
     df["sku_class"] = df["margin_pre"].apply(classify_margin)
 
     return df
 
 
-def build_data_info(df: pd.DataFrame, sheet_name: str, file_path: str) -> Dict[str, Any]:
+def build_data_info(df: pd.DataFrame, sheet_name: str, source_url: str) -> Dict[str, Any]:
     return {
-        "file": file_path,
+        "source": "google_sheet",
         "sheet": sheet_name,
+        "export_url": source_url,
         "rows": int(len(df)),
         "columns": int(len(df.columns)),
         "year_min": int(df["year"].min()) if len(df) else None,
@@ -251,9 +286,9 @@ def ensure_loaded() -> pd.DataFrame:
     global DATAFRAME, DATA_INFO
 
     if DATAFRAME is None:
-        raw_df, sheet_name = load_raw_dataframe(DATA_FILE)
+        raw_df, sheet_name, source_url = load_raw_dataframe()
         DATAFRAME = normalize_dataframe(raw_df)
-        DATA_INFO = build_data_info(DATAFRAME, sheet_name, DATA_FILE)
+        DATA_INFO = build_data_info(DATAFRAME, sheet_name, source_url)
 
     return DATAFRAME
 
@@ -419,8 +454,8 @@ def root():
     return {
         "project": "FMCG AI / Vectra",
         "status": "ok",
-        "version": "4.0",
-        "mode": "core",
+        "version": "4.1",
+        "mode": "core_google_sheet",
     }
 
 
@@ -430,8 +465,8 @@ def health():
     return {
         "status": "ok",
         "rows": len(df),
-        "file": DATA_INFO.get("file"),
         "sheet": DATA_INFO.get("sheet"),
+        "source": DATA_INFO.get("source"),
     }
 
 
@@ -444,8 +479,8 @@ def reload_data():
     return {
         "status": "reloaded",
         "rows": len(df),
-        "file": DATA_INFO.get("file"),
         "sheet": DATA_INFO.get("sheet"),
+        "source": DATA_INFO.get("source"),
     }
 
 
@@ -485,7 +520,7 @@ def sku_global(
     business: Optional[str] = Query(default=None),
     tmc_group: Optional[str] = Query(default=None),
     limit: int = Query(default=TOP_LIMIT_DEFAULT),
-    mode: str = Query(default="top"),  # top / anti
+    mode: str = Query(default="top"),
 ):
     df = ensure_loaded()
     filtered = filter_df(
