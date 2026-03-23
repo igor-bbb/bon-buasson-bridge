@@ -557,7 +557,140 @@ def build_diagnostics(df, network_name, year):
         }
     }
 
+# =========================================================
+# NETWORK PNL
+# =========================================================
 
+def build_network_pnl(df, network_name, year):
+    resolved = resolve_network_matches(df, network_name)
+
+    if resolved["status"] == "not_found":
+        return {
+            "status": "not_found",
+            "message": "Сеть не найдена"
+        }
+
+    if resolved["status"] == "ambiguous":
+        return {
+            "status": "ambiguous",
+            "message": "Найдено несколько сетей",
+            "suggestions": resolved["suggestions"]
+        }
+
+    real_network = resolved["matches"][0]
+
+    filtered = df[
+        (df["network"].astype(str).str.strip() == str(real_network).strip()) &
+        (df["year"] == int(year))
+    ].copy()
+
+    if filtered.empty:
+        return {
+            "status": "not_found",
+            "message": f"Нет данных по сети {real_network} за {year}"
+        }
+
+    revenue = float(filtered["revenue"].sum())
+    cost_price = float(filtered["cost_price"].sum())
+    markup_value = float(filtered["markup_value"].sum())
+    markup_percent_avg = float(filtered["markup_percent"].mean()) if len(filtered) else 0.0
+
+    trade_invest = float(filtered["trade_invest"].sum())
+    logistics_cost = float(filtered["logistics_cost"].sum())
+    staff_cost = float(filtered["staff_cost"].sum())
+    other_cost = float(filtered["other_cost"].sum())
+    allocated_cost = float(filtered["allocated_cost"].sum())
+    total_cost = float(filtered["total_cost"].sum())
+
+    finrez_pre = float(filtered["finrez_pre"].sum())
+    finrez_total = float(filtered["finrez_total"].sum())
+
+    margin_pre = (finrez_pre / revenue) if revenue else 0.0
+    margin_total = (finrez_total / revenue) if revenue else 0.0
+
+    # what eats margin before allocation
+    cost_items_pre = {
+        "trade_invest": trade_invest,
+        "logistics_cost": logistics_cost,
+        "staff_cost": staff_cost,
+        "other_cost": other_cost
+    }
+
+    # top driver before allocation
+    top_pre_cost_name = max(cost_items_pre, key=cost_items_pre.get) if cost_items_pre else None
+    top_pre_cost_value = cost_items_pre[top_pre_cost_name] if top_pre_cost_name else 0.0
+
+    # structure gaps
+    gap_markup_to_pre = markup_value - finrez_pre
+    gap_pre_to_total = finrez_pre - finrez_total
+
+    pnl_flow = {
+        "revenue": revenue,
+        "cost_price": cost_price,
+        "markup_value": markup_value,
+        "trade_invest": trade_invest,
+        "logistics_cost": logistics_cost,
+        "staff_cost": staff_cost,
+        "other_cost": other_cost,
+        "finrez_pre": finrez_pre,
+        "allocated_cost": allocated_cost,
+        "total_cost": total_cost,
+        "finrez_total": finrez_total
+    }
+
+    # diagnostics
+    if markup_value > 0 and finrez_pre < 0:
+        diagnosis = "продукт дает валовую прибыль, но сеть убыточна до распределения"
+        recommendation = "пересмотреть ретробонус, логистику, персонал и прочие прямые затраты"
+    elif finrez_pre > 0 and finrez_total < 0:
+        diagnosis = "сеть прибыльна до распределения, но уходит в минус после аллокации"
+        recommendation = "проверить распределенные и фиксированные затраты"
+    elif finrez_pre <= 0 and finrez_total <= 0:
+        diagnosis = "сеть убыточна как на уровне прямой экономики, так и на итоговом уровне"
+        recommendation = "пересобрать условия входа, затраты и ассортимент"
+    else:
+        diagnosis = "сеть в рабочем диапазоне"
+        recommendation = "контролировать структуру затрат и усиливать сильные SKU"
+
+    return {
+        "status": "ok",
+        "network": real_network,
+        "year": int(year),
+
+        "summary": {
+            "revenue": revenue,
+            "markup_value": markup_value,
+            "markup_percent_avg": markup_percent_avg,
+            "finrez_pre": finrez_pre,
+            "margin_pre": margin_pre,
+            "finrez_total": finrez_total,
+            "margin_total": margin_total
+        },
+
+        "costs": {
+            "trade_invest": trade_invest,
+            "logistics_cost": logistics_cost,
+            "staff_cost": staff_cost,
+            "other_cost": other_cost,
+            "allocated_cost": allocated_cost,
+            "total_cost": total_cost
+        },
+
+        "gaps": {
+            "gap_markup_to_pre": gap_markup_to_pre,
+            "gap_pre_to_total": gap_pre_to_total
+        },
+
+        "top_driver_pre": {
+            "name": top_pre_cost_name,
+            "value": top_pre_cost_value
+        },
+
+        "diagnosis": diagnosis,
+        "recommendation": recommendation,
+
+        "pnl_flow": pnl_flow
+    }
 # =========================================================
 # ROUTES
 # =========================================================
@@ -661,6 +794,20 @@ def sku_global(
             "message": str(e)
         })
 
+@app.get("/network_pnl")
+def network_pnl(
+    network: str = Query(..., description="Название сети"),
+    year: int = Query(..., description="Год")
+):
+    try:
+        df = load_data()
+        result = build_network_pnl(df, network, year)
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({
+            "status": "error",
+            "message": str(e)
+        })
 
 @app.get("/diagnostics")
 def diagnostics(
