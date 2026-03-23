@@ -56,14 +56,23 @@ def to_number(series):
 def find_first_existing_column(df, candidates):
     normalized_map = {normalize_text(col): col for col in df.columns}
 
+    # 1. точное совпадение
     for candidate in candidates:
         if candidate in df.columns:
             return candidate
 
+    # 2. нормализованное точное совпадение
     for candidate in candidates:
         c_norm = normalize_text(candidate)
         if c_norm in normalized_map:
             return normalized_map[c_norm]
+
+    # 3. частичное совпадение
+    for candidate in candidates:
+        c_norm = normalize_text(candidate)
+        for col_norm, original in normalized_map.items():
+            if c_norm in col_norm:
+                return original
 
     return None
 
