@@ -1,25 +1,20 @@
-import os
-import re
 import io
+import re
 from typing import Optional, Dict, Any, List, Tuple
 
 import pandas as pd
 import requests
 from fastapi import FastAPI, HTTPException, Query
 
-app = FastAPI(title="FMCG AI / Vectra Core API", version="4.1")
+app = FastAPI(title="FMCG AI / Vectra Core API", version="4.2")
 
 
 # =========================================================
 # НАСТРОЙКИ
 # =========================================================
 
-# Сюда вставь ссылку на Google Sheet
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1Irb8i9xqEiEOuPVZmU1Y8f1miPA_oG2SVaVD6uLh_2o/edit?usp=sharing"
-# Если нужен конкретный лист, оставь его название здесь.
-# Если оставить пусто "", будет загружен первый лист.
-DATA_SHEET = ""
-
+DATA_SHEET = "DATA_CORE"
 TOP_LIMIT_DEFAULT = 20
 
 
@@ -29,6 +24,54 @@ TOP_LIMIT_DEFAULT = 20
 
 DATAFRAME: Optional[pd.DataFrame] = None
 DATA_INFO: Dict[str, Any] = {}
+
+
+# =========================================================
+# СЛОВАРЬ ПЕРЕВОДА
+# =========================================================
+
+CLASS_LABELS = {
+    "remove": "Удалить",
+    "invest_control": "Под контролем",
+    "weak": "Слабый",
+    "base": "База",
+    "strong": "Сильный",
+    "unknown": "Не определено",
+}
+
+FIELD_LABELS = {
+    "sku": "SKU",
+    "network": "Сеть",
+    "business": "Бизнес",
+    "tmc_group": "Группа ТМЦ",
+    "category": "Категория",
+    "manager_national": "Ответственный менеджер",
+    "manager_kam": "Менеджер",
+    "year": "Год",
+    "month": "Месяц",
+    "period_str": "Период",
+    "revenue": "Выручка",
+    "cost_price": "Себестоимость",
+    "markup_value": "Валовая прибыль",
+    "markup_percent": "Наценка",
+    "trade_invest": "Инвестиции в сеть",
+    "logistics_cost": "Логистика",
+    "staff_cost": "Персонал",
+    "other_cost": "Прочие затраты",
+    "allocated_cost": "Распределенные затраты",
+    "total_cost": "Итого затрат",
+    "finrez_pre": "Финрез до распределения",
+    "finrez_total": "Финрез итог",
+    "margin_pre": "Маржа до распределения",
+    "margin_total": "Маржа итог",
+    "structure_gap": "Потеря маржи",
+    "gap_client": "Отклонение от цели",
+    "gap_market": "Отклонение от рынка",
+    "market_avg_margin": "Средняя маржа рынка",
+    "sku_class": "Класс SKU",
+    "class": "Класс",
+    "sku_count": "Количество SKU",
+}
 
 
 # =========================================================
@@ -72,11 +115,38 @@ def classify_margin(value: float) -> str:
     return "strong"
 
 
+def class_to_russian(value: str) -> str:
+    return CLASS_LABELS.get(value, value)
+
+
+def round_value(key: str, value: Any) -> Any:
+    if isinstance(value, (float, int)):
+        if key in {"Маржа до распределения", "Маржа итог", "Средняя маржа рынка", "Отклонение от цели", "Отклонение от рынка", "Наценка"}:
+            return round(float(value), 4)
+        return round(float(value), 2)
+    return value
+
+
+def translate_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    translated = {}
+    for key, value in record.items():
+        new_key = FIELD_LABELS.get(key, key)
+
+        if key in {"sku_class", "class"} and isinstance(value, str):
+            value = class_to_russian(value)
+
+        translated[new_key] = round_value(new_key, value)
+    return translated
+
+
+def translate_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [translate_record(record) for record in records]
+
+
 def build_google_export_url(sheet_url: str) -> str:
     if not sheet_url or "docs.google.com/spreadsheets/d/" not in sheet_url:
         raise ValueError(
-            "Неверная ссылка Google Sheet. "
-            "Нужна обычная ссылка вида https://docs.google.com/spreadsheets/d/... "
+            "Неверная ссылка Google Sheet. Нужна обычная ссылка вида https://docs.google.com/spreadsheets/d/..."
         )
 
     match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", sheet_url)
@@ -105,8 +175,7 @@ def download_google_sheet(sheet_url: str) -> Tuple[bytes, str]:
     content_type = response.headers.get("Content-Type", "")
     if "html" in content_type.lower():
         raise RuntimeError(
-            "Google Sheet вернул HTML вместо Excel. "
-            "Проверь, открыт ли доступ по ссылке: любой, у кого есть ссылка — читатель."
+            "Google Sheet вернул HTML вместо Excel. Проверь доступ по ссылке: любой, у кого есть ссылка — читатель."
         )
 
     return response.content, export_url
@@ -120,11 +189,6 @@ def detect_sheet_name_from_bytes(excel_bytes: bytes) -> str:
 
 
 def load_raw_dataframe() -> Tuple[pd.DataFrame, str, str]:
-    if GOOGLE_SHEET_URL == "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_GOOGLE_SHEET":
-        raise ValueError(
-            "Сначала вставь ссылку на Google Sheet в переменную GOOGLE_SHEET_URL в main.py"
-        )
-
     excel_bytes, export_url = download_google_sheet(GOOGLE_SHEET_URL)
     sheet_name = detect_sheet_name_from_bytes(excel_bytes)
 
@@ -158,6 +222,9 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
         "Фин рез без распр. затрат / ТО грн": "margin_pre",
         "Финансовый результат": "finrez_total",
         "Фин рез / ТО грн": "margin_total",
+        "period": "period",
+        "year": "year",
+        "month": "month",
     }
 
     df = df_raw.rename(columns=rename_map).copy()
@@ -170,7 +237,6 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
         "category",
         "tmc_group",
         "sku",
-        "period",
         "revenue",
         "cost_price",
         "markup_value",
@@ -206,13 +272,30 @@ def normalize_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
         "sku",
     ]
     for col in text_columns:
-        df[col] = df[col].apply(clean_text)
+        if col in df.columns:
+            df[col] = df[col].apply(clean_text)
 
-    df["period"] = pd.to_datetime(df["period"], errors="coerce")
-    df = df[df["period"].notna()].copy()
-    df["year"] = df["period"].dt.year.astype(int)
-    df["month"] = df["period"].dt.month.astype(int)
-    df["period_str"] = df["period"].dt.strftime("%Y-%m")
+    if "period" in df.columns:
+        df["period"] = pd.to_datetime(df["period"], errors="coerce")
+    else:
+        df["period"] = pd.NaT
+
+    if "year" not in df.columns:
+        df["year"] = df["period"].dt.year
+    if "month" not in df.columns:
+        df["month"] = df["period"].dt.month
+
+    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    df["month"] = pd.to_numeric(df["month"], errors="coerce")
+
+    if df["period"].notna().any():
+        df["period_str"] = df["period"].dt.strftime("%Y-%m")
+    else:
+        df["period_str"] = (
+            df["year"].fillna(0).astype(int).astype(str)
+            + "-"
+            + df["month"].fillna(0).astype(int).astype(str).str.zfill(2)
+        )
 
     number_columns = [
         "revenue",
@@ -269,15 +352,15 @@ def build_data_info(df: pd.DataFrame, sheet_name: str, source_url: str) -> Dict[
     return {
         "source": "google_sheet",
         "sheet": sheet_name,
-        "export_url": source_url,
         "rows": int(len(df)),
         "columns": int(len(df.columns)),
-        "year_min": int(df["year"].min()) if len(df) else None,
-        "year_max": int(df["year"].max()) if len(df) else None,
+        "year_min": int(df["year"].dropna().min()) if df["year"].dropna().shape[0] else None,
+        "year_max": int(df["year"].dropna().max()) if df["year"].dropna().shape[0] else None,
         "networks": int(df["network"].nunique(dropna=True)),
         "sku_count": int(df["sku"].nunique(dropna=True)),
         "tmc_groups": int(df["tmc_group"].nunique(dropna=True)),
         "businesses": sorted([x for x in df["business"].dropna().unique().tolist()]),
+        "source_url": source_url,
     }
 
 
@@ -335,7 +418,7 @@ def make_diagnosis_block(row: Dict[str, Any]) -> Dict[str, Any]:
     effect_parts: List[str] = []
 
     if finrez_pre < 0:
-        problem_parts.append("финансовый результат до распределения отрицательный")
+        problem_parts.append("финрез до распределения отрицательный")
     elif margin_pre < 0.05:
         problem_parts.append("маржа до распределения слишком низкая")
     else:
@@ -346,11 +429,11 @@ def make_diagnosis_block(row: Dict[str, Any]) -> Dict[str, Any]:
     if gap_market < 0:
         reason_parts.append("маржа ниже среднего уровня по группе ТМЦ")
     if structure_gap > 0:
-        reason_parts.append("базовая наценка теряется в затратах до finrez_pre")
+        reason_parts.append("базовая валовая прибыль теряется в затратах до finrez_pre")
     if trade_invest > 0 and revenue > 0 and (trade_invest / revenue) > 0.05:
-        reason_parts.append("ретробонус занимает заметную долю выручки")
+        reason_parts.append("инвестиции в сеть занимают заметную долю выручки")
     if not reason_parts:
-        reason_parts.append("нужна дополнительная детализация затрат и SKU-структуры")
+        reason_parts.append("нужна дополнительная детализация затрат и структуры SKU")
 
     if margin_pre < 0:
         action_parts.append("рассмотреть вывод SKU или остановку инвестиций")
@@ -362,7 +445,7 @@ def make_diagnosis_block(row: Dict[str, Any]) -> Dict[str, Any]:
         action_parts.append("защитить сильную позицию и масштабировать удачную механику")
 
     if structure_gap > 0:
-        action_parts.append("проверить логистику, персонал, прочие затраты и ретробонус")
+        action_parts.append("проверить логистику, персонал, прочие затраты и инвестиции в сеть")
     if gap_market < 0:
         action_parts.append("сравнить SKU с рынком внутри своей группы ТМЦ")
 
@@ -451,10 +534,10 @@ def startup_event():
 @app.get("/")
 def root():
     return {
-        "project": "FMCG AI / Vectra",
-        "status": "ok",
-        "version": "4.1",
-        "mode": "core_google_sheet",
+        "Проект": "FMCG AI / Vectra",
+        "Статус": "ok",
+        "Версия": "4.2",
+        "Режим": "core_google_sheet_ru",
     }
 
 
@@ -462,10 +545,10 @@ def root():
 def health():
     df = ensure_loaded()
     return {
-        "status": "ok",
-        "rows": len(df),
-        "sheet": DATA_INFO.get("sheet"),
-        "source": DATA_INFO.get("source"),
+        "Статус": "ok",
+        "Строк": len(df),
+        "Лист": DATA_INFO.get("sheet"),
+        "Источник": DATA_INFO.get("source"),
     }
 
 
@@ -476,17 +559,17 @@ def reload_data():
     DATA_INFO = {}
     df = ensure_loaded()
     return {
-        "status": "reloaded",
-        "rows": len(df),
-        "sheet": DATA_INFO.get("sheet"),
-        "source": DATA_INFO.get("source"),
+        "Статус": "обновлено",
+        "Строк": len(df),
+        "Лист": DATA_INFO.get("sheet"),
+        "Источник": DATA_INFO.get("source"),
     }
 
 
 @app.get("/data_info")
 def data_info():
     ensure_loaded()
-    return DATA_INFO
+    return translate_record(DATA_INFO)
 
 
 @app.get("/network_summary")
@@ -502,13 +585,14 @@ def network_summary(
         raise HTTPException(status_code=404, detail="Нет данных по заданному фильтру")
 
     result = aggregate_network(filtered).head(limit)
+
     return {
-        "filters": {
-            "year": year,
-            "business": business,
-            "limit": limit,
+        "Фильтры": {
+            "Год": year,
+            "Бизнес": business,
+            "Лимит": limit,
         },
-        "rows": result.fillna("").to_dict(orient="records"),
+        "Данные": translate_records(result.fillna("").to_dict(orient="records")),
     }
 
 
@@ -541,15 +625,15 @@ def sku_global(
     result = result.head(limit)
 
     return {
-        "filters": {
-            "year": year,
-            "network": network,
-            "business": business,
-            "tmc_group": tmc_group,
-            "limit": limit,
-            "mode": mode,
+        "Фильтры": {
+            "Год": year,
+            "Сеть": network,
+            "Бизнес": business,
+            "Группа ТМЦ": tmc_group,
+            "Лимит": limit,
+            "Режим": mode,
         },
-        "rows": result.fillna("").to_dict(orient="records"),
+        "Данные": translate_records(result.fillna("").to_dict(orient="records")),
     }
 
 
@@ -608,12 +692,12 @@ def diagnostics(
     diagnosis = make_diagnosis_block(summary)
 
     return {
-        "filters": {
-            "year": year,
-            "network": network,
-            "sku": sku,
-            "business": business,
+        "Фильтры": {
+            "Год": year,
+            "Сеть": network,
+            "SKU": sku,
+            "Бизнес": business,
         },
-        "summary": summary,
-        "diagnosis": diagnosis,
+        "Сводка": translate_record(summary),
+        "Диагностика": diagnosis,
     }
