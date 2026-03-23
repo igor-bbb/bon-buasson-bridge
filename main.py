@@ -30,14 +30,14 @@ def safe_json(data):
 def normalize_text(text):
     if text is None:
         return ""
-    text = str(text).strip().lower()
-    text = " ".join(text.split())
-    text = text.replace("ё", "е")
-    text = text.replace("«", "")
-    text = text.replace("»", "")
-    text = text.replace('"', "")
-    text = text.replace("–", "-")
-    return text
+    return (
+        str(text)
+        .lower()
+        .replace("ё", "е")
+        .replace("\n", "")
+        .replace("\r", "")
+        .strip()
+    )
 
 
 def to_number(series):
@@ -112,7 +112,8 @@ def load_data(force_reload=False):
         return _DATA_CACHE.copy()
 
     raw = pd.read_csv(DATA_URL, encoding="utf-8")
-
+        def normalize_text(text):
+            
     # ----- resolve dimensions -----
     col_business = find_first_existing_column(raw, ["business", "Бизнес"])
     col_manager_national = find_first_existing_column(raw, ["manager_national", "Ответственный менеджер"])
