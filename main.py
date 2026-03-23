@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 import pandas as pd
@@ -7,40 +8,23 @@ from typing import Optional
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="4.3"
+    version="5.0"
 )
-
-# =========================================
-# DATA SOURCE
-# =========================================
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
 
 _DATA_CACHE = None
 
 
-# =========================================
-# HELPERS
-# =========================================
+# =========================================================
+# BASE HELPERS
+# =========================================================
 
 def safe_json(data):
     return JSONResponse(
         content=json.loads(json.dumps(data, ensure_ascii=False, default=str)),
         media_type="application/json; charset=utf-8"
     )
-
-
-def to_number(series):
-    return pd.to_numeric(
-        series.astype(str)
-        .str.replace("\u00A0", "", regex=False)
-        .str.replace(" ", "", regex=False)
-        .str.replace(",", ".", regex=False)
-        .str.replace("₴", "", regex=False)
-        .str.replace("%", "", regex=False)
-        .str.strip(),
-        errors="coerce"
-    ).fillna(0)
 
 
 def normalize_text(text):
@@ -56,10 +40,31 @@ def normalize_text(text):
     return text
 
 
+def to_number(series):
+    return pd.to_numeric(
+        series.astype(str)
+        .str.replace("\u00A0", "", regex=False)
+        .str.replace(" ", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.replace("₴", "", regex=False)
+        .str.replace("%", "", regex=False)
+        .str.strip(),
+        errors="coerce"
+    ).fillna(0)
+
+
 def find_first_existing_column(df, candidates):
-    for col in candidates:
-        if col in df.columns:
-            return col
+    normalized_map = {normalize_text(col): col for col in df.columns}
+
+    for candidate in candidates:
+        if candidate in df.columns:
+            return candidate
+
+    for candidate in candidates:
+        c_norm = normalize_text(candidate)
+        if c_norm in normalized_map:
+            return normalized_map[c_norm]
+
     return None
 
 
@@ -87,9 +92,9 @@ def network_status(margin):
         return "сильная"
 
 
-# =========================================
+# =========================================================
 # DATA LOADER
-# =========================================
+# =========================================================
 
 def load_data(force_reload=False):
     global _DATA_CACHE
@@ -97,96 +102,141 @@ def load_data(force_reload=False):
     if (_DATA_CACHE is not None) and (not force_reload):
         return _DATA_CACHE.copy()
 
-    df = pd.read_csv(DATA_URL, encoding="utf-8")
+    raw = pd.read_csv(DATA_URL, encoding="utf-8")
 
-    # ---- resolve columns from current business file ----
-    col_business = find_first_existing_column(df, ["business", "Бизнес"])
-    col_manager_national = find_first_existing_column(df, ["manager_national", "Ответственный менеджер"])
-    col_manager_kam = find_first_existing_column(df, ["manager_kam", "Менеджер"])
-    col_network = find_first_existing_column(df, ["network", "Сеть", "client", "Клиент"])
-    col_channel = find_first_existing_column(df, ["channel", "Канал"])
-    col_region = find_first_existing_column(df, ["region", "Регион"])
-    col_tmc_group = find_first_existing_column(df, ["tmc_group", "Группа ТМЦ"])
-    col_category = find_first_existing_column(df, ["category", "Категория ТМЦ"])
-    col_sku = find_first_existing_column(df, ["sku", "Товар", "SKU"])
-    col_period = find_first_existing_column(df, ["period", "Месяц Год", "Период"])
-    col_year = find_first_existing_column(df, ["year", "Год"])
-    col_month = find_first_existing_column(df, ["month", "Месяц"])
+    # ----- resolve dimensions -----
+    col_business = find_first_existing_column(raw, ["business", "Бизнес"])
+    col_manager_national = find_first_existing_column(raw, ["manager_national", "Ответственный менеджер"])
+    col_manager_kam = find_first_existing_column(raw, ["manager_kam", "Менеджер"])
+    col_network = find_first_existing_column(raw, ["network", "Сеть", "client", "Клиент"])
+    col_channel = find_first_existing_column(raw, ["channel", "Канал"])
+    col_region = find_first_existing_column(raw, ["region", "Регион"])
+    col_tmc_group = find_first_existing_column(raw, ["tmc_group", "Группа ТМЦ"])
+    col_category = find_first_existing_column(raw, ["category", "Категория ТМЦ"])
+    col_sku = find_first_existing_column(raw, ["sku", "Товар", "SKU"])
+    col_period = find_first_existing_column(raw, ["period", "Месяц Год", "Период"])
+    col_year = find_first_existing_column(raw, ["year", "Год"])
+    col_month = find_first_existing_column(raw, ["month", "Месяц"])
 
-    col_revenue = find_first_existing_column(df, ["revenue", "Выручка", "Товарооб., грн", "Товарооборот", "ТО грн"])
-    col_cost_price = find_first_existing_column(df, ["cost_price", "Себест., грн", "Себестоимость"])
-    col_markup_value = find_first_existing_column(df, ["markup_value", "Валовая прибыль", "Вал. доход операц.", "Валовой доход"])
-    col_markup_percent = find_first_existing_column(df, ["markup_percent", "Наценка", "Маржа до распределения"])
+    # ----- resolve finance -----
+    col_revenue = find_first_existing_column(raw, [
+        "revenue", "Выручка", "Товарооб., грн", "Товарооборот", "ТО грн"
+    ])
+    col_cost_price = find_first_existing_column(raw, [
+        "cost_price", "Себест., грн", "Себестоимость"
+    ])
 
-    col_trade_invest = find_first_existing_column(df, ["trade_invest", "Инвестиции в сеть", "Ретробонус"])
-    col_logistics_cost = find_first_existing_column(df, ["logistics_cost", "Логистика"])
-    col_staff_cost = find_first_existing_column(df, ["staff_cost", "Персонал", "Расходы на персонал"])
-    col_other_cost = find_first_existing_column(df, ["other_cost", "Прочие затраты", "Прочее"])
-    col_allocated_cost = find_first_existing_column(df, ["allocated_cost", "Распределенные затраты", "Распределённые расходы"])
-    col_total_cost = find_first_existing_column(df, ["total_cost", "Итого затрат", "Итого расход"])
+    col_markup_value = find_first_existing_column(raw, [
+        "markup_value",
+        "Валовая прибыль",
+        "Вал. доход операц.",
+        "Вал. доход операц",
+        "Вал доход операц",
+        "Валовой доход",
+        "Вал доход"
+    ])
 
-    col_finrez_pre = find_first_existing_column(df, [
+    col_markup_percent = find_first_existing_column(raw, [
+        "markup_percent",
+        "Наценка",
+        "Наценка %",
+        "Маржа до распределения"
+    ])
+
+    # ----- resolve costs -----
+    col_trade_invest = find_first_existing_column(raw, [
+        "trade_invest", "Ретробонус", "Инвестиции в сеть"
+    ])
+    col_logistics_cost = find_first_existing_column(raw, [
+        "logistics_cost", "Логистика"
+    ])
+    col_staff_cost = find_first_existing_column(raw, [
+        "staff_cost", "Персонал", "Расходы на персонал"
+    ])
+    col_other_cost = find_first_existing_column(raw, [
+        "other_cost", "Прочее", "Прочие затраты"
+    ])
+    col_allocated_cost = find_first_existing_column(raw, [
+        "allocated_cost", "Распределенные затраты", "Распределённые расходы"
+    ])
+    col_total_cost = find_first_existing_column(raw, [
+        "total_cost", "Итого затрат", "Итого расход", "Итого расходы"
+    ])
+
+    # ----- resolve results -----
+    col_finrez_pre = find_first_existing_column(raw, [
         "finrez_pre",
         "Финрез до распределения",
         "Фин. рез. без распр. затрат",
         "Финрез без распр. затрат",
         "Финрез до распред."
     ])
-    col_margin_pre = find_first_existing_column(df, ["margin_pre", "Маржа до распределения"])
-    col_finrez_total = find_first_existing_column(df, ["finrez_total", "Финрез итог", "Финансовый результат", "Фин. рез.", "Финрез"])
-    col_margin_total = find_first_existing_column(df, ["margin_total", "Маржа итог", "Маржа итого"])
 
-    # ---- standard dataframe ----
+    col_margin_pre = find_first_existing_column(raw, [
+        "margin_pre",
+        "Маржа до распределения"
+    ])
+
+    col_finrez_total = find_first_existing_column(raw, [
+        "finrez_total",
+        "Финрез итог",
+        "Финансовый результат",
+        "Фин. рез.",
+        "Финрез"
+    ])
+
+    col_margin_total = find_first_existing_column(raw, [
+        "margin_total",
+        "Маржа итог",
+        "Маржа итого"
+    ])
+
     work = pd.DataFrame()
 
-    work["business"] = df[col_business].astype(str).str.strip() if col_business else ""
-    work["manager_national"] = df[col_manager_national].astype(str).str.strip() if col_manager_national else ""
-    work["manager_kam"] = df[col_manager_kam].astype(str).str.strip() if col_manager_kam else ""
-    work["network"] = df[col_network].astype(str).str.strip() if col_network else ""
-    work["channel"] = df[col_channel].astype(str).str.strip() if col_channel else ""
-    work["region"] = df[col_region].astype(str).str.strip() if col_region else ""
-    work["tmc_group"] = df[col_tmc_group].astype(str).str.strip() if col_tmc_group else ""
-    work["category"] = df[col_category].astype(str).str.strip() if col_category else ""
-    work["sku"] = df[col_sku].astype(str).str.strip() if col_sku else ""
-    work["period_raw"] = df[col_period].astype(str).str.strip() if col_period else ""
+    work["business"] = raw[col_business].astype(str).str.strip() if col_business else ""
+    work["manager_national"] = raw[col_manager_national].astype(str).str.strip() if col_manager_national else ""
+    work["manager_kam"] = raw[col_manager_kam].astype(str).str.strip() if col_manager_kam else ""
+    work["network"] = raw[col_network].astype(str).str.strip() if col_network else ""
+    work["channel"] = raw[col_channel].astype(str).str.strip() if col_channel else ""
+    work["region"] = raw[col_region].astype(str).str.strip() if col_region else ""
+    work["tmc_group"] = raw[col_tmc_group].astype(str).str.strip() if col_tmc_group else ""
+    work["category"] = raw[col_category].astype(str).str.strip() if col_category else ""
+    work["sku"] = raw[col_sku].astype(str).str.strip() if col_sku else ""
+    work["period_raw"] = raw[col_period].astype(str).str.strip() if col_period else ""
 
     if col_year:
-        work["year"] = pd.to_numeric(df[col_year], errors="coerce").fillna(0).astype(int)
+        work["year"] = pd.to_numeric(raw[col_year], errors="coerce").fillna(0).astype(int)
     else:
-        # try parse year from period_raw
-        work["year"] = work["period_raw"].str.extract(r"(20\d{2})", expand=False)
-        work["year"] = pd.to_numeric(work["year"], errors="coerce").fillna(0).astype(int)
+        extracted_year = work["period_raw"].str.extract(r"(20\d{2})", expand=False)
+        work["year"] = pd.to_numeric(extracted_year, errors="coerce").fillna(0).astype(int)
 
     if col_month:
-        work["month"] = pd.to_numeric(df[col_month], errors="coerce").fillna(0).astype(int)
+        work["month"] = pd.to_numeric(raw[col_month], errors="coerce").fillna(0).astype(int)
     else:
-        # leave 0 if not available
         work["month"] = 0
 
-    # normalized period
     if work["month"].max() > 0:
         work["period"] = work["year"].astype(str) + "-" + work["month"].astype(int).astype(str).str.zfill(2)
     else:
         work["period"] = work["period_raw"]
 
-    work["revenue"] = to_number(df[col_revenue]) if col_revenue else 0
-    work["cost_price"] = to_number(df[col_cost_price]) if col_cost_price else 0
-    work["markup_value"] = to_number(df[col_markup_value]) if col_markup_value else 0
-    work["markup_percent"] = to_number(df[col_markup_percent]) if col_markup_percent else 0
+    work["revenue"] = to_number(raw[col_revenue]) if col_revenue else 0
+    work["cost_price"] = to_number(raw[col_cost_price]) if col_cost_price else 0
+    work["markup_value"] = to_number(raw[col_markup_value]) if col_markup_value else 0
+    work["markup_percent"] = to_number(raw[col_markup_percent]) if col_markup_percent else 0
 
-    work["trade_invest"] = to_number(df[col_trade_invest]) if col_trade_invest else 0
-    work["logistics_cost"] = to_number(df[col_logistics_cost]) if col_logistics_cost else 0
-    work["staff_cost"] = to_number(df[col_staff_cost]) if col_staff_cost else 0
-    work["other_cost"] = to_number(df[col_other_cost]) if col_other_cost else 0
-    work["allocated_cost"] = to_number(df[col_allocated_cost]) if col_allocated_cost else 0
-    work["total_cost"] = to_number(df[col_total_cost]) if col_total_cost else 0
+    work["trade_invest"] = to_number(raw[col_trade_invest]) if col_trade_invest else 0
+    work["logistics_cost"] = to_number(raw[col_logistics_cost]) if col_logistics_cost else 0
+    work["staff_cost"] = to_number(raw[col_staff_cost]) if col_staff_cost else 0
+    work["other_cost"] = to_number(raw[col_other_cost]) if col_other_cost else 0
+    work["allocated_cost"] = to_number(raw[col_allocated_cost]) if col_allocated_cost else 0
+    work["total_cost"] = to_number(raw[col_total_cost]) if col_total_cost else 0
 
-    work["finrez_pre"] = to_number(df[col_finrez_pre]) if col_finrez_pre else 0
-    work["finrez_total"] = to_number(df[col_finrez_total]) if col_finrez_total else 0
+    work["finrez_pre"] = to_number(raw[col_finrez_pre]) if col_finrez_pre else 0
+    work["finrez_total"] = to_number(raw[col_finrez_total]) if col_finrez_total else 0
 
-    # margins
     if col_margin_pre:
-        work["margin_pre"] = to_number(df[col_margin_pre])
+        work["margin_pre"] = to_number(raw[col_margin_pre])
     else:
         work["margin_pre"] = work.apply(
             lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0,
@@ -194,7 +244,7 @@ def load_data(force_reload=False):
         )
 
     if col_margin_total:
-        work["margin_total"] = to_number(df[col_margin_total])
+        work["margin_total"] = to_number(raw[col_margin_total])
     else:
         work["margin_total"] = work.apply(
             lambda x: (x["finrez_total"] / x["revenue"]) if x["revenue"] else 0,
@@ -205,39 +255,16 @@ def load_data(force_reload=False):
     work["source_lock"] = True
     work["status"] = "active"
 
-    # remove totals
-    if "manager_national" in work.columns:
-        work = work[work["manager_national"].astype(str).str.lower() != "total"]
+    # remove totals if present
+    work = work[work["manager_national"].astype(str).str.lower() != "total"]
 
     _DATA_CACHE = work.copy()
     return work.copy()
 
 
-# =========================================
-# CORE CALCULATIONS
-# =========================================
-
-def calc_metrics(filtered_df):
-    revenue = float(filtered_df["revenue"].sum())
-    finrez_pre = float(filtered_df["finrez_pre"].sum())
-    finrez_total = float(filtered_df["finrez_total"].sum())
-    markup_value = float(filtered_df["markup_value"].sum())
-    markup_percent_avg = float(filtered_df["markup_percent"].mean()) if len(filtered_df) else 0.0
-
-    margin_pre = (finrez_pre / revenue) if revenue else 0.0
-    margin_total = (finrez_total / revenue) if revenue else 0.0
-
-    return {
-        "rows": int(len(filtered_df)),
-        "revenue": revenue,
-        "finrez_pre": finrez_pre,
-        "finrez_total": finrez_total,
-        "markup_value": markup_value,
-        "markup_percent_avg": markup_percent_avg,
-        "margin_pre": margin_pre,
-        "margin_total": margin_total
-    }
-
+# =========================================================
+# SEARCH RESOLVERS
+# =========================================================
 
 def resolve_network_matches(df, query):
     tmp = df[["network"]].dropna().copy()
@@ -265,18 +292,18 @@ def resolve_network_matches(df, query):
     return {"status": "not_found"}
 
 
-def resolve_sku_candidates(df, sku_query):
-    sku_query_norm = normalize_text(sku_query)
-
+def resolve_sku_matches(df, query):
     tmp = df[["sku"]].dropna().copy()
     tmp["sku"] = tmp["sku"].astype(str).str.strip()
     tmp["sku_norm"] = tmp["sku"].apply(normalize_text)
 
-    exact = tmp[tmp["sku_norm"] == sku_query_norm]["sku"].drop_duplicates().tolist()
+    query_norm = normalize_text(query)
+
+    exact = tmp[tmp["sku_norm"] == query_norm]["sku"].drop_duplicates().tolist()
     if exact:
         return {"status": "resolved", "matches": exact}
 
-    contains = tmp[tmp["sku_norm"].str.contains(re.escape(sku_query_norm), na=False)]["sku"].drop_duplicates().tolist()
+    contains = tmp[tmp["sku_norm"].str.contains(re.escape(query_norm), na=False)]["sku"].drop_duplicates().tolist()
     if len(contains) == 1:
         return {"status": "resolved", "matches": contains}
     if len(contains) > 1:
@@ -285,14 +312,41 @@ def resolve_sku_candidates(df, sku_query):
     return {"status": "not_found"}
 
 
+# =========================================================
+# METRICS
+# =========================================================
+
+def calc_metrics(filtered_df):
+    revenue = float(filtered_df["revenue"].sum())
+    finrez_pre = float(filtered_df["finrez_pre"].sum())
+    finrez_total = float(filtered_df["finrez_total"].sum())
+    markup_value = float(filtered_df["markup_value"].sum())
+    markup_percent_avg = float(filtered_df["markup_percent"].mean()) if len(filtered_df) else 0.0
+
+    margin_pre = (finrez_pre / revenue) if revenue else 0.0
+    margin_total = (finrez_total / revenue) if revenue else 0.0
+
+    return {
+        "rows": int(len(filtered_df)),
+        "revenue": revenue,
+        "finrez_pre": finrez_pre,
+        "finrez_total": finrez_total,
+        "markup_value": markup_value,
+        "markup_percent_avg": markup_percent_avg,
+        "margin_pre": margin_pre,
+        "margin_total": margin_total
+    }
+
+
+# =========================================================
+# BUSINESS BUILDERS
+# =========================================================
+
 def build_network_summary(df, network_name, year):
     resolved = resolve_network_matches(df, network_name)
 
     if resolved["status"] == "not_found":
-        return {
-            "status": "not_found",
-            "message": "Сеть не найдена"
-        }
+        return {"status": "not_found", "message": "Сеть не найдена"}
 
     if resolved["status"] == "ambiguous":
         return {
@@ -316,7 +370,7 @@ def build_network_summary(df, network_name, year):
 
     metrics = calc_metrics(filtered)
 
-    result = {
+    return {
         "status": "ok",
         "network": real_network,
         "year": int(year),
@@ -332,8 +386,6 @@ def build_network_summary(df, network_name, year):
         "class": network_status(metrics["margin_pre"])
     }
 
-    return result
-
 
 def build_network_compare(df, network_name, year1, year2):
     s1 = build_network_summary(df, network_name, year1)
@@ -344,7 +396,7 @@ def build_network_compare(df, network_name, year1, year2):
     if s2.get("status") != "ok":
         return s2
 
-    result = {
+    return {
         "status": "ok",
         "network": s1["network"],
         "year1": int(year1),
@@ -356,21 +408,18 @@ def build_network_compare(df, network_name, year1, year2):
             "finrez_pre": s1["finrez_pre"] - s2["finrez_pre"],
             "margin_pre": s1["margin_pre"] - s2["margin_pre"],
             "finrez_total": s1["finrez_total"] - s2["finrez_total"],
-            "margin_total": s1["margin_total"] - s2["margin_total"]
+            "margin_total": s1["margin_total"] - s2["margin_total"],
+            "markup_value": s1["markup_value"] - s2["markup_value"],
+            "markup_percent_avg": s1["markup_percent_avg"] - s2["markup_percent_avg"]
         }
     }
 
-    return result
-
 
 def build_sku_global(df, sku_query, year, compare_year=None):
-    resolved = resolve_sku_candidates(df, sku_query)
+    resolved = resolve_sku_matches(df, sku_query)
 
     if resolved["status"] == "not_found":
-        return {
-            "status": "not_found",
-            "message": "SKU не найден"
-        }
+        return {"status": "not_found", "message": "SKU не найден"}
 
     if resolved["status"] == "ambiguous":
         return {
@@ -391,10 +440,7 @@ def build_sku_global(df, sku_query, year, compare_year=None):
     ].copy()
 
     if filtered.empty:
-        return {
-            "status": "not_found",
-            "message": "Нет данных по SKU за указанный период"
-        }
+        return {"status": "not_found", "message": "Нет данных по SKU за выбранный период"}
 
     grouped = (
         filtered.groupby(["sku", "year"], dropna=False)
@@ -425,12 +471,11 @@ def build_sku_global(df, sku_query, year, compare_year=None):
         finrez_total_year = float(row_year["finrez_total"].sum()) if not row_year.empty else 0.0
         finrez_total_compare = float(row_compare["finrez_total"].sum()) if not row_compare.empty else 0.0
 
-        margin_pre_year = finrez_pre_year / revenue_year if revenue_year else 0.0
-        margin_pre_compare = finrez_pre_compare / revenue_compare if revenue_compare else 0.0
+        margin_pre_year = (finrez_pre_year / revenue_year) if revenue_year else 0.0
+        margin_pre_compare = (finrez_pre_compare / revenue_compare) if revenue_compare else 0.0
 
         items.append({
             "sku": sku_name,
-            "year": int(year),
             "revenue": revenue_year,
             "finrez_pre": finrez_pre_year,
             "margin_pre": margin_pre_year,
@@ -448,9 +493,9 @@ def build_sku_global(df, sku_query, year, compare_year=None):
 
     summary_revenue = float(filtered[filtered["year"] == int(year)]["revenue"].sum())
     summary_finrez_pre = float(filtered[filtered["year"] == int(year)]["finrez_pre"].sum())
-    summary_margin_pre = summary_finrez_pre / summary_revenue if summary_revenue else 0.0
+    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
 
-    result = {
+    return {
         "status": "ok",
         "mode": "sku_global",
         "query": {
@@ -467,31 +512,31 @@ def build_sku_global(df, sku_query, year, compare_year=None):
         "items": items
     }
 
-    return result
-
 
 def build_diagnostics(df, network_name, year):
     summary = build_network_summary(df, network_name, year)
     if summary.get("status") != "ok":
         return summary
 
+    markup_percent_avg = summary["markup_percent_avg"]
     margin_pre = summary["margin_pre"]
     margin_total = summary["margin_total"]
 
-    if summary["markup_percent_avg"] > 15 and margin_pre < 0.05:
+    if markup_percent_avg > 15 and margin_pre < 0.05:
         cause = "хорошая базовая экономика, но прибыль съедается затратами или условиями"
         action = "пересмотреть инвестиции, логистику и условия сети"
-    elif summary["markup_percent_avg"] < 10 and margin_pre < 0.05:
+    elif markup_percent_avg < 10 and margin_pre < 0.05:
         cause = "слабая базовая экономика SKU"
         action = "сократить слабые SKU и пересмотреть продуктовую матрицу"
     elif margin_pre < 0:
-        cause = "сеть убыточна на уровне finrez_pre"
-        action = "пересмотреть контракт, инвестиции и структуру SKU"
+        cause = "сеть убыточна уже на уровне finrez_pre"
+        action = "пересмотреть контракт, условия входа и структуру SKU"
+    elif margin_pre > 0.15 and margin_total < 0:
+        cause = "сильная экономика до распределения, но итог съедается после аллокации затрат"
+        action = "разложить P&L по статьям: инвестиции, логистика, персонал, распределённые"
     else:
         cause = "сеть в рабочем диапазоне"
-        action = "сохранять и усиливать сильные позиции"
-
-    effect = "рост управляемой маржи и снижение потерь"
+        action = "удерживать сильные SKU и контролировать структуру затрат"
 
     return {
         "status": "ok",
@@ -500,21 +545,22 @@ def build_diagnostics(df, network_name, year):
         "problem": f"Статус сети: {summary['class']}",
         "cause": cause,
         "action": action,
-        "effect": effect,
+        "effect": "рост управляемой прибыли и снижение потерь",
         "context": {
             "revenue": summary["revenue"],
             "finrez_pre": summary["finrez_pre"],
             "margin_pre": summary["margin_pre"],
             "finrez_total": summary["finrez_total"],
             "margin_total": summary["margin_total"],
+            "markup_value": summary["markup_value"],
             "markup_percent_avg": summary["markup_percent_avg"]
         }
     }
 
 
-# =========================================
+# =========================================================
 # ROUTES
-# =========================================
+# =========================================================
 
 @app.get("/")
 def root():
@@ -632,7 +678,7 @@ def diagnostics(
         })
 
 
-# backward compatibility
+# backward compatibility for old GPT actions
 @app.get("/analyze")
 def analyze(
     network: str = Query(..., description="Название сети"),
