@@ -145,7 +145,7 @@ def load_data(force_reload=False):
         "cost_price", "Себест., грн", "Себест, грн", "Себестоимость"
     ])
 
-   col_markup_value = find_first_existing_column(raw, [
+    col_markup_value = find_first_existing_column(raw, [
     "markup_value",
     "gross_profit",
     "Вал. доход операц.",
