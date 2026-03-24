@@ -20,6 +20,10 @@ _DATA_CACHE = None
 # =========================================================
 
 def safe_json(data):
+    # добавляем контроль source_lock_applied только в dict-ответы
+    if isinstance(data, dict):
+        data["source_lock_applied"] = True
+
     return JSONResponse(
         content=json.loads(json.dumps(data, ensure_ascii=False, default=str)),
         media_type="application/json; charset=utf-8"
