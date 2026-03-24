@@ -44,16 +44,20 @@ def normalize_text(text):
 
 
 def to_number(series):
-    return pd.to_numeric(
+    cleaned = (
         series.astype(str)
         .str.replace("\u00A0", "", regex=False)
         .str.replace(" ", "", regex=False)
         .str.replace(",", ".", regex=False)
         .str.replace("₴", "", regex=False)
         .str.replace("%", "", regex=False)
-        .str.strip(),
-        errors="coerce"
-    ).fillna(0)
+        .str.strip()
+    )
+
+    # (12345) -> -12345
+    cleaned = cleaned.str.replace(r"^\((.*)\)$", r"-\1", regex=True)
+
+    return pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
 
 def find_first_existing_column(df, candidates):
@@ -141,7 +145,7 @@ def load_data(force_reload=False):
         "cost_price", "Себест., грн", "Себест, грн", "Себестоимость"
     ])
 
-    col_markup_value = find_first_existing_column(raw, [
+   col_markup_value = find_first_existing_column(raw, [
     "markup_value",
     "gross_profit",
     "Вал. доход операц.",
