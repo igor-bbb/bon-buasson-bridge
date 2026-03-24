@@ -142,15 +142,16 @@ def load_data(force_reload=False):
     ])
 
     col_markup_value = find_first_existing_column(raw, [
-        "markup_value",
-        "Вал. доход операц.",
-        "Вал. доход операц",
-        "Вал доход операц",
-        "Валовая прибыль",
-        "Валовой доход",
-        "Вал доход",
-        "Вал. доход"
-    ])
+    "markup_value",
+    "gross_profit",
+    "Вал. доход операц.",
+    "Вал. доход операц",
+    "Вал доход операц",
+    "Валовая прибыль",
+    "Валовой доход",
+    "Вал доход",
+    "Вал. доход"
+])
 
     col_markup_percent = find_first_existing_column(raw, [
         "markup_percent",
