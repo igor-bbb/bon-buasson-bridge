@@ -7,7 +7,7 @@ from typing import Optional
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="5.1"
+    version="6.0"
 )
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
@@ -20,7 +20,6 @@ _DATA_CACHE = None
 # =========================================================
 
 def safe_json(data):
-    # добавляем контроль source_lock_applied только в dict-ответы
     if isinstance(data, dict):
         data["source_lock_applied"] = True
 
@@ -58,27 +57,22 @@ def to_number(series):
         .str.strip()
     )
 
-    # (12345) -> -12345
     cleaned = cleaned.str.replace(r"^\((.*)\)$", r"-\1", regex=True)
-
     return pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
 
 def find_first_existing_column(df, candidates):
     normalized_map = {normalize_text(col): col for col in df.columns}
 
-    # 1. точное совпадение
     for candidate in candidates:
         if candidate in df.columns:
             return candidate
 
-    # 2. нормализованное точное совпадение
     for candidate in candidates:
         c_norm = normalize_text(candidate)
         if c_norm in normalized_map:
             return normalized_map[c_norm]
 
-    # 3. частичное совпадение
     for candidate in candidates:
         c_norm = normalize_text(candidate)
         for col_norm, original in normalized_map.items():
@@ -112,6 +106,47 @@ def network_status(margin):
         return "сильная"
 
 
+def resolve_available_year(df, requested_year: int):
+    years = sorted([int(y) for y in df["year"].dropna().unique().tolist() if int(y) > 0])
+    if not years:
+        return {
+            "requested_year": int(requested_year),
+            "effective_year": int(requested_year),
+            "fallback_applied": False,
+            "fallback_year": None,
+            "available_years": []
+        }
+
+    requested_year = int(requested_year)
+
+    if requested_year in years:
+        return {
+            "requested_year": requested_year,
+            "effective_year": requested_year,
+            "fallback_applied": False,
+            "fallback_year": None,
+            "available_years": years
+        }
+
+    fallback_year = max(years)
+    return {
+        "requested_year": requested_year,
+        "effective_year": fallback_year,
+        "fallback_applied": True,
+        "fallback_year": fallback_year,
+        "available_years": years
+    }
+
+
+def attach_year_context(payload: dict, year_ctx: dict):
+    payload["requested_year"] = year_ctx["requested_year"]
+    payload["year"] = year_ctx["effective_year"]
+    payload["fallback_applied"] = year_ctx["fallback_applied"]
+    payload["fallback_year"] = year_ctx["fallback_year"]
+    payload["available_years"] = year_ctx["available_years"]
+    return payload
+
+
 # =========================================================
 # DATA LOADER
 # =========================================================
@@ -123,11 +158,8 @@ def load_data(force_reload=False):
         return _DATA_CACHE.copy()
 
     raw = pd.read_csv(DATA_URL, encoding="utf-8")
-
-    # очистка названий колонок
     raw.columns = [str(col).strip() for col in raw.columns]
 
-    # ----- resolve dimensions -----
     col_business = find_first_existing_column(raw, ["business", "Бизнес"])
     col_manager_national = find_first_existing_column(raw, ["manager_national", "Ответственный менеджер"])
     col_manager_kam = find_first_existing_column(raw, ["manager_kam", "Менеджер"])
@@ -141,7 +173,6 @@ def load_data(force_reload=False):
     col_year = find_first_existing_column(raw, ["year", "Год"])
     col_month = find_first_existing_column(raw, ["month", "Месяц"])
 
-    # ----- resolve finance -----
     col_revenue = find_first_existing_column(raw, [
         "revenue", "Выручка", "Товарооб., грн", "Товарооб, грн", "Товарооборот", "ТО грн"
     ])
@@ -150,16 +181,16 @@ def load_data(force_reload=False):
     ])
 
     col_markup_value = find_first_existing_column(raw, [
-    "markup_value",
-    "gross_profit",
-    "Вал. доход операц.",
-    "Вал. доход операц",
-    "Вал доход операц",
-    "Валовая прибыль",
-    "Валовой доход",
-    "Вал доход",
-    "Вал. доход"
-])
+        "markup_value",
+        "gross_profit",
+        "Вал. доход операц.",
+        "Вал. доход операц",
+        "Вал доход операц",
+        "Валовая прибыль",
+        "Валовой доход",
+        "Вал доход",
+        "Вал. доход"
+    ])
 
     col_markup_percent = find_first_existing_column(raw, [
         "markup_percent",
@@ -167,54 +198,36 @@ def load_data(force_reload=False):
         "Наценка %"
     ])
 
-    # ----- resolve costs -----
     col_trade_invest = find_first_existing_column(raw, [
-        "trade_invest",
-        "Ретробонус",
-        "Ретро бонус",
-        "Ретро"
+        "trade_invest", "Ретробонус", "Ретро бонус", "Ретро"
     ])
     col_logistics_cost = find_first_existing_column(raw, [
-        "logistics_cost",
-        "Логистика"
+        "logistics_cost", "Логистика"
     ])
     col_staff_cost = find_first_existing_column(raw, [
-        "staff_cost",
-        "Расходы на персонал",
-        "Персонал"
+        "staff_cost", "Расходы на персонал", "Персонал"
     ])
     col_other_cost = find_first_existing_column(raw, [
-        "other_cost",
-        "Прочее"
+        "other_cost", "Прочее"
     ])
     col_allocated_cost = find_first_existing_column(raw, [
-        "allocated_cost",
-        "Распред. расходы",
-        "Распределенные расходы",
-        "Распределённые расходы"
+        "allocated_cost", "Распред. расходы", "Распределенные расходы", "Распределённые расходы"
     ])
     col_total_cost = find_first_existing_column(raw, [
-        "total_cost",
-        "Итого расходы"
+        "total_cost", "Итого расходы"
     ])
 
-    # ----- resolve results -----
     col_finrez_pre = find_first_existing_column(raw, [
-        "finrez_pre",
-        "Фин. рез. без распр. затрат",
-        "Финрез без распр. затрат"
+        "finrez_pre", "Фин. рез. без распр. затрат", "Финрез без распр. затрат"
     ])
     col_margin_pre = find_first_existing_column(raw, [
-        "margin_pre",
-        "Фин рез без распр. затрат / ТО грн"
+        "margin_pre", "Фин рез без распр. затрат / ТО грн"
     ])
     col_finrez_total = find_first_existing_column(raw, [
-        "finrez_total",
-        "Финансовый результат"
+        "finrez_total", "Финансовый результат"
     ])
     col_margin_total = find_first_existing_column(raw, [
-        "margin_total",
-        "Фин рез / ТО грн"
+        "margin_total", "Фин рез / ТО грн"
     ])
 
     work = pd.DataFrame()
@@ -281,7 +294,6 @@ def load_data(force_reload=False):
     work["source_lock"] = True
     work["status"] = "active"
 
-    # убираем total-строки
     work = work[work["manager_national"].astype(str).str.lower() != "total"]
 
     _DATA_CACHE = work.copy()
@@ -364,42 +376,146 @@ def calc_metrics(filtered_df):
     }
 
 
+def apply_type_filter(df, metric_col: str, type_value: Optional[str], limit: int):
+    work = df.copy()
+    type_norm = normalize_text(type_value) if type_value else ""
+
+    if type_norm in ["loss", "убыточные", "убыток"]:
+        work = work[work[metric_col] < 0].copy()
+        work = work.sort_values(metric_col, ascending=True)
+    elif type_norm in ["top", "топ"]:
+        work = work.sort_values(metric_col, ascending=False)
+    elif type_norm in ["anti_top", "antitop", "анти-топ", "антитоп"]:
+        work = work.sort_values(metric_col, ascending=True)
+
+    if limit and limit > 0:
+        work = work.head(int(limit)).copy()
+
+    return work
+
+
 # =========================================================
 # BUSINESS BUILDERS
 # =========================================================
 
-def build_network_summary(df, network_name, year):
-    resolved = resolve_network_matches(df, network_name)
+def build_networks_summary(df, year, type_value=None, limit=0):
+    year_ctx = resolve_available_year(df, int(year))
+    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
 
+    if year_df.empty:
+        payload = {
+            "status": "not_found",
+            "object": "network_summary",
+            "message": f"Нет данных за {year_ctx['effective_year']}"
+        }
+        return attach_year_context(payload, year_ctx)
+
+    grouped = (
+        year_df.groupby("network", dropna=False)
+        .agg({
+            "revenue": "sum",
+            "finrez_pre": "sum",
+            "finrez_total": "sum",
+            "markup_value": "sum",
+            "markup_percent": "mean",
+            "sku": pd.Series.nunique,
+            "tmc_group": pd.Series.nunique
+        })
+        .reset_index()
+        .rename(columns={
+            "sku": "sku_count",
+            "tmc_group": "tmc_group_count",
+            "markup_percent": "markup_percent_avg"
+        })
+    )
+
+    grouped["margin_pre"] = grouped.apply(
+        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
+    )
+    grouped["margin_total"] = grouped.apply(
+        lambda x: (x["finrez_total"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
+    )
+    grouped["class"] = grouped["margin_pre"].apply(network_status)
+
+    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
+
+    items = []
+    for _, row in grouped.iterrows():
+        items.append({
+            "network": row["network"],
+            "revenue": float(row["revenue"]),
+            "finrez_pre": float(row["finrez_pre"]),
+            "margin_pre": float(row["margin_pre"]),
+            "finrez_total": float(row["finrez_total"]),
+            "margin_total": float(row["margin_total"]),
+            "markup_value": float(row["markup_value"]),
+            "markup_percent_avg": float(row["markup_percent_avg"]) if pd.notna(row["markup_percent_avg"]) else 0.0,
+            "sku_count": int(row["sku_count"]),
+            "tmc_group_count": int(row["tmc_group_count"]),
+            "class": row["class"]
+        })
+
+    summary_revenue = float(grouped["revenue"].sum()) if not grouped.empty else 0.0
+    summary_finrez_pre = float(grouped["finrez_pre"].sum()) if not grouped.empty else 0.0
+    summary_finrez_total = float(grouped["finrez_total"].sum()) if not grouped.empty else 0.0
+    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
+    summary_margin_total = (summary_finrez_total / summary_revenue) if summary_revenue else 0.0
+
+    payload = {
+        "status": "ok",
+        "object": "network_summary",
+        "mode": "all_networks",
+        "filter_type": type_value,
+        "limit": int(limit) if limit else None,
+        "summary": {
+            "network_count": int(len(items)),
+            "revenue": summary_revenue,
+            "finrez_pre": summary_finrez_pre,
+            "margin_pre": summary_margin_pre,
+            "finrez_total": summary_finrez_total,
+            "margin_total": summary_margin_total
+        },
+        "items": items
+    }
+    return attach_year_context(payload, year_ctx)
+
+
+def build_network_summary(df, network_name, year):
+    year_ctx = resolve_available_year(df, int(year))
+
+    resolved = resolve_network_matches(df, network_name)
     if resolved["status"] == "not_found":
-        return {"status": "not_found", "message": "Сеть не найдена"}
+        payload = {"status": "not_found", "message": "Сеть не найдена"}
+        return attach_year_context(payload, year_ctx)
 
     if resolved["status"] == "ambiguous":
-        return {
+        payload = {
             "status": "ambiguous",
             "message": "Найдено несколько сетей",
             "suggestions": resolved["suggestions"]
         }
+        return attach_year_context(payload, year_ctx)
 
     real_network = resolved["matches"][0]
 
     filtered = df[
         (df["network"].astype(str).str.strip() == str(real_network).strip()) &
-        (df["year"] == int(year))
+        (df["year"] == year_ctx["effective_year"])
     ].copy()
 
     if filtered.empty:
-        return {
+        payload = {
             "status": "not_found",
-            "message": f"Нет данных по сети {real_network} за {year}"
+            "message": f"Нет данных по сети {real_network} за {year_ctx['effective_year']}"
         }
+        return attach_year_context(payload, year_ctx)
 
     metrics = calc_metrics(filtered)
 
-    return {
+    payload = {
         "status": "ok",
+        "object": "network_summary",
         "network": real_network,
-        "year": int(year),
         "revenue": metrics["revenue"],
         "finrez_pre": metrics["finrez_pre"],
         "margin_pre": metrics["margin_pre"],
@@ -411,6 +527,87 @@ def build_network_summary(df, network_name, year):
         "tmc_group_count": int(filtered["tmc_group"].astype(str).nunique()),
         "class": network_status(metrics["margin_pre"])
     }
+    return attach_year_context(payload, year_ctx)
+
+
+def build_networks_compare(df, year1, year2, type_value=None, limit=0):
+    first = build_networks_summary(df, year1, type_value=None, limit=0)
+    second = build_networks_summary(df, year2, type_value=None, limit=0)
+
+    if first.get("status") != "ok":
+        return first
+    if second.get("status") != "ok":
+        return second
+
+    df1 = pd.DataFrame(first["items"])
+    df2 = pd.DataFrame(second["items"])
+
+    if df1.empty and df2.empty:
+        return {
+            "status": "not_found",
+            "object": "network_compare",
+            "message": "Нет данных для сравнения",
+            "source_lock_applied": True
+        }
+
+    merged = pd.merge(
+        df1,
+        df2,
+        on="network",
+        how="outer",
+        suffixes=(f"_{first['year']}", f"_{second['year']}")
+    ).fillna(0)
+
+    items = []
+    for _, row in merged.iterrows():
+        revenue_1 = float(row.get(f"revenue_{first['year']}", 0))
+        revenue_2 = float(row.get(f"revenue_{second['year']}", 0))
+        finrez_pre_1 = float(row.get(f"finrez_pre_{first['year']}", 0))
+        finrez_pre_2 = float(row.get(f"finrez_pre_{second['year']}", 0))
+        margin_pre_1 = float(row.get(f"margin_pre_{first['year']}", 0))
+        margin_pre_2 = float(row.get(f"margin_pre_{second['year']}", 0))
+        finrez_total_1 = float(row.get(f"finrez_total_{first['year']}", 0))
+        finrez_total_2 = float(row.get(f"finrez_total_{second['year']}", 0))
+
+        delta_finrez_pre = finrez_pre_1 - finrez_pre_2
+        base = finrez_pre_2 if finrez_pre_2 != 0 else None
+        delta_percent = (delta_finrez_pre / abs(base)) if base else None
+
+        items.append({
+            "network": row["network"],
+            "year1": int(first["year"]),
+            "year2": int(second["year"]),
+            "revenue_year1": revenue_1,
+            "revenue_year2": revenue_2,
+            "finrez_pre_year1": finrez_pre_1,
+            "finrez_pre_year2": finrez_pre_2,
+            "margin_pre_year1": margin_pre_1,
+            "margin_pre_year2": margin_pre_2,
+            "finrez_total_year1": finrez_total_1,
+            "finrez_total_year2": finrez_total_2,
+            "delta_revenue": revenue_1 - revenue_2,
+            "delta_finrez_pre": delta_finrez_pre,
+            "delta_margin_pre": margin_pre_1 - margin_pre_2,
+            "delta_finrez_total": finrez_total_1 - finrez_total_2,
+            "delta_percent_finrez_pre": delta_percent
+        })
+
+    compare_df = pd.DataFrame(items)
+    compare_df = apply_type_filter(compare_df, "delta_finrez_pre", type_value, limit)
+
+    payload = {
+        "status": "ok",
+        "object": "network_compare",
+        "mode": "all_networks_compare",
+        "year1": int(first["year"]),
+        "year2": int(second["year"]),
+        "requested_year1": int(first["requested_year"]),
+        "requested_year2": int(second["requested_year"]),
+        "filter_type": type_value,
+        "limit": int(limit) if limit else None,
+        "items": compare_df.to_dict(orient="records")
+    }
+    return payload
 
 
 def build_network_compare(df, network_name, year1, year2):
@@ -424,9 +621,12 @@ def build_network_compare(df, network_name, year1, year2):
 
     return {
         "status": "ok",
+        "object": "network_compare",
         "network": s1["network"],
-        "year1": int(year1),
-        "year2": int(year2),
+        "year1": int(s1["year"]),
+        "year2": int(s2["year"]),
+        "requested_year1": int(s1["requested_year"]),
+        "requested_year2": int(s2["requested_year"]),
         "year1_summary": s1,
         "year2_summary": s2,
         "delta": {
@@ -441,24 +641,104 @@ def build_network_compare(df, network_name, year1, year2):
     }
 
 
-def build_sku_global(df, sku_query, year, compare_year=None):
-    resolved = resolve_sku_matches(df, sku_query)
+def build_sku_list(df, year, type_value=None, limit=0, network=None):
+    year_ctx = resolve_available_year(df, int(year))
+    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
 
+    if network:
+        resolved = resolve_network_matches(year_df, network)
+        if resolved["status"] == "not_found":
+            payload = {"status": "not_found", "message": "Сеть не найдена"}
+            return attach_year_context(payload, year_ctx)
+        if resolved["status"] == "ambiguous":
+            payload = {
+                "status": "ambiguous",
+                "message": "Найдено несколько сетей",
+                "suggestions": resolved["suggestions"]
+            }
+            return attach_year_context(payload, year_ctx)
+
+        year_df = year_df[year_df["network"] == resolved["matches"][0]].copy()
+
+    if year_df.empty:
+        payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
+        return attach_year_context(payload, year_ctx)
+
+    grouped = (
+        year_df.groupby("sku", dropna=False)
+        .agg({
+            "revenue": "sum",
+            "finrez_pre": "sum",
+            "finrez_total": "sum",
+            "network": pd.Series.nunique
+        })
+        .reset_index()
+        .rename(columns={"network": "network_count"})
+    )
+
+    grouped["margin_pre"] = grouped.apply(
+        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
+    )
+    grouped["class"] = grouped["margin_pre"].apply(classify_margin)
+    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
+
+    items = []
+    for _, row in grouped.iterrows():
+        items.append({
+            "sku": row["sku"],
+            "revenue": float(row["revenue"]),
+            "finrez_pre": float(row["finrez_pre"]),
+            "margin_pre": float(row["margin_pre"]),
+            "finrez_total": float(row["finrez_total"]),
+            "network_count": int(row["network_count"]),
+            "class": row["class"]
+        })
+
+    summary_revenue = float(grouped["revenue"].sum()) if not grouped.empty else 0.0
+    summary_finrez_pre = float(grouped["finrez_pre"].sum()) if not grouped.empty else 0.0
+    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
+
+    payload = {
+        "status": "ok",
+        "object": "sku_global",
+        "mode": "all_sku",
+        "network_filter": network,
+        "filter_type": type_value,
+        "limit": int(limit) if limit else None,
+        "summary": {
+            "sku_count": int(len(items)),
+            "revenue": summary_revenue,
+            "finrez_pre": summary_finrez_pre,
+            "margin_pre": summary_margin_pre
+        },
+        "items": items
+    }
+    return attach_year_context(payload, year_ctx)
+
+
+def build_sku_global(df, sku_query, year, compare_year=None):
+    year_ctx = resolve_available_year(df, int(year))
+
+    resolved = resolve_sku_matches(df, sku_query)
     if resolved["status"] == "not_found":
-        return {"status": "not_found", "message": "SKU не найден"}
+        payload = {"status": "not_found", "message": "SKU не найден"}
+        return attach_year_context(payload, year_ctx)
 
     if resolved["status"] == "ambiguous":
-        return {
+        payload = {
             "status": "ambiguous",
             "message": "Найдено несколько SKU",
             "suggestions": resolved["suggestions"]
         }
+        return attach_year_context(payload, year_ctx)
 
     matched_skus = resolved["matches"]
 
-    years = [int(year)]
+    compare_year_ctx = None
+    years = [year_ctx["effective_year"]]
     if compare_year is not None:
-        years.append(int(compare_year))
+        compare_year_ctx = resolve_available_year(df, int(compare_year))
+        years.append(compare_year_ctx["effective_year"])
 
     filtered = df[
         df["sku"].isin(matched_skus) &
@@ -466,7 +746,8 @@ def build_sku_global(df, sku_query, year, compare_year=None):
     ].copy()
 
     if filtered.empty:
-        return {"status": "not_found", "message": "Нет данных по SKU за выбранный период"}
+        payload = {"status": "not_found", "message": "Нет данных по SKU за выбранный период"}
+        return attach_year_context(payload, year_ctx)
 
     grouped = (
         filtered.groupby(["sku", "year"], dropna=False)
@@ -481,12 +762,11 @@ def build_sku_global(df, sku_query, year, compare_year=None):
     )
 
     items = []
-
     for sku_name in grouped["sku"].dropna().astype(str).unique().tolist():
         sku_rows = grouped[grouped["sku"] == sku_name]
 
-        row_year = sku_rows[sku_rows["year"] == int(year)]
-        row_compare = sku_rows[sku_rows["year"] == int(compare_year)] if compare_year is not None else pd.DataFrame()
+        row_year = sku_rows[sku_rows["year"] == year_ctx["effective_year"]]
+        row_compare = sku_rows[sku_rows["year"] == compare_year_ctx["effective_year"]] if compare_year_ctx else pd.DataFrame()
 
         revenue_year = float(row_year["revenue"].sum()) if not row_year.empty else 0.0
         revenue_compare = float(row_compare["revenue"].sum()) if not row_compare.empty else 0.0
@@ -507,27 +787,31 @@ def build_sku_global(df, sku_query, year, compare_year=None):
             "margin_pre": margin_pre_year,
             "finrez_total": finrez_total_year,
             "network_count": int(row_year["network_count"].sum()) if not row_year.empty else 0,
-            "compare_year": int(compare_year) if compare_year is not None else None,
-            "revenue_compare": revenue_compare if compare_year is not None else None,
-            "finrez_pre_compare": finrez_pre_compare if compare_year is not None else None,
-            "margin_pre_compare": margin_pre_compare if compare_year is not None else None,
-            "finrez_total_compare": finrez_total_compare if compare_year is not None else None,
-            "delta_revenue": (revenue_year - revenue_compare) if compare_year is not None else None,
-            "delta_finrez_pre": (finrez_pre_year - finrez_pre_compare) if compare_year is not None else None,
-            "delta_margin_pre": (margin_pre_year - margin_pre_compare) if compare_year is not None else None
+            "compare_year": int(compare_year_ctx["effective_year"]) if compare_year_ctx else None,
+            "requested_compare_year": int(compare_year_ctx["requested_year"]) if compare_year_ctx else None,
+            "revenue_compare": revenue_compare if compare_year_ctx else None,
+            "finrez_pre_compare": finrez_pre_compare if compare_year_ctx else None,
+            "margin_pre_compare": margin_pre_compare if compare_year_ctx else None,
+            "finrez_total_compare": finrez_total_compare if compare_year_ctx else None,
+            "delta_revenue": (revenue_year - revenue_compare) if compare_year_ctx else None,
+            "delta_finrez_pre": (finrez_pre_year - finrez_pre_compare) if compare_year_ctx else None,
+            "delta_margin_pre": (margin_pre_year - margin_pre_compare) if compare_year_ctx else None
         })
 
-    summary_revenue = float(filtered[filtered["year"] == int(year)]["revenue"].sum())
-    summary_finrez_pre = float(filtered[filtered["year"] == int(year)]["finrez_pre"].sum())
+    summary_revenue = float(filtered[filtered["year"] == year_ctx["effective_year"]]["revenue"].sum())
+    summary_finrez_pre = float(filtered[filtered["year"] == year_ctx["effective_year"]]["finrez_pre"].sum())
     summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
 
-    return {
+    payload = {
         "status": "ok",
-        "mode": "sku_global",
+        "object": "sku_global",
+        "mode": "sku_lookup",
         "query": {
             "sku": sku_query,
-            "year": int(year),
-            "compare_year": int(compare_year) if compare_year is not None else None
+            "year": int(year_ctx["effective_year"]),
+            "requested_year": int(year_ctx["requested_year"]),
+            "compare_year": int(compare_year_ctx["effective_year"]) if compare_year_ctx else None,
+            "requested_compare_year": int(compare_year_ctx["requested_year"]) if compare_year_ctx else None
         },
         "summary": {
             "matched_skus": len(items),
@@ -537,36 +821,21 @@ def build_sku_global(df, sku_query, year, compare_year=None):
         },
         "items": items
     }
+    return attach_year_context(payload, year_ctx)
 
 
 def build_network_pnl(df, network_name, year):
-    resolved = resolve_network_matches(df, network_name)
+    summary = build_network_summary(df, network_name, year)
+    if summary.get("status") != "ok":
+        return summary
 
-    if resolved["status"] == "not_found":
-        return {
-            "status": "not_found",
-            "message": "Сеть не найдена"
-        }
-
-    if resolved["status"] == "ambiguous":
-        return {
-            "status": "ambiguous",
-            "message": "Найдено несколько сетей",
-            "suggestions": resolved["suggestions"]
-        }
-
-    real_network = resolved["matches"][0]
+    real_network = summary["network"]
+    effective_year = int(summary["year"])
 
     filtered = df[
         (df["network"].astype(str).str.strip() == str(real_network).strip()) &
-        (df["year"] == int(year))
+        (df["year"] == effective_year)
     ].copy()
-
-    if filtered.empty:
-        return {
-            "status": "not_found",
-            "message": f"Нет данных по сети {real_network} за {year}"
-        }
 
     revenue = float(filtered["revenue"].sum())
     cost_price = float(filtered["cost_price"].sum())
@@ -626,10 +895,14 @@ def build_network_pnl(df, network_name, year):
         diagnosis = "сеть в рабочем диапазоне"
         recommendation = "контролировать структуру затрат и усиливать сильные SKU"
 
-    return {
+    payload = {
         "status": "ok",
+        "object": "network_pnl",
         "network": real_network,
-        "year": int(year),
+        "requested_year": int(summary["requested_year"]),
+        "year": effective_year,
+        "fallback_applied": bool(summary["fallback_applied"]),
+        "fallback_year": summary["fallback_year"],
         "summary": {
             "revenue": revenue,
             "markup_value": markup_value,
@@ -659,16 +932,13 @@ def build_network_pnl(df, network_name, year):
         "recommendation": recommendation,
         "pnl_flow": pnl_flow
     }
+    return payload
 
 
-def build_diagnostics(df, network_name, year):
-    summary = build_network_summary(df, network_name, year)
-    if summary.get("status") != "ok":
-        return summary
-
-    markup_percent_avg = summary["markup_percent_avg"]
-    margin_pre = summary["margin_pre"]
-    margin_total = summary["margin_total"]
+def _diagnostic_from_summary(summary):
+    markup_percent_avg = float(summary.get("markup_percent_avg", 0))
+    margin_pre = float(summary.get("margin_pre", 0))
+    margin_total = float(summary.get("margin_total", 0))
 
     if markup_percent_avg > 15 and margin_pre < 0.05:
         cause = "хорошая базовая экономика, но прибыль съедается затратами или условиями"
@@ -687,13 +957,32 @@ def build_diagnostics(df, network_name, year):
         action = "удерживать сильные SKU и контролировать структуру затрат"
 
     return {
-        "status": "ok",
-        "network": summary["network"],
-        "year": int(year),
         "problem": f"Статус сети: {summary['class']}",
         "cause": cause,
         "action": action,
-        "effect": "рост управляемой прибыли и снижение потерь",
+        "effect": "рост управляемой прибыли и снижение потерь"
+    }
+
+
+def build_diagnostics(df, network_name, year):
+    summary = build_network_summary(df, network_name, year)
+    if summary.get("status") != "ok":
+        return summary
+
+    diag = _diagnostic_from_summary(summary)
+
+    return {
+        "status": "ok",
+        "object": "diagnostics",
+        "network": summary["network"],
+        "requested_year": int(summary["requested_year"]),
+        "year": int(summary["year"]),
+        "fallback_applied": bool(summary["fallback_applied"]),
+        "fallback_year": summary["fallback_year"],
+        "problem": diag["problem"],
+        "cause": diag["cause"],
+        "action": diag["action"],
+        "effect": diag["effect"],
         "context": {
             "revenue": summary["revenue"],
             "finrez_pre": summary["finrez_pre"],
@@ -706,6 +995,93 @@ def build_diagnostics(df, network_name, year):
     }
 
 
+def build_diagnostics_all(df, year, type_value=None, limit=0):
+    summary = build_networks_summary(df, year, type_value=type_value, limit=limit)
+    if summary.get("status") != "ok":
+        return summary
+
+    items = []
+    for item in summary["items"]:
+        diag = _diagnostic_from_summary(item)
+        items.append({
+            "network": item["network"],
+            "revenue": item["revenue"],
+            "finrez_pre": item["finrez_pre"],
+            "margin_pre": item["margin_pre"],
+            "finrez_total": item["finrez_total"],
+            "margin_total": item["margin_total"],
+            "markup_value": item["markup_value"],
+            "markup_percent_avg": item["markup_percent_avg"],
+            "class": item["class"],
+            "problem": diag["problem"],
+            "cause": diag["cause"],
+            "action": diag["action"],
+            "effect": diag["effect"]
+        })
+
+    return {
+        "status": "ok",
+        "object": "diagnostics",
+        "mode": "all_networks",
+        "requested_year": int(summary["requested_year"]),
+        "year": int(summary["year"]),
+        "fallback_applied": bool(summary["fallback_applied"]),
+        "fallback_year": summary["fallback_year"],
+        "filter_type": type_value,
+        "limit": int(limit) if limit else None,
+        "summary": summary["summary"],
+        "items": items
+    }
+
+
+def build_dimension_summary(df, year, dimension, type_value=None, limit=0):
+    year_ctx = resolve_available_year(df, int(year))
+    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+
+    if year_df.empty:
+        payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
+        return attach_year_context(payload, year_ctx)
+
+    grouped = (
+        year_df.groupby(dimension, dropna=False)
+        .agg({
+            "revenue": "sum",
+            "finrez_pre": "sum",
+            "finrez_total": "sum"
+        })
+        .reset_index()
+    )
+
+    grouped["margin_pre"] = grouped.apply(
+        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
+    )
+    grouped["margin_total"] = grouped.apply(
+        lambda x: (x["finrez_total"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
+    )
+    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
+
+    items = []
+    for _, row in grouped.iterrows():
+        items.append({
+            dimension: row[dimension],
+            "revenue": float(row["revenue"]),
+            "finrez_pre": float(row["finrez_pre"]),
+            "margin_pre": float(row["margin_pre"]),
+            "finrez_total": float(row["finrez_total"]),
+            "margin_total": float(row["margin_total"])
+        })
+
+    payload = {
+        "status": "ok",
+        "object": f"{dimension}_summary",
+        "dimension": dimension,
+        "filter_type": type_value,
+        "limit": int(limit) if limit else None,
+        "items": items
+    }
+    return attach_year_context(payload, year_ctx)
+
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -714,7 +1090,8 @@ def build_diagnostics(df, network_name, year):
 def root():
     return safe_json({
         "status": "ok",
-        "service": "FMCG AI / Vectra Core API"
+        "service": "FMCG AI / Vectra Core API",
+        "version": "6.0"
     })
 
 
@@ -722,7 +1099,8 @@ def root():
 def health():
     return safe_json({
         "status": "ok",
-        "service": "alive"
+        "service": "alive",
+        "version": "6.0"
     })
 
 
@@ -762,12 +1140,19 @@ def data_info():
 
 @app.get("/network_summary")
 def network_summary(
-    network: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
+    year: int = Query(..., description="Год"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_network_summary(df, network, year)
+
+        if network:
+            result = build_network_summary(df, network, year)
+        else:
+            result = build_networks_summary(df, year, type_value=type, limit=limit)
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
@@ -778,13 +1163,20 @@ def network_summary(
 
 @app.get("/network_compare")
 def network_compare(
-    network: str = Query(..., description="Название сети"),
     year1: int = Query(..., description="Первый год"),
-    year2: int = Query(..., description="Второй год")
+    year2: int = Query(..., description="Второй год"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_network_compare(df, network, year1, year2)
+
+        if network:
+            result = build_network_compare(df, network, year1, year2)
+        else:
+            result = build_networks_compare(df, year1, year2, type_value=type, limit=limit)
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
@@ -795,13 +1187,21 @@ def network_compare(
 
 @app.get("/sku_global")
 def sku_global(
-    sku: str = Query(..., description="SKU или часть названия SKU"),
     year: int = Query(..., description="Основной год анализа"),
-    compare_year: Optional[int] = Query(None, description="Год сравнения")
+    sku: Optional[str] = Query(None, description="SKU или часть названия SKU"),
+    compare_year: Optional[int] = Query(None, description="Год сравнения"),
+    network: Optional[str] = Query(None, description="Фильтр по сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_sku_global(df, sku, year, compare_year)
+
+        if sku:
+            result = build_sku_global(df, sku, year, compare_year)
+        else:
+            result = build_sku_list(df, year, type_value=type, limit=limit, network=network)
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
@@ -828,12 +1228,55 @@ def network_pnl(
 
 @app.get("/diagnostics")
 def diagnostics(
-    network: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
+    year: int = Query(..., description="Год"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_diagnostics(df, network, year)
+
+        if network:
+            result = build_diagnostics(df, network, year)
+        else:
+            result = build_diagnostics_all(df, year, type_value=type, limit=limit)
+
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({
+            "status": "error",
+            "message": str(e)
+        })
+
+
+@app.get("/manager_summary")
+def manager_summary(
+    year: int = Query(..., description="Год"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
+):
+    try:
+        df = load_data()
+        dimension = "manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam"
+        result = build_dimension_summary(df, year, dimension, type_value=type, limit=limit)
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({
+            "status": "error",
+            "message": str(e)
+        })
+
+
+@app.get("/region_summary")
+def region_summary(
+    year: int = Query(..., description="Год"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
+):
+    try:
+        df = load_data()
+        result = build_dimension_summary(df, year, "region", type_value=type, limit=limit)
         return safe_json(result)
     except Exception as e:
         return safe_json({
@@ -845,12 +1288,19 @@ def diagnostics(
 # backward compatibility
 @app.get("/analyze")
 def analyze(
-    network: str = Query(..., description="Название сети"),
-    year: int = Query(..., description="Год")
+    year: int = Query(..., description="Год"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_network_summary(df, network, year)
+
+        if network:
+            result = build_network_summary(df, network, year)
+        else:
+            result = build_networks_summary(df, year, type_value=type, limit=limit)
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
@@ -861,13 +1311,20 @@ def analyze(
 
 @app.get("/compare")
 def compare(
-    network: str = Query(..., description="Название сети"),
     year1: int = Query(..., description="Первый год"),
-    year2: int = Query(..., description="Второй год")
+    year2: int = Query(..., description="Второй год"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    limit: int = Query(0, description="Лимит строк")
 ):
     try:
         df = load_data()
-        result = build_network_compare(df, network, year1, year2)
+
+        if network:
+            result = build_network_compare(df, network, year1, year2)
+        else:
+            result = build_networks_compare(df, year1, year2, type_value=type, limit=limit)
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
