@@ -10,7 +10,7 @@ app = FastAPI(
     version="5.1"
 )
 
-DATA_URL = "https://docs.google.com/spreadsheets/d/11No0ckDi4pcAca2XXMKd2bOvBSeei_a6PEW-YsxW9mU/export?format=csv"
+DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/edit?usp=sharing"
 
 _DATA_CACHE = None
 
