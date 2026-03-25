@@ -1092,7 +1092,7 @@ def build_sku_global(df, sku_query, year, compare_year=None, category=None, busi
             "finrez_pre": summary_finrez_pre,
             "margin": summary_gaps["margin"],
             "margin_pre": summary_gaps["margin_pre"],
-            "finрез_total": summary_finrez_total,
+            "finrez_total": summary_finrez_total,
             "margin_total": summary_gaps["margin_total"],
             "markup": summary_gaps["markup"],
             "market_margin_pre": market["market_margin_pre"],
