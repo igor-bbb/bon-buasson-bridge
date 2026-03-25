@@ -3,11 +3,12 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 import json
 import re
-from typing import Optional
+import math
+from typing import Optional, Any
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="6.0"
+    version="6.1"
 )
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
@@ -19,12 +20,26 @@ _DATA_CACHE = None
 # BASE HELPERS
 # =========================================================
 
+def clean_for_json(obj: Any):
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_for_json(v) for v in obj]
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0
+        return obj
+    return obj
+
+
 def safe_json(data):
     if isinstance(data, dict):
         data["source_lock_applied"] = True
 
+    cleaned = clean_for_json(data)
+
     return JSONResponse(
-        content=json.loads(json.dumps(data, ensure_ascii=False, default=str)),
+        content=json.loads(json.dumps(cleaned, ensure_ascii=False, default=str)),
         media_type="application/json; charset=utf-8"
     )
 
@@ -108,6 +123,7 @@ def network_status(margin):
 
 def resolve_available_year(df, requested_year: int):
     years = sorted([int(y) for y in df["year"].dropna().unique().tolist() if int(y) > 0])
+
     if not years:
         return {
             "requested_year": int(requested_year),
@@ -129,6 +145,7 @@ def resolve_available_year(df, requested_year: int):
         }
 
     fallback_year = max(years)
+
     return {
         "requested_year": requested_year,
         "effective_year": fallback_year,
@@ -147,6 +164,73 @@ def attach_year_context(payload: dict, year_ctx: dict):
     return payload
 
 
+def has_anomaly_for_classification(revenue, finrez_pre):
+    return revenue <= 0 or finrez_pre < 0
+
+
+def safe_network_class(revenue, margin_pre, finrez_pre):
+    if has_anomaly_for_classification(revenue, finrez_pre):
+        return "убыточная"
+    return network_status(margin_pre)
+
+
+def calc_market_metrics(df):
+    revenue = float(df["revenue"].sum())
+    finrez_pre = float(df["finrez_pre"].sum())
+    finrez_total = float(df["finrez_total"].sum())
+    markup_value = float(df["markup_value"].sum())
+
+    market_margin_pre = (finrez_pre / revenue) if revenue else 0.0
+    market_margin_total = (finrez_total / revenue) if revenue else 0.0
+    market_markup = (markup_value / revenue) if revenue else 0.0
+
+    return {
+        "market_margin_pre": market_margin_pre,
+        "market_margin_total": market_margin_total,
+        "market_markup": market_markup
+    }
+
+
+def calc_gap_metrics(revenue, finrez_pre, finrez_total, markup_value, market):
+    margin_pre = (finrez_pre / revenue) if revenue else 0.0
+    margin_total = (finrez_total / revenue) if revenue else 0.0
+    markup = (markup_value / revenue) if revenue else 0.0
+
+    return {
+        "margin_pre": margin_pre,
+        "margin_total": margin_total,
+        "markup": markup,
+        "gap_market_pre": margin_pre - market["market_margin_pre"],
+        "gap_market_total": margin_total - market["market_margin_total"],
+        "gap_markup_pre": markup - margin_pre,
+        "gap_markup_total": markup - margin_total
+    }
+
+
+def apply_type_filter(df, type_value: Optional[str], limit: int):
+    work = df.copy()
+    type_norm = normalize_text(type_value) if type_value else ""
+
+    if type_norm in ["loss", "убыточные", "убыток", "loss_total"]:
+        work = work[work["finrez_total"] < 0].copy()
+        work = work.sort_values(["finrez_total", "finrez_pre"], ascending=[True, True])
+    elif type_norm in ["loss_pre", "убыток_pre"]:
+        work = work[work["finrez_pre"] < 0].copy()
+        work = work.sort_values(["finrez_pre", "finrez_total"], ascending=[True, True])
+    elif type_norm in ["destruction", "разрушение"]:
+        work = work[(work["finrez_pre"] > 0) & (work["finrez_total"] < 0)].copy()
+        work = work.sort_values("gap_markup_total", ascending=False)
+    elif type_norm in ["top", "топ"]:
+        work = work.sort_values(["finrez_pre", "margin_pre"], ascending=[False, False])
+    elif type_norm in ["anti_top", "antitop", "анти-топ", "антитоп"]:
+        work = work.sort_values(["finrez_pre", "margin_pre"], ascending=[True, True])
+
+    if limit and limit > 0:
+        work = work.head(int(limit)).copy()
+
+    return work
+
+
 # =========================================================
 # DATA LOADER
 # =========================================================
@@ -160,6 +244,7 @@ def load_data(force_reload=False):
     raw = pd.read_csv(DATA_URL, encoding="utf-8")
     raw.columns = [str(col).strip() for col in raw.columns]
 
+    # dimensions
     col_business = find_first_existing_column(raw, ["business", "Бизнес"])
     col_manager_national = find_first_existing_column(raw, ["manager_national", "Ответственный менеджер"])
     col_manager_kam = find_first_existing_column(raw, ["manager_kam", "Менеджер"])
@@ -173,13 +258,13 @@ def load_data(force_reload=False):
     col_year = find_first_existing_column(raw, ["year", "Год"])
     col_month = find_first_existing_column(raw, ["month", "Месяц"])
 
+    # finance
     col_revenue = find_first_existing_column(raw, [
         "revenue", "Выручка", "Товарооб., грн", "Товарооб, грн", "Товарооборот", "ТО грн"
     ])
     col_cost_price = find_first_existing_column(raw, [
         "cost_price", "Себест., грн", "Себест, грн", "Себестоимость"
     ])
-
     col_markup_value = find_first_existing_column(raw, [
         "markup_value",
         "gross_profit",
@@ -191,13 +276,13 @@ def load_data(force_reload=False):
         "Вал доход",
         "Вал. доход"
     ])
-
     col_markup_percent = find_first_existing_column(raw, [
         "markup_percent",
         "Наценка",
         "Наценка %"
     ])
 
+    # costs
     col_trade_invest = find_first_existing_column(raw, [
         "trade_invest", "Ретробонус", "Ретро бонус", "Ретро"
     ])
@@ -217,6 +302,7 @@ def load_data(force_reload=False):
         "total_cost", "Итого расходы"
     ])
 
+    # results
     col_finrez_pre = find_first_existing_column(raw, [
         "finrez_pre", "Фин. рез. без распр. затрат", "Финрез без распр. затрат"
     ])
@@ -290,11 +376,19 @@ def load_data(force_reload=False):
             axis=1
         )
 
+    work["markup"] = work.apply(
+        lambda x: (x["markup_value"] / x["revenue"]) if x["revenue"] else 0,
+        axis=1
+    )
+
     work["source"] = "google_sheets"
     work["source_lock"] = True
     work["status"] = "active"
 
+    # базовая очистка
     work = work[work["manager_national"].astype(str).str.lower() != "total"]
+    work = work[work["network"].astype(str).str.lower() != "total"]
+    work = work.fillna("")
 
     _DATA_CACHE = work.copy()
     return work.copy()
@@ -354,15 +448,18 @@ def resolve_sku_matches(df, query):
 # METRICS
 # =========================================================
 
-def calc_metrics(filtered_df):
+def calc_metrics(filtered_df, market=None):
     revenue = float(filtered_df["revenue"].sum())
     finrez_pre = float(filtered_df["finrez_pre"].sum())
     finrez_total = float(filtered_df["finrez_total"].sum())
     markup_value = float(filtered_df["markup_value"].sum())
     markup_percent_avg = float(filtered_df["markup_percent"].mean()) if len(filtered_df) else 0.0
 
-    margin_pre = (finrez_pre / revenue) if revenue else 0.0
-    margin_total = (finrez_total / revenue) if revenue else 0.0
+    gaps = calc_gap_metrics(revenue, finrez_pre, finrez_total, markup_value, market or {
+        "market_margin_pre": 0.0,
+        "market_margin_total": 0.0,
+        "market_markup": 0.0
+    })
 
     return {
         "rows": int(len(filtered_df)),
@@ -371,31 +468,18 @@ def calc_metrics(filtered_df):
         "finrez_total": finrez_total,
         "markup_value": markup_value,
         "markup_percent_avg": markup_percent_avg,
-        "margin_pre": margin_pre,
-        "margin_total": margin_total
+        "markup": gaps["markup"],
+        "margin_pre": gaps["margin_pre"],
+        "margin_total": gaps["margin_total"],
+        "gap_market_pre": gaps["gap_market_pre"],
+        "gap_market_total": gaps["gap_market_total"],
+        "gap_markup_pre": gaps["gap_markup_pre"],
+        "gap_markup_total": gaps["gap_markup_total"]
     }
 
 
-def apply_type_filter(df, metric_col: str, type_value: Optional[str], limit: int):
-    work = df.copy()
-    type_norm = normalize_text(type_value) if type_value else ""
-
-    if type_norm in ["loss", "убыточные", "убыток"]:
-        work = work[work[metric_col] < 0].copy()
-        work = work.sort_values(metric_col, ascending=True)
-    elif type_norm in ["top", "топ"]:
-        work = work.sort_values(metric_col, ascending=False)
-    elif type_norm in ["anti_top", "antitop", "анти-топ", "антитоп"]:
-        work = work.sort_values(metric_col, ascending=True)
-
-    if limit and limit > 0:
-        work = work.head(int(limit)).copy()
-
-    return work
-
-
 # =========================================================
-# BUSINESS BUILDERS
+# BUILDERS
 # =========================================================
 
 def build_networks_summary(df, year, type_value=None, limit=0):
@@ -409,6 +493,8 @@ def build_networks_summary(df, year, type_value=None, limit=0):
             "message": f"Нет данных за {year_ctx['effective_year']}"
         }
         return attach_year_context(payload, year_ctx)
+
+    market = calc_market_metrics(year_df)
 
     grouped = (
         year_df.groupby("network", dropna=False)
@@ -429,37 +515,44 @@ def build_networks_summary(df, year, type_value=None, limit=0):
         })
     )
 
-    grouped["margin_pre"] = grouped.apply(
-        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
-    )
-    grouped["margin_total"] = grouped.apply(
-        lambda x: (x["finrez_total"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
-    )
-    grouped["class"] = grouped["margin_pre"].apply(network_status)
-
-    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
-
-    items = []
+    metric_rows = []
     for _, row in grouped.iterrows():
-        items.append({
+        gaps = calc_gap_metrics(
+            float(row["revenue"]),
+            float(row["finrez_pre"]),
+            float(row["finrez_total"]),
+            float(row["markup_value"]),
+            market
+        )
+        metric_rows.append({
             "network": row["network"],
             "revenue": float(row["revenue"]),
             "finrez_pre": float(row["finrez_pre"]),
-            "margin_pre": float(row["margin_pre"]),
             "finrez_total": float(row["finrez_total"]),
-            "margin_total": float(row["margin_total"]),
             "markup_value": float(row["markup_value"]),
             "markup_percent_avg": float(row["markup_percent_avg"]) if pd.notna(row["markup_percent_avg"]) else 0.0,
+            "markup": gaps["markup"],
+            "margin": gaps["margin_pre"],
+            "margin_pre": gaps["margin_pre"],
+            "margin_total": gaps["margin_total"],
+            "gap_market_pre": gaps["gap_market_pre"],
+            "gap_market_total": gaps["gap_market_total"],
+            "gap_markup_pre": gaps["gap_markup_pre"],
+            "gap_markup_total": gaps["gap_markup_total"],
             "sku_count": int(row["sku_count"]),
             "tmc_group_count": int(row["tmc_group_count"]),
-            "class": row["class"]
+            "class": safe_network_class(float(row["revenue"]), gaps["margin_pre"], float(row["finrez_pre"]))
         })
 
-    summary_revenue = float(grouped["revenue"].sum()) if not grouped.empty else 0.0
-    summary_finrez_pre = float(grouped["finrez_pre"].sum()) if not grouped.empty else 0.0
-    summary_finrez_total = float(grouped["finrez_total"].sum()) if not grouped.empty else 0.0
-    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
-    summary_margin_total = (summary_finrez_total / summary_revenue) if summary_revenue else 0.0
+    result_df = pd.DataFrame(metric_rows)
+    result_df = result_df[result_df["network"].astype(str).str.strip() != ""].copy()
+    result_df = apply_type_filter(result_df, type_value, limit)
+
+    summary_revenue = float(result_df["revenue"].sum()) if not result_df.empty else 0.0
+    summary_finrez_pre = float(result_df["finrez_pre"].sum()) if not result_df.empty else 0.0
+    summary_finrez_total = float(result_df["finrez_total"].sum()) if not result_df.empty else 0.0
+    summary_markup_value = float(result_df["markup_value"].sum()) if not result_df.empty else 0.0
+    summary_gaps = calc_gap_metrics(summary_revenue, summary_finrez_pre, summary_finrez_total, summary_markup_value, market)
 
     payload = {
         "status": "ok",
@@ -468,22 +561,39 @@ def build_networks_summary(df, year, type_value=None, limit=0):
         "filter_type": type_value,
         "limit": int(limit) if limit else None,
         "summary": {
-            "network_count": int(len(items)),
+            "network_count": int(len(result_df)),
             "revenue": summary_revenue,
             "finrez_pre": summary_finrez_pre,
-            "margin_pre": summary_margin_pre,
+            "margin": summary_gaps["margin_pre"],
+            "margin_pre": summary_gaps["margin_pre"],
             "finrez_total": summary_finrez_total,
-            "margin_total": summary_margin_total
+            "margin_total": summary_gaps["margin_total"],
+            "markup": summary_gaps["markup"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": summary_gaps["gap_market_pre"],
+            "gap_market_total": summary_gaps["gap_market_total"],
+            "gap_markup_pre": summary_gaps["gap_markup_pre"],
+            "gap_markup_total": summary_gaps["gap_markup_total"]
         },
-        "items": items
+        "items": result_df.to_dict(orient="records")
     }
     return attach_year_context(payload, year_ctx)
 
 
 def build_network_summary(df, network_name, year):
     year_ctx = resolve_available_year(df, int(year))
+    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+
+    market = calc_market_metrics(year_df) if not year_df.empty else {
+        "market_margin_pre": 0.0,
+        "market_margin_total": 0.0,
+        "market_markup": 0.0
+    }
 
     resolved = resolve_network_matches(df, network_name)
+
     if resolved["status"] == "not_found":
         payload = {"status": "not_found", "message": "Сеть не найдена"}
         return attach_year_context(payload, year_ctx)
@@ -510,7 +620,7 @@ def build_network_summary(df, network_name, year):
         }
         return attach_year_context(payload, year_ctx)
 
-    metrics = calc_metrics(filtered)
+    metrics = calc_metrics(filtered, market)
 
     payload = {
         "status": "ok",
@@ -518,14 +628,23 @@ def build_network_summary(df, network_name, year):
         "network": real_network,
         "revenue": metrics["revenue"],
         "finrez_pre": metrics["finrez_pre"],
+        "margin": metrics["margin_pre"],
         "margin_pre": metrics["margin_pre"],
         "finrez_total": metrics["finrez_total"],
         "margin_total": metrics["margin_total"],
         "markup_value": metrics["markup_value"],
         "markup_percent_avg": metrics["markup_percent_avg"],
+        "markup": metrics["markup"],
+        "market_margin_pre": market["market_margin_pre"],
+        "market_margin_total": market["market_margin_total"],
+        "market_markup": market["market_markup"],
+        "gap_market_pre": metrics["gap_market_pre"],
+        "gap_market_total": metrics["gap_market_total"],
+        "gap_markup_pre": metrics["gap_markup_pre"],
+        "gap_markup_total": metrics["gap_markup_total"],
         "sku_count": int(filtered["sku"].astype(str).nunique()),
         "tmc_group_count": int(filtered["tmc_group"].astype(str).nunique()),
-        "class": network_status(metrics["margin_pre"])
+        "class": safe_network_class(metrics["revenue"], metrics["margin_pre"], metrics["finrez_pre"])
     }
     return attach_year_context(payload, year_ctx)
 
@@ -546,8 +665,7 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0):
         return {
             "status": "not_found",
             "object": "network_compare",
-            "message": "Нет данных для сравнения",
-            "source_lock_applied": True
+            "message": "Нет данных для сравнения"
         }
 
     merged = pd.merge(
@@ -556,7 +674,9 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0):
         on="network",
         how="outer",
         suffixes=(f"_{first['year']}", f"_{second['year']}")
-    ).fillna(0)
+    )
+
+    merged = merged.replace([float("inf"), float("-inf")], 0).fillna(0)
 
     items = []
     for _, row in merged.iterrows():
@@ -568,10 +688,12 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0):
         margin_pre_2 = float(row.get(f"margin_pre_{second['year']}", 0))
         finrez_total_1 = float(row.get(f"finrez_total_{first['year']}", 0))
         finrez_total_2 = float(row.get(f"finrez_total_{second['year']}", 0))
+        markup_1 = float(row.get(f"markup_{first['year']}", 0))
+        markup_2 = float(row.get(f"markup_{second['year']}", 0))
 
         delta_finrez_pre = finrez_pre_1 - finrez_pre_2
         base = finrez_pre_2 if finrez_pre_2 != 0 else None
-        delta_percent = (delta_finrez_pre / abs(base)) if base else None
+        delta_percent = (delta_finrez_pre / abs(base)) if base else 0
 
         items.append({
             "network": row["network"],
@@ -581,19 +703,37 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0):
             "revenue_year2": revenue_2,
             "finrez_pre_year1": finrez_pre_1,
             "finrez_pre_year2": finrez_pre_2,
+            "margin_year1": margin_pre_1,
+            "margin_year2": margin_pre_2,
             "margin_pre_year1": margin_pre_1,
             "margin_pre_year2": margin_pre_2,
             "finrez_total_year1": finrez_total_1,
             "finrez_total_year2": finrez_total_2,
+            "markup_year1": markup_1,
+            "markup_year2": markup_2,
             "delta_revenue": revenue_1 - revenue_2,
             "delta_finrez_pre": delta_finrez_pre,
             "delta_margin_pre": margin_pre_1 - margin_pre_2,
             "delta_finrez_total": finrez_total_1 - finrez_total_2,
+            "delta_markup": markup_1 - markup_2,
             "delta_percent_finrez_pre": delta_percent
         })
 
     compare_df = pd.DataFrame(items)
-    compare_df = apply_type_filter(compare_df, "delta_finrez_pre", type_value, limit)
+    compare_df = compare_df.replace([float("inf"), float("-inf")], 0).fillna(0)
+
+    if type_value:
+        t = normalize_text(type_value)
+        if t in ["loss", "убыточные", "убыток", "loss_total"]:
+            compare_df = compare_df[compare_df["finrez_total_year1"] < 0].copy()
+            compare_df = compare_df.sort_values("finrez_total_year1", ascending=True)
+        elif t in ["top", "топ"]:
+            compare_df = compare_df.sort_values("delta_finrez_pre", ascending=False)
+        elif t in ["anti_top", "antitop", "анти-топ", "антитоп"]:
+            compare_df = compare_df.sort_values("delta_finrez_pre", ascending=True)
+
+    if limit and limit > 0:
+        compare_df = compare_df.head(int(limit)).copy()
 
     payload = {
         "status": "ok",
@@ -603,6 +743,10 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0):
         "year2": int(second["year"]),
         "requested_year1": int(first["requested_year"]),
         "requested_year2": int(second["requested_year"]),
+        "fallback_applied_year1": bool(first["fallback_applied"]),
+        "fallback_applied_year2": bool(second["fallback_applied"]),
+        "fallback_year1": first["fallback_year"],
+        "fallback_year2": second["fallback_year"],
         "filter_type": type_value,
         "limit": int(limit) if limit else None,
         "items": compare_df.to_dict(orient="records")
@@ -632,11 +776,14 @@ def build_network_compare(df, network_name, year1, year2):
         "delta": {
             "revenue": s1["revenue"] - s2["revenue"],
             "finrez_pre": s1["finrez_pre"] - s2["finrez_pre"],
+            "margin": s1["margin"] - s2["margin"],
             "margin_pre": s1["margin_pre"] - s2["margin_pre"],
             "finrez_total": s1["finrez_total"] - s2["finrez_total"],
             "margin_total": s1["margin_total"] - s2["margin_total"],
             "markup_value": s1["markup_value"] - s2["markup_value"],
-            "markup_percent_avg": s1["markup_percent_avg"] - s2["markup_percent_avg"]
+            "markup": s1["markup"] - s2["markup"],
+            "gap_market_pre": s1["gap_market_pre"] - s2["gap_market_pre"],
+            "gap_markup_pre": s1["gap_markup_pre"] - s2["gap_markup_pre"]
         }
     }
 
@@ -664,39 +811,59 @@ def build_sku_list(df, year, type_value=None, limit=0, network=None):
         payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
         return attach_year_context(payload, year_ctx)
 
+    market = calc_market_metrics(year_df)
+
     grouped = (
         year_df.groupby("sku", dropna=False)
         .agg({
             "revenue": "sum",
             "finrez_pre": "sum",
             "finrez_total": "sum",
+            "markup_value": "sum",
             "network": pd.Series.nunique
         })
         .reset_index()
         .rename(columns={"network": "network_count"})
     )
 
-    grouped["margin_pre"] = grouped.apply(
-        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
-    )
-    grouped["class"] = grouped["margin_pre"].apply(classify_margin)
-    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
-
-    items = []
+    metric_rows = []
     for _, row in grouped.iterrows():
-        items.append({
+        gaps = calc_gap_metrics(
+            float(row["revenue"]),
+            float(row["finrez_pre"]),
+            float(row["finrez_total"]),
+            float(row["markup_value"]),
+            market
+        )
+        metric_rows.append({
             "sku": row["sku"],
             "revenue": float(row["revenue"]),
             "finrez_pre": float(row["finrez_pre"]),
-            "margin_pre": float(row["margin_pre"]),
+            "margin": gaps["margin_pre"],
+            "margin_pre": gaps["margin_pre"],
             "finrez_total": float(row["finrez_total"]),
+            "margin_total": gaps["margin_total"],
+            "markup": gaps["markup"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": gaps["gap_market_pre"],
+            "gap_market_total": gaps["gap_market_total"],
+            "gap_markup_pre": gaps["gap_markup_pre"],
+            "gap_markup_total": gaps["gap_markup_total"],
             "network_count": int(row["network_count"]),
-            "class": row["class"]
+            "class": classify_margin(gaps["margin_pre"])
         })
 
-    summary_revenue = float(grouped["revenue"].sum()) if not grouped.empty else 0.0
-    summary_finrez_pre = float(grouped["finrez_pre"].sum()) if not grouped.empty else 0.0
-    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
+    result_df = pd.DataFrame(metric_rows)
+    result_df = result_df[result_df["sku"].astype(str).str.strip() != ""].copy()
+    result_df = apply_type_filter(result_df, type_value, limit)
+
+    summary_revenue = float(result_df["revenue"].sum()) if not result_df.empty else 0.0
+    summary_finrez_pre = float(result_df["finrez_pre"].sum()) if not result_df.empty else 0.0
+    summary_finrez_total = float(result_df["finrez_total"].sum()) if not result_df.empty else 0.0
+    summary_markup = float((result_df["markup"] * result_df["revenue"]).sum() / result_df["revenue"].sum()) if not result_df.empty and float(result_df["revenue"].sum()) else 0.0
+    summary_gaps = calc_gap_metrics(summary_revenue, summary_finrez_pre, summary_finrez_total, summary_revenue * summary_markup, market)
 
     payload = {
         "status": "ok",
@@ -706,20 +873,38 @@ def build_sku_list(df, year, type_value=None, limit=0, network=None):
         "filter_type": type_value,
         "limit": int(limit) if limit else None,
         "summary": {
-            "sku_count": int(len(items)),
+            "sku_count": int(len(result_df)),
             "revenue": summary_revenue,
             "finrez_pre": summary_finrez_pre,
-            "margin_pre": summary_margin_pre
+            "margin": summary_gaps["margin_pre"],
+            "margin_pre": summary_gaps["margin_pre"],
+            "finrez_total": summary_finrez_total,
+            "margin_total": summary_gaps["margin_total"],
+            "markup": summary_gaps["markup"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": summary_gaps["gap_market_pre"],
+            "gap_market_total": summary_gaps["gap_market_total"],
+            "gap_markup_pre": summary_gaps["gap_markup_pre"],
+            "gap_markup_total": summary_gaps["gap_markup_total"]
         },
-        "items": items
+        "items": result_df.to_dict(orient="records")
     }
     return attach_year_context(payload, year_ctx)
 
 
 def build_sku_global(df, sku_query, year, compare_year=None):
     year_ctx = resolve_available_year(df, int(year))
+    base_year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+    market = calc_market_metrics(base_year_df) if not base_year_df.empty else {
+        "market_margin_pre": 0.0,
+        "market_margin_total": 0.0,
+        "market_markup": 0.0
+    }
 
     resolved = resolve_sku_matches(df, sku_query)
+
     if resolved["status"] == "not_found":
         payload = {"status": "not_found", "message": "SKU не найден"}
         return attach_year_context(payload, year_ctx)
@@ -755,6 +940,7 @@ def build_sku_global(df, sku_query, year, compare_year=None):
             "revenue": "sum",
             "finrez_pre": "sum",
             "finrez_total": "sum",
+            "markup_value": "sum",
             "network": pd.Series.nunique
         })
         .reset_index()
@@ -777,30 +963,56 @@ def build_sku_global(df, sku_query, year, compare_year=None):
         finrez_total_year = float(row_year["finrez_total"].sum()) if not row_year.empty else 0.0
         finrez_total_compare = float(row_compare["finrez_total"].sum()) if not row_compare.empty else 0.0
 
-        margin_pre_year = (finrez_pre_year / revenue_year) if revenue_year else 0.0
-        margin_pre_compare = (finrez_pre_compare / revenue_compare) if revenue_compare else 0.0
+        markup_value_year = float(row_year["markup_value"].sum()) if not row_year.empty else 0.0
+        markup_value_compare = float(row_compare["markup_value"].sum()) if not row_compare.empty else 0.0
+
+        gaps_year = calc_gap_metrics(revenue_year, finrez_pre_year, finrez_total_year, markup_value_year, market)
+        gaps_compare = calc_gap_metrics(
+            revenue_compare,
+            finrez_pre_compare,
+            finrez_total_compare,
+            markup_value_compare,
+            market
+        ) if compare_year_ctx else None
 
         items.append({
             "sku": sku_name,
             "revenue": revenue_year,
             "finrez_pre": finrez_pre_year,
-            "margin_pre": margin_pre_year,
+            "margin": gaps_year["margin_pre"],
+            "margin_pre": gaps_year["margin_pre"],
             "finrez_total": finrez_total_year,
+            "margin_total": gaps_year["margin_total"],
+            "markup": gaps_year["markup"],
             "network_count": int(row_year["network_count"].sum()) if not row_year.empty else 0,
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": gaps_year["gap_market_pre"],
+            "gap_market_total": gaps_year["gap_market_total"],
+            "gap_markup_pre": gaps_year["gap_markup_pre"],
+            "gap_markup_total": gaps_year["gap_markup_total"],
+            "class": classify_margin(gaps_year["margin_pre"]),
             "compare_year": int(compare_year_ctx["effective_year"]) if compare_year_ctx else None,
             "requested_compare_year": int(compare_year_ctx["requested_year"]) if compare_year_ctx else None,
             "revenue_compare": revenue_compare if compare_year_ctx else None,
             "finrez_pre_compare": finrez_pre_compare if compare_year_ctx else None,
-            "margin_pre_compare": margin_pre_compare if compare_year_ctx else None,
+            "margin_pre_compare": gaps_compare["margin_pre"] if gaps_compare else None,
             "finrez_total_compare": finrez_total_compare if compare_year_ctx else None,
+            "margin_total_compare": gaps_compare["margin_total"] if gaps_compare else None,
+            "markup_compare": gaps_compare["markup"] if gaps_compare else None,
             "delta_revenue": (revenue_year - revenue_compare) if compare_year_ctx else None,
             "delta_finrez_pre": (finrez_pre_year - finrez_pre_compare) if compare_year_ctx else None,
-            "delta_margin_pre": (margin_pre_year - margin_pre_compare) if compare_year_ctx else None
+            "delta_margin_pre": (gaps_year["margin_pre"] - gaps_compare["margin_pre"]) if gaps_compare else None,
+            "delta_finrez_total": (finrez_total_year - finrez_total_compare) if compare_year_ctx else None,
+            "delta_markup": (gaps_year["markup"] - gaps_compare["markup"]) if gaps_compare else None
         })
 
     summary_revenue = float(filtered[filtered["year"] == year_ctx["effective_year"]]["revenue"].sum())
     summary_finrez_pre = float(filtered[filtered["year"] == year_ctx["effective_year"]]["finrez_pre"].sum())
-    summary_margin_pre = (summary_finrez_pre / summary_revenue) if summary_revenue else 0.0
+    summary_finrez_total = float(filtered[filtered["year"] == year_ctx["effective_year"]]["finrez_total"].sum())
+    summary_markup_value = float(filtered[filtered["year"] == year_ctx["effective_year"]]["markup_value"].sum())
+    summary_gaps = calc_gap_metrics(summary_revenue, summary_finrez_pre, summary_finrez_total, summary_markup_value, market)
 
     payload = {
         "status": "ok",
@@ -817,7 +1029,18 @@ def build_sku_global(df, sku_query, year, compare_year=None):
             "matched_skus": len(items),
             "revenue": summary_revenue,
             "finrez_pre": summary_finrez_pre,
-            "margin_pre": summary_margin_pre
+            "margin": summary_gaps["margin_pre"],
+            "margin_pre": summary_gaps["margin_pre"],
+            "finrez_total": summary_finrez_total,
+            "margin_total": summary_gaps["margin_total"],
+            "markup": summary_gaps["markup"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": summary_gaps["gap_market_pre"],
+            "gap_market_total": summary_gaps["gap_market_total"],
+            "gap_markup_pre": summary_gaps["gap_markup_pre"],
+            "gap_markup_total": summary_gaps["gap_markup_total"]
         },
         "items": items
     }
@@ -852,8 +1075,8 @@ def build_network_pnl(df, network_name, year):
     finrez_pre = float(filtered["finrez_pre"].sum())
     finrez_total = float(filtered["finrez_total"].sum())
 
-    margin_pre = (finrez_pre / revenue) if revenue else 0.0
-    margin_total = (finrez_total / revenue) if revenue else 0.0
+    market = calc_market_metrics(df[df["year"] == effective_year].copy())
+    gaps = calc_gap_metrics(revenue, finrez_pre, finrez_total, markup_value, market)
 
     cost_items_pre = {
         "trade_invest": trade_invest,
@@ -907,10 +1130,19 @@ def build_network_pnl(df, network_name, year):
             "revenue": revenue,
             "markup_value": markup_value,
             "markup_percent_avg": markup_percent_avg,
+            "markup": gaps["markup"],
             "finrez_pre": finrez_pre,
-            "margin_pre": margin_pre,
+            "margin": gaps["margin_pre"],
+            "margin_pre": gaps["margin_pre"],
             "finrez_total": finrez_total,
-            "margin_total": margin_total
+            "margin_total": gaps["margin_total"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": gaps["gap_market_pre"],
+            "gap_market_total": gaps["gap_market_total"],
+            "gap_markup_pre": gaps["gap_markup_pre"],
+            "gap_markup_total": gaps["gap_markup_total"]
         },
         "costs": {
             "trade_invest": trade_invest,
@@ -935,32 +1167,47 @@ def build_network_pnl(df, network_name, year):
     return payload
 
 
-def _diagnostic_from_summary(summary):
-    markup_percent_avg = float(summary.get("markup_percent_avg", 0))
-    margin_pre = float(summary.get("margin_pre", 0))
-    margin_total = float(summary.get("margin_total", 0))
+def _diagnostic_from_row(row):
+    markup = float(row.get("markup", 0))
+    margin_pre = float(row.get("margin_pre", 0))
+    margin_total = float(row.get("margin_total", 0))
+    gap_markup_pre = float(row.get("gap_markup_pre", 0))
+    gap_market_pre = float(row.get("gap_market_pre", 0))
 
-    if markup_percent_avg > 15 and margin_pre < 0.05:
+    if margin_pre < 0 and markup > 0.10:
+        cause = "высокая валовая наценка при слабом finrez_pre — вероятно искажение затрат или условий"
+        action = "разобрать логистику, бонусы, персонал и распределение затрат"
+    elif markup > 0.15 and margin_pre < 0.05:
         cause = "хорошая базовая экономика, но прибыль съедается затратами или условиями"
         action = "пересмотреть инвестиции, логистику и условия сети"
-    elif markup_percent_avg < 10 and margin_pre < 0.05:
+    elif markup < 0.10 and margin_pre < 0.05:
         cause = "слабая базовая экономика SKU"
-        action = "сократить слабые SKU и пересмотреть продуктовую матрицу"
+        action = "пересмотреть продуктовую матрицу, цену и себестоимость"
     elif margin_pre < 0:
-        cause = "сеть убыточна уже на уровне finrez_pre"
-        action = "пересмотреть контракт, условия входа и структуру SKU"
+        cause = "объект убыточен уже на уровне finrez_pre"
+        action = "пересмотреть контракт, структуру SKU и прямые затраты"
     elif margin_pre > 0.15 and margin_total < 0:
         cause = "сильная экономика до распределения, но итог съедается после аллокации затрат"
         action = "разложить P&L по статьям: инвестиции, логистика, персонал, распределённые"
+    elif gap_market_pre < 0:
+        cause = "объект ниже системы по марже"
+        action = "разобрать слабые SKU, условия работы и потери в затратах"
     else:
-        cause = "сеть в рабочем диапазоне"
+        cause = "объект в рабочем диапазоне"
         action = "удерживать сильные SKU и контролировать структуру затрат"
 
     return {
-        "problem": f"Статус сети: {summary['class']}",
+        "problem": f"Статус: {row.get('class', 'норма')}",
         "cause": cause,
         "action": action,
-        "effect": "рост управляемой прибыли и снижение потерь"
+        "effect": "рост управляемой прибыли и снижение потерь",
+        "diagnostic_flags": {
+            "markup": markup,
+            "margin_pre": margin_pre,
+            "margin_total": margin_total,
+            "gap_markup_pre": gap_markup_pre,
+            "gap_market_pre": gap_market_pre
+        }
     }
 
 
@@ -969,7 +1216,7 @@ def build_diagnostics(df, network_name, year):
     if summary.get("status") != "ok":
         return summary
 
-    diag = _diagnostic_from_summary(summary)
+    diag = _diagnostic_from_row(summary)
 
     return {
         "status": "ok",
@@ -986,11 +1233,19 @@ def build_diagnostics(df, network_name, year):
         "context": {
             "revenue": summary["revenue"],
             "finrez_pre": summary["finrez_pre"],
+            "margin": summary["margin"],
             "margin_pre": summary["margin_pre"],
             "finrez_total": summary["finrez_total"],
             "margin_total": summary["margin_total"],
             "markup_value": summary["markup_value"],
-            "markup_percent_avg": summary["markup_percent_avg"]
+            "markup_percent_avg": summary["markup_percent_avg"],
+            "markup": summary["markup"],
+            "market_margin_pre": summary["market_margin_pre"],
+            "market_margin_total": summary["market_margin_total"],
+            "gap_market_pre": summary["gap_market_pre"],
+            "gap_market_total": summary["gap_market_total"],
+            "gap_markup_pre": summary["gap_markup_pre"],
+            "gap_markup_total": summary["gap_markup_total"]
         }
     }
 
@@ -1002,16 +1257,20 @@ def build_diagnostics_all(df, year, type_value=None, limit=0):
 
     items = []
     for item in summary["items"]:
-        diag = _diagnostic_from_summary(item)
+        diag = _diagnostic_from_row(item)
         items.append({
             "network": item["network"],
             "revenue": item["revenue"],
             "finrez_pre": item["finrez_pre"],
+            "margin": item["margin"],
             "margin_pre": item["margin_pre"],
             "finrez_total": item["finrez_total"],
             "margin_total": item["margin_total"],
-            "markup_value": item["markup_value"],
-            "markup_percent_avg": item["markup_percent_avg"],
+            "markup": item["markup"],
+            "gap_market_pre": item["gap_market_pre"],
+            "gap_market_total": item["gap_market_total"],
+            "gap_markup_pre": item["gap_markup_pre"],
+            "gap_markup_total": item["gap_markup_total"],
             "class": item["class"],
             "problem": diag["problem"],
             "cause": diag["cause"],
@@ -1042,34 +1301,50 @@ def build_dimension_summary(df, year, dimension, type_value=None, limit=0):
         payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
         return attach_year_context(payload, year_ctx)
 
+    market = calc_market_metrics(year_df)
+
     grouped = (
         year_df.groupby(dimension, dropna=False)
         .agg({
             "revenue": "sum",
             "finrez_pre": "sum",
-            "finrez_total": "sum"
+            "finrez_total": "sum",
+            "markup_value": "sum"
         })
         .reset_index()
     )
 
-    grouped["margin_pre"] = grouped.apply(
-        lambda x: (x["finrez_pre"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
-    )
-    grouped["margin_total"] = grouped.apply(
-        lambda x: (x["finrez_total"] / x["revenue"]) if x["revenue"] else 0.0, axis=1
-    )
-    grouped = apply_type_filter(grouped, "finrez_pre", type_value, limit)
-
-    items = []
+    metric_rows = []
     for _, row in grouped.iterrows():
-        items.append({
+        gaps = calc_gap_metrics(
+            float(row["revenue"]),
+            float(row["finrez_pre"]),
+            float(row["finrez_total"]),
+            float(row["markup_value"]),
+            market
+        )
+        metric_rows.append({
             dimension: row[dimension],
             "revenue": float(row["revenue"]),
             "finrez_pre": float(row["finrez_pre"]),
-            "margin_pre": float(row["margin_pre"]),
+            "margin": gaps["margin_pre"],
+            "margin_pre": gaps["margin_pre"],
             "finrez_total": float(row["finrez_total"]),
-            "margin_total": float(row["margin_total"])
+            "margin_total": gaps["margin_total"],
+            "markup": gaps["markup"],
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"],
+            "gap_market_pre": gaps["gap_market_pre"],
+            "gap_market_total": gaps["gap_market_total"],
+            "gap_markup_pre": gaps["gap_markup_pre"],
+            "gap_markup_total": gaps["gap_markup_total"],
+            "class": classify_margin(gaps["margin_pre"])
         })
+
+    result_df = pd.DataFrame(metric_rows)
+    result_df = result_df[result_df[dimension].astype(str).str.strip() != ""].copy()
+    result_df = apply_type_filter(result_df, type_value, limit)
 
     payload = {
         "status": "ok",
@@ -1077,7 +1352,13 @@ def build_dimension_summary(df, year, dimension, type_value=None, limit=0):
         "dimension": dimension,
         "filter_type": type_value,
         "limit": int(limit) if limit else None,
-        "items": items
+        "summary": {
+            "count": int(len(result_df)),
+            "market_margin_pre": market["market_margin_pre"],
+            "market_margin_total": market["market_margin_total"],
+            "market_markup": market["market_markup"]
+        },
+        "items": result_df.to_dict(orient="records")
     }
     return attach_year_context(payload, year_ctx)
 
@@ -1091,7 +1372,7 @@ def root():
     return safe_json({
         "status": "ok",
         "service": "FMCG AI / Vectra Core API",
-        "version": "6.0"
+        "version": "6.1"
     })
 
 
@@ -1100,7 +1381,7 @@ def health():
     return safe_json({
         "status": "ok",
         "service": "alive",
-        "version": "6.0"
+        "version": "6.1"
     })
 
 
@@ -1142,7 +1423,7 @@ def data_info():
 def network_summary(
     year: int = Query(..., description="Год"),
     network: Optional[str] = Query(None, description="Название сети"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
@@ -1191,7 +1472,7 @@ def sku_global(
     sku: Optional[str] = Query(None, description="SKU или часть названия SKU"),
     compare_year: Optional[int] = Query(None, description="Год сравнения"),
     network: Optional[str] = Query(None, description="Фильтр по сети"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
@@ -1230,7 +1511,7 @@ def network_pnl(
 def diagnostics(
     year: int = Query(..., description="Год"),
     network: Optional[str] = Query(None, description="Название сети"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
@@ -1253,7 +1534,7 @@ def diagnostics(
 def manager_summary(
     year: int = Query(..., description="Год"),
     manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
@@ -1271,7 +1552,7 @@ def manager_summary(
 @app.get("/region_summary")
 def region_summary(
     year: int = Query(..., description="Год"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
@@ -1290,7 +1571,7 @@ def region_summary(
 def analyze(
     year: int = Query(..., description="Год"),
     network: Optional[str] = Query(None, description="Название сети"),
-    type: Optional[str] = Query(None, description="top / anti_top / loss"),
+    type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк")
 ):
     try:
