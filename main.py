@@ -8,7 +8,7 @@ from typing import Optional, Any
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="6.2"
+    version="6.2.1"
 )
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
@@ -231,12 +231,10 @@ def apply_type_filter(df, type_value: Optional[str], limit: int):
             work = work.sort_values("gap_markup_total", ascending=False)
     elif type_norm in ["top", "топ"]:
         sort_cols = ["finrez_pre", "margin_pre"] if "margin_pre" in work.columns else ["finrez_pre"]
-        ascending = [False] * len(sort_cols)
-        work = work.sort_values(sort_cols, ascending=ascending)
+        work = work.sort_values(sort_cols, ascending=[False] * len(sort_cols))
     elif type_norm in ["anti_top", "antitop", "анти-топ", "антитоп"]:
         sort_cols = ["finrez_pre", "margin_pre"] if "margin_pre" in work.columns else ["finrez_pre"]
-        ascending = [True] * len(sort_cols)
-        work = work.sort_values(sort_cols, ascending=ascending)
+        work = work.sort_values(sort_cols, ascending=[True] * len(sort_cols))
 
     if limit and limit > 0:
         work = work.head(int(limit)).copy()
@@ -355,22 +353,31 @@ def build_grouped_payload(base_df, group_field, object_name, type_value=None, li
 
     market = calc_market_metrics(base_df)
 
+    agg_map = {
+        "revenue": "sum",
+        "finrez_pre": "sum",
+        "finrez_total": "sum",
+        "markup_value": "sum"
+    }
+
+    if group_field != "network" and "network" in base_df.columns:
+        agg_map["network"] = pd.Series.nunique
+    if group_field != "sku" and "sku" in base_df.columns:
+        agg_map["sku"] = pd.Series.nunique
+
     grouped = (
         base_df.groupby(group_field, dropna=False)
-        .agg({
-            "revenue": "sum",
-            "finrez_pre": "sum",
-            "finrez_total": "sum",
-            "markup_value": "sum",
-            "network": pd.Series.nunique,
-            "sku": pd.Series.nunique
-        })
+        .agg(agg_map)
         .reset_index()
-        .rename(columns={
-            "network": "network_count",
-            "sku": "sku_count"
-        })
     )
+
+    rename_map = {}
+    if "network" in grouped.columns and group_field != "network":
+        rename_map["network"] = "network_count"
+    if "sku" in grouped.columns and group_field != "sku":
+        rename_map["sku"] = "sku_count"
+    if rename_map:
+        grouped = grouped.rename(columns=rename_map)
 
     metric_rows = []
     for _, row in grouped.iterrows():
@@ -401,8 +408,8 @@ def build_grouped_payload(base_df, group_field, object_name, type_value=None, li
             "gap_market_total": gaps["gap_market_total"],
             "gap_markup_pre": gaps["gap_markup_pre"],
             "gap_markup_total": gaps["gap_markup_total"],
-            "network_count": int(row["network_count"]),
-            "sku_count": int(row["sku_count"]),
+            "network_count": int(row["network_count"]) if "network_count" in row else 0,
+            "sku_count": int(row["sku_count"]) if "sku_count" in row else 0,
             "class": row_class
         })
 
@@ -630,7 +637,7 @@ def load_data(force_reload=False):
 
 
 # =========================================================
-# BUSINESS BUILDERS
+# BUILDERS
 # =========================================================
 
 def build_networks_summary(df, year, type_value=None, limit=0, category=None, business=None, tmc_group=None):
@@ -1085,7 +1092,7 @@ def build_sku_global(df, sku_query, year, compare_year=None, category=None, busi
             "finrez_pre": summary_finrez_pre,
             "margin": summary_gaps["margin"],
             "margin_pre": summary_gaps["margin_pre"],
-            "finrez_total": summary_finrez_total,
+            "finрез_total": summary_finrez_total,
             "margin_total": summary_gaps["margin_total"],
             "markup": summary_gaps["markup"],
             "market_margin_pre": market["market_margin_pre"],
@@ -1118,8 +1125,7 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
     if product_filter_result["status"] != "ok":
         return {
             "status": product_filter_result["status"],
-            "message": product_filter_result["message"],
-            "source_lock_applied": True
+            "message": product_filter_result["message"]
         }
 
     filtered = product_filter_result["df"]
@@ -1445,7 +1451,7 @@ def root():
     return safe_json({
         "status": "ok",
         "service": "FMCG AI / Vectra Core API",
-        "version": "6.2"
+        "version": "6.2.1"
     })
 
 
@@ -1454,7 +1460,7 @@ def health():
     return safe_json({
         "status": "ok",
         "service": "alive",
-        "version": "6.2"
+        "version": "6.2.1"
     })
 
 
