@@ -5,6 +5,9 @@ import json
 import re
 import math
 from typing import Optional, Any
+from pathlib import Path
+from datetime import datetime
+import uuid
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
@@ -14,6 +17,9 @@ app = FastAPI(
 DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
 
 _DATA_CACHE = None
+
+DECISIONS_PATH = Path("decisions.json")
+TASKS_PATH = Path("tasks.json")
 
 VALID_GROUP_FIELDS = {
     "network",
@@ -121,6 +127,17 @@ def classify_margin(margin):
         return "сильный"
 
 
+def classify_gap(gap: float) -> str:
+    if gap < 0.20:
+        return "strong"
+    elif gap < 0.30:
+        return "normal"
+    elif gap < 0.40:
+        return "risk"
+    else:
+        return "critical"
+
+
 def network_status(margin):
     if margin < 0:
         return "убыточная"
@@ -178,6 +195,12 @@ def attach_year_context(payload: dict, year_ctx: dict):
     payload["fallback_applied"] = year_ctx["fallback_applied"]
     payload["fallback_year"] = year_ctx["fallback_year"]
     payload["available_years"] = year_ctx["available_years"]
+
+    if year_ctx["fallback_applied"]:
+        payload["warning"] = (
+            "Запрошенный год отсутствует. Использован ближайший доступный год."
+        )
+
     return payload
 
 
@@ -408,19 +431,22 @@ def build_grouped_payload(base_df, group_field, object_name, type_value=None, li
             "gap_market_total": gaps["gap_market_total"],
             "gap_markup_pre": gaps["gap_markup_pre"],
             "gap_markup_total": gaps["gap_markup_total"],
+            "gap_status": classify_gap(gaps["gap_markup_pre"]),
             "network_count": int(row["network_count"]) if "network_count" in row else 0,
             "sku_count": int(row["sku_count"]) if "sku_count" in row else 0,
             "class": row_class
         })
 
     result_df = pd.DataFrame(metric_rows)
-    result_df = result_df[result_df[group_field].astype(str).str.strip() != ""].copy()
+    result_df[group_field] = result_df[group_field].astype(str).str.strip()
+    result_df[group_field] = result_df[group_field].replace("", "UNDEFINED")
     result_df = apply_type_filter(result_df, type_value, limit)
 
     summary_revenue = float(result_df["revenue"].sum()) if not result_df.empty else 0.0
     summary_finrez_pre = float(result_df["finrez_pre"].sum()) if not result_df.empty else 0.0
     summary_finrez_total = float(result_df["finrez_total"].sum()) if not result_df.empty else 0.0
-    summary_markup = float((result_df["markup"] * result_df["revenue"]).sum() / result_df["revenue"].sum()) if not result_df.empty and float(result_df["revenue"].sum()) else 0.0
+    rev_sum = float(result_df["revenue"].sum()) if not result_df.empty else 0.0
+    summary_markup = float((result_df["markup"] * result_df["revenue"]).sum() / rev_sum) if rev_sum else 0.0
     summary_gaps = calc_gap_metrics(summary_revenue, summary_finrez_pre, summary_finrez_total, summary_revenue * summary_markup, market)
 
     return {
@@ -444,7 +470,8 @@ def build_grouped_payload(base_df, group_field, object_name, type_value=None, li
             "gap_market_pre": summary_gaps["gap_market_pre"],
             "gap_market_total": summary_gaps["gap_market_total"],
             "gap_markup_pre": summary_gaps["gap_markup_pre"],
-            "gap_markup_total": summary_gaps["gap_markup_total"]
+            "gap_markup_total": summary_gaps["gap_markup_total"],
+            "gap_status": classify_gap(summary_gaps["gap_markup_pre"])
         },
         "items": result_df.to_dict(orient="records")
     }
@@ -477,6 +504,148 @@ def calc_metrics(filtered_df, market=None):
         "gap_markup_total": gaps["gap_markup_total"]
     }
 
+
+
+
+def load_decisions():
+    if not DECISIONS_PATH.exists():
+        return []
+    with open(DECISIONS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_decision(decision_id: str):
+    for d in load_decisions():
+        if d.get("decision_id") == decision_id:
+            return d
+    return None
+
+
+def validate_decision(decision, network, year_before, year_after):
+    errors = []
+
+    if str(decision.get("network")).strip() != str(network).strip():
+        errors.append("network mismatch")
+
+    if int(decision.get("year_before")) != int(year_before):
+        errors.append("year_before mismatch")
+
+    if int(decision.get("year_after")) != int(year_after):
+        errors.append("year_after mismatch")
+
+    return errors
+
+
+def calculate_control_trend(df_before, df_after):
+    if df_before is None or df_after is None:
+        return None
+    if df_before.empty or df_after.empty:
+        return None
+
+    before = float(df_before["finrez_pre"].sum())
+    after = float(df_after["finrez_pre"].sum())
+
+    return after - before
+
+
+def calculate_fact_effect(finrez_before, finrez_after, control_trend):
+    if finrez_before is None or finrez_after is None:
+        return None
+
+    raw_change = finrez_after - finrez_before
+
+    if control_trend is None:
+        return raw_change
+
+    return raw_change - control_trend
+
+
+def calculate_delta_effect(fact_effect, expected_effect):
+    if fact_effect is None or expected_effect is None:
+        return None
+    return fact_effect - expected_effect
+
+
+def calculate_success_flag(delta):
+    if delta is None:
+        return "no_plan"
+    if delta > 0:
+        return "success"
+    elif delta >= -0.05 * abs(delta):
+        return "close"
+    else:
+        return "fail"
+
+
+def safe_round(value):
+    if value is None:
+        return None
+    return round(float(value), 2)
+
+
+
+def generate_decision_id():
+    return f"D-{uuid.uuid4().hex[:10]}"
+
+
+def load_tasks():
+    if not TASKS_PATH.exists():
+        return []
+    with open(TASKS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_tasks(tasks):
+    with open(TASKS_PATH, "w", encoding="utf-8") as f:
+        json.dump(tasks, f, ensure_ascii=False, indent=2)
+
+
+def manager_task_limit(manager: str):
+    active_tasks = [
+        t for t in load_tasks()
+        if str(t.get("manager")).strip() == str(manager).strip()
+        and t.get("status") != "CLOSED"
+    ]
+    return len(active_tasks) >= 2
+
+
+def get_active_tasks(manager: str):
+    return [
+        t for t in load_tasks()
+        if t.get("manager") == manager and t.get("status") != "CLOSED"
+    ]
+
+
+def can_take_new_task(manager: str):
+    return len(get_active_tasks(manager)) < 2
+
+
+def is_duplicate_task(tasks, manager: str, network: str, action: str):
+    for t in tasks:
+        if (
+            str(t.get("manager")).strip() == str(manager).strip() and
+            str(t.get("network")).strip() == str(network).strip() and
+            str(t.get("action")).strip() == str(action).strip() and
+            t.get("status") != "CLOSED"
+        ):
+            return True
+    return False
+
+
+def calculate_priority(finrez_pre: float, revenue: float) -> str:
+    if not revenue:
+        return "LOW"
+
+    loss_ratio = abs(finrez_pre) / revenue
+
+    if loss_ratio > 0.30:
+        return "CRITICAL"
+    elif loss_ratio > 0.15:
+        return "HIGH"
+    elif loss_ratio > 0.05:
+        return "MEDIUM"
+    else:
+        return "LOW"
 
 # =========================================================
 # DATA LOADER
@@ -1101,7 +1270,8 @@ def build_sku_global(df, sku_query, year, compare_year=None, category=None, busi
             "gap_market_pre": summary_gaps["gap_market_pre"],
             "gap_market_total": summary_gaps["gap_market_total"],
             "gap_markup_pre": summary_gaps["gap_markup_pre"],
-            "gap_markup_total": summary_gaps["gap_markup_total"]
+            "gap_markup_total": summary_gaps["gap_markup_total"],
+            "gap_status": classify_gap(summary_gaps["gap_markup_pre"])
         },
         "items": items
     }
@@ -1131,6 +1301,14 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
     filtered = product_filter_result["df"]
 
     revenue = float(filtered["revenue"].sum())
+
+    if revenue <= 0:
+        return {
+            "status": "error",
+            "object": "network_pnl",
+            "message": "invalid revenue"
+        }
+
     cost_price = float(filtered["cost_price"].sum())
     markup_value = float(filtered["markup_value"].sum())
     markup_percent_avg = float(filtered["markup_percent"].mean()) if len(filtered) else 0.0
@@ -1158,6 +1336,17 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
     top_pre_cost_name = max(cost_items_pre, key=cost_items_pre.get) if cost_items_pre else None
     top_pre_cost_value = cost_items_pre[top_pre_cost_name] if top_pre_cost_name else 0.0
 
+    effect = {
+        "money": float(top_pre_cost_value),
+        "text": f"потенциал улучшения до {float(top_pre_cost_value):,.0f} грн"
+    }
+
+    top_driver_action = (
+        f"снизить давление по статье {top_pre_cost_name}"
+        if top_pre_cost_name else
+        "разобрать главную статью давления"
+    )
+
     gap_markup_to_pre = markup_value - finrez_pre
     gap_pre_to_total = finrez_pre - finrez_total
 
@@ -1176,17 +1365,17 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
     }
 
     if markup_value > 0 and finrez_pre < 0:
-        diagnosis = "продукт дает валовую прибыль, но сеть убыточна до распределения"
-        recommendation = "пересмотреть ретробонус, логистику, персонал и прочие прямые затраты"
+        diagnosis = f"главный фактор давления — {top_pre_cost_name}"
+        recommendation = top_driver_action
     elif finrez_pre > 0 and finrez_total < 0:
-        diagnosis = "сеть прибыльна до распределения, но уходит в минус после аллокации"
+        diagnosis = "прибыль до распределения есть, но итог разрушается после аллокации"
         recommendation = "проверить распределенные и фиксированные затраты"
     elif finrez_pre <= 0 and finrez_total <= 0:
-        diagnosis = "сеть убыточна как на уровне прямой экономики, так и на итоговом уровне"
-        recommendation = "пересобрать условия входа, затраты и ассортимент"
+        diagnosis = f"сеть убыточна, главный фактор давления — {top_pre_cost_name}"
+        recommendation = top_driver_action
     else:
         diagnosis = "сеть в рабочем диапазоне"
-        recommendation = "контролировать структуру затрат и усиливать сильные SKU"
+        recommendation = "контролировать структуру затрат"
 
     return {
         "status": "ok",
@@ -1212,7 +1401,8 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
             "gap_market_pre": gaps["gap_market_pre"],
             "gap_market_total": gaps["gap_market_total"],
             "gap_markup_pre": gaps["gap_markup_pre"],
-            "gap_markup_total": gaps["gap_markup_total"]
+            "gap_markup_total": gaps["gap_markup_total"],
+            "gap_status": classify_gap(gaps["gap_markup_pre"])
         },
         "costs": {
             "trade_invest": trade_invest,
@@ -1230,8 +1420,10 @@ def build_network_pnl(df, network_name, year, category=None, business=None, tmc_
             "name": top_pre_cost_name,
             "value": top_pre_cost_value
         },
+        "top_driver_action": top_driver_action,
         "diagnosis": diagnosis,
         "recommendation": recommendation,
+        "effect": effect,
         "pnl_flow": pnl_flow
     }
 
@@ -1440,6 +1632,155 @@ def build_dimension_summary(
 
     result = build_grouped_payload(year_df, dimension, f"{dimension}_summary", type_value=type_value, limit=limit)
     return attach_year_context(result, year_ctx)
+
+
+
+
+def build_effect_analysis(
+    df,
+    network_name,
+    year_before: int,
+    year_after: int,
+    category=None,
+    business=None,
+    tmc_group=None,
+    decision_id: str = None
+):
+    year_before_ctx = resolve_available_year(df, int(year_before))
+    year_after_ctx = resolve_available_year(df, int(year_after))
+
+    before_df = df[df["year"] == year_before_ctx["effective_year"]].copy()
+    after_df = df[df["year"] == year_after_ctx["effective_year"]].copy()
+
+    before_filter = apply_product_filters(
+        before_df,
+        category=category,
+        business=business,
+        tmc_group=tmc_group
+    )
+    if before_filter["status"] != "ok":
+        return {
+            "status": before_filter["status"],
+            "message": before_filter["message"],
+            "suggestions": before_filter.get("suggestions", [])
+        }
+
+    after_filter = apply_product_filters(
+        after_df,
+        category=category,
+        business=business,
+        tmc_group=tmc_group
+    )
+    if after_filter["status"] != "ok":
+        return {
+            "status": after_filter["status"],
+            "message": after_filter["message"],
+            "suggestions": after_filter.get("suggestions", [])
+        }
+
+    before_df = before_filter["df"]
+    after_df = after_filter["df"]
+
+    resolved_before = resolve_value_matches(before_df, "network", network_name)
+    if resolved_before["status"] == "not_found":
+        return {"status": "not_found", "message": "Сеть не найдена в year_before"}
+    if resolved_before["status"] == "ambiguous":
+        return {
+            "status": "ambiguous",
+            "message": "Найдено несколько сетей",
+            "suggestions": resolved_before["suggestions"]
+        }
+
+    real_network = resolved_before["matches"][0]
+
+    main_before = before_df[
+        before_df["network"].astype(str).str.strip() == str(real_network).strip()
+    ].copy()
+
+    main_after = after_df[
+        after_df["network"].astype(str).str.strip() == str(real_network).strip()
+    ].copy()
+
+    if main_before.empty or main_after.empty:
+        return {
+            "status": "not_found",
+            "message": "Недостаточно данных по выбранной сети в одном из периодов"
+        }
+
+    finrez_before = float(main_before["finrez_pre"].sum())
+    finrez_after = float(main_after["finrez_pre"].sum())
+
+    control_before = before_df[
+        before_df["network"].astype(str).str.strip() != str(real_network).strip()
+    ].copy()
+
+    control_after = after_df[
+        after_df["network"].astype(str).str.strip() != str(real_network).strip()
+    ].copy()
+
+    control_trend = calculate_control_trend(control_before, control_after)
+    fact_effect = calculate_fact_effect(finrez_before, finrez_after, control_trend)
+
+    decision = None
+    expected_effect = None
+    manager = None
+    decision_validation_errors = []
+
+    if decision_id:
+        decision = get_decision(decision_id)
+
+        if decision:
+            expected_effect = decision.get("expected_effect")
+            manager = decision.get("manager")
+
+            decision_validation_errors = validate_decision(
+                decision,
+                real_network,
+                year_before,
+                year_after
+            )
+        else:
+            decision_validation_errors = ["decision not found"]
+
+    delta_effect = calculate_delta_effect(fact_effect, expected_effect)
+    success_flag = calculate_success_flag(delta_effect)
+
+    payload = {
+        "status": "ok",
+        "object": "effect_analysis",
+        "network": real_network,
+        "year_before": int(year_before_ctx["effective_year"]),
+        "year_after": int(year_after_ctx["effective_year"]),
+        "requested_year_before": int(year_before_ctx["requested_year"]),
+        "requested_year_after": int(year_after_ctx["requested_year"]),
+        "effect_analysis": {
+            "finrez_before": safe_round(finrez_before),
+            "finrez_after": safe_round(finrez_after),
+            "raw_change": safe_round(finrez_after - finrez_before),
+            "control_trend": safe_round(control_trend),
+            "fact_effect": safe_round(fact_effect),
+            "expected_effect": safe_round(expected_effect),
+            "delta_effect": safe_round(delta_effect),
+            "success_flag": success_flag,
+            "decision_id": decision_id,
+            "manager": manager,
+            "decision_validation": decision_validation_errors,
+            "control_warning": (
+                "Нет baseline, результат может быть искажен"
+                if control_trend is None else None
+            )
+        }
+    }
+
+    payload["fallback_before_applied"] = year_before_ctx["fallback_applied"]
+    payload["fallback_after_applied"] = year_after_ctx["fallback_applied"]
+    payload["fallback_before_year"] = year_before_ctx["fallback_year"]
+    payload["fallback_after_year"] = year_after_ctx["fallback_year"]
+
+    if year_before_ctx["fallback_applied"] or year_after_ctx["fallback_applied"]:
+        payload["warning"] = "Один из запрошенных годов отсутствует. Использован ближайший доступный год."
+
+    return payload
 
 
 # =========================================================
@@ -1755,6 +2096,270 @@ def region_summary(
             business=business,
             tmc_group=tmc_group
         )
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({
+            "status": "error",
+            "message": str(e)
+        })
+
+
+
+
+@app.post("/create_task")
+def create_task_api(
+    network: str,
+    manager: str,
+    action: str,
+    expected_effect: float,
+    year: int,
+    category: Optional[str] = Query(None, description="Категория"),
+    business: Optional[str] = Query(None, description="Бизнес"),
+    tmc_group: Optional[str] = Query(None, description="Группа ТМЦ")
+):
+    try:
+        if manager_task_limit(manager):
+            return safe_json({
+                "status": "blocked",
+                "message": "Закрой текущие задачи перед созданием новой",
+                "active_tasks": [
+                    t for t in load_tasks()
+                    if str(t.get("manager")).strip() == str(manager).strip()
+                    and t.get("status") != "CLOSED"
+                ]
+            })
+
+        if not can_take_new_task(manager):
+            return safe_json({
+                "status": "blocked",
+                "message": "Лимит активных задач (2) на менеджера"
+            })
+
+        df = load_data()
+
+        summary = build_network_summary(
+            df,
+            network_name=network,
+            year=year,
+            category=category,
+            business=business,
+            tmc_group=tmc_group
+        )
+
+        if summary.get("status") != "ok":
+            return safe_json(summary)
+
+        finrez_before = float(summary.get("finrez_pre", 0))
+        revenue = float(summary.get("revenue", 0))
+
+        if finrez_before == 0:
+            return safe_json({
+                "status": "error",
+                "message": "нельзя создать задачу без экономической базы"
+            })
+
+        tasks = load_tasks()
+
+        if is_duplicate_task(tasks, manager, network, action):
+            return safe_json({
+                "status": "duplicate",
+                "message": "Такая задача уже существует и не закрыта"
+            })
+
+        task = {
+            "id": generate_decision_id(),
+            "decision_id": generate_decision_id(),
+            "manager": manager,
+            "network": network,
+            "action": action,
+            "expected_effect": float(expected_effect),
+            "finrez_before": finrez_before,
+            "status": "OPEN",
+            "priority": calculate_priority(finrez_before, revenue),
+            "created_at": datetime.utcnow().isoformat(),
+            "closed_at": None,
+            "finrez_after": None,
+            "real_effect": None,
+            "success_rate": None
+        }
+
+        tasks.append(task)
+        save_tasks(tasks)
+
+        return safe_json({
+            "status": "ok",
+            "task": task
+        })
+
+    except Exception as e:
+        return safe_json({"status": "error", "message": str(e)})
+
+
+@app.post("/close_task")
+def close_task_api(
+    task_id: str,
+    year: int
+):
+    try:
+        tasks = load_tasks()
+        task = next((t for t in tasks if t.get("id") == task_id or t.get("decision_id") == task_id), None)
+
+        if not task:
+            return safe_json({"status": "not_found", "message": "task not found"})
+
+        if task.get("status") == "CLOSED":
+            return safe_json({"status": "error", "message": "task already closed"})
+
+        df = load_data()
+
+        effect_result = build_effect_analysis(
+            df=df,
+            network_name=task["network"],
+            year_before=year - 1,
+            year_after=year,
+            decision_id=task.get("decision_id")
+        )
+
+        if effect_result.get("status") != "ok":
+            return safe_json(effect_result)
+
+        ea = effect_result.get("effect_analysis", {})
+        finrez_after = ea.get("finrez_after")
+        control_trend = ea.get("control_trend")
+        fact_effect = ea.get("fact_effect")
+        expected_effect = ea.get("expected_effect")
+        delta_effect = ea.get("delta_effect")
+        success_flag = ea.get("success_flag")
+
+        success_rate = (fact_effect / expected_effect) if expected_effect not in (None, 0) and fact_effect is not None else None
+
+        task.update({
+            "status": "CLOSED",
+            "closed_at": datetime.utcnow().isoformat(),
+            "finrez_after": finrez_after,
+            "control_trend": control_trend,
+            "fact_effect": fact_effect,
+            "expected_effect": expected_effect,
+            "delta_effect": delta_effect,
+            "success_flag": success_flag,
+            "real_effect": fact_effect,
+            "success_rate": success_rate
+        })
+
+        save_tasks(tasks)
+
+        return safe_json({
+            "status": "ok",
+            "task": task,
+            "effect_analysis": ea
+        })
+
+    except Exception as e:
+        return safe_json({"status": "error", "message": str(e)})
+
+
+
+
+@app.get("/manager_dashboard")
+def manager_dashboard(manager: str):
+    tasks = [
+        t for t in load_tasks()
+        if str(t.get("manager")).strip() == str(manager).strip()
+    ]
+
+    active_tasks = [t for t in tasks if t.get("status") != "CLOSED"]
+    closed_tasks = [t for t in tasks if t.get("status") == "CLOSED"]
+
+    return safe_json({
+        "status": "ok",
+        "manager": manager,
+        "active_tasks": active_tasks,
+        "closed_tasks_count": len(closed_tasks),
+        "tasks_count": len(active_tasks),
+        "flow_status": "blocked" if len(active_tasks) >= 2 else "free",
+        "next_action": "close_tasks" if len(active_tasks) >= 2 else "analyze"
+    })
+
+
+@app.get("/team_control")
+def team_control():
+    tasks = load_tasks()
+
+    managers = sorted(set(
+        str(t.get("manager")).strip()
+        for t in tasks
+        if t.get("manager") is not None
+    ))
+
+    result = []
+
+    for manager in managers:
+        manager_tasks = [
+            t for t in tasks
+            if str(t.get("manager")).strip() == manager
+        ]
+
+        active_tasks = [t for t in manager_tasks if t.get("status") != "CLOSED"]
+        closed_tasks = [t for t in manager_tasks if t.get("status") == "CLOSED"]
+
+        total_real_effect = sum(
+            float(t.get("real_effect", 0) or 0)
+            for t in closed_tasks
+        )
+
+        success_rates = [
+            float(t.get("success_rate"))
+            for t in closed_tasks
+            if t.get("success_rate") is not None
+        ]
+
+        avg_success_rate = (
+            sum(success_rates) / len(success_rates)
+            if success_rates else None
+        )
+
+        result.append({
+            "manager": manager,
+            "active_tasks": len(active_tasks),
+            "closed_tasks": len(closed_tasks),
+            "total_real_effect": round(total_real_effect, 2),
+            "avg_success_rate": round(avg_success_rate, 4) if avg_success_rate is not None else None,
+            "attention_flag": (
+                "high_fail"
+                if len(closed_tasks) > 0 and total_real_effect < 0
+                else "ok"
+            )
+        })
+
+    return safe_json({
+        "status": "ok",
+        "items": result
+    })
+
+@app.get("/effect_analysis")
+def effect_analysis(
+    network: str = Query(..., description="Название сети"),
+    year_before: int = Query(..., description="Период ДО"),
+    year_after: int = Query(..., description="Период ПОСЛЕ"),
+    decision_id: Optional[str] = Query(None, description="ID решения"),
+    category: Optional[str] = Query(None, description="Категория"),
+    business: Optional[str] = Query(None, description="Бизнес"),
+    tmc_group: Optional[str] = Query(None, description="Группа ТМЦ")
+):
+    try:
+        df = load_data()
+
+        result = build_effect_analysis(
+            df,
+            network_name=network,
+            year_before=year_before,
+            year_after=year_after,
+            category=category,
+            business=business,
+            tmc_group=tmc_group,
+            decision_id=decision_id
+        )
+
         return safe_json(result)
     except Exception as e:
         return safe_json({
