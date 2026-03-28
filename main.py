@@ -11,7 +11,7 @@ import uuid
 
 app = FastAPI(
     title="FMCG AI / Vectra Core API",
-    version="6.2.1"
+    version="7.0.1"
 )
 
 DATA_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
@@ -505,6 +505,110 @@ def calc_metrics(filtered_df, market=None):
     }
 
 
+def apply_period_filter(df, year: int, month: Optional[int] = None):
+    year_ctx = resolve_available_year(df, int(year))
+    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+
+    if month is not None:
+        year_df = year_df[year_df["month"] == int(month)].copy()
+
+    return year_ctx, year_df
+
+
+def calc_rate(numerator: float, revenue: float) -> float:
+    return (numerator / revenue) if revenue else 0.0
+
+
+def calc_market_vector(df_scope, tmc_group: Optional[str] = None):
+    work = df_scope.copy()
+
+    if tmc_group:
+        work = work[work["tmc_group"].astype(str).str.strip() == str(tmc_group).strip()].copy()
+
+    revenue = float(work["revenue"].sum())
+    finrez_pre = float(work["finrez_pre"].sum())
+    finrez_total = float(work["finrez_total"].sum())
+    markup_value = float(work["markup_value"].sum())
+    logistics_cost = float(work["logistics_cost"].sum())
+    trade_invest = float(work["trade_invest"].sum())
+    staff_cost = float(work["staff_cost"].sum())
+    other_cost = float(work["other_cost"].sum())
+
+    return {
+        "scope_tmc_group": tmc_group,
+        "market_revenue": revenue,
+        "market_finrez": finrez_pre,
+        "market_margin_pre": calc_rate(finrez_pre, revenue),
+        "market_margin_total": calc_rate(finrez_total, revenue),
+        "market_markup": calc_rate(markup_value, revenue),
+        "market_logistics_rate": calc_rate(logistics_cost, revenue),
+        "market_trade_invest_rate": calc_rate(trade_invest, revenue),
+        "market_staff_rate": calc_rate(staff_cost, revenue),
+        "market_other_rate": calc_rate(other_cost, revenue)
+    }
+
+
+def calc_effect_uah(revenue: float, current_margin: float, target_margin: float) -> float:
+    return (target_margin - current_margin) * revenue
+
+
+def enrich_vectra_payload(scope_df, filtered_df):
+    if filtered_df.empty:
+        return None
+
+    mode_series = filtered_df["tmc_group"].mode()
+    primary_tmc_group = mode_series.iloc[0] if not mode_series.empty else None
+    market = calc_market_vector(scope_df, primary_tmc_group)
+
+    revenue = float(filtered_df["revenue"].sum())
+    finrez_pre = float(filtered_df["finrez_pre"].sum())
+    finrez_total = float(filtered_df["finrez_total"].sum())
+    markup_value = float(filtered_df["markup_value"].sum())
+    logistics_cost = float(filtered_df["logistics_cost"].sum())
+    trade_invest = float(filtered_df["trade_invest"].sum())
+    staff_cost = float(filtered_df["staff_cost"].sum())
+    other_cost = float(filtered_df["other_cost"].sum())
+
+    margin_pre = calc_rate(finrez_pre, revenue)
+    margin_total = calc_rate(finrez_total, revenue)
+    markup = calc_rate(markup_value, revenue)
+    logistics_rate = calc_rate(logistics_cost, revenue)
+    trade_invest_rate = calc_rate(trade_invest, revenue)
+    staff_rate = calc_rate(staff_cost, revenue)
+    other_rate = calc_rate(other_cost, revenue)
+
+    pressure = {
+        "логистика": logistics_rate - market["market_logistics_rate"],
+        "ретро": trade_invest_rate - market["market_trade_invest_rate"],
+        "персонал": staff_rate - market["market_staff_rate"],
+        "прочее": other_rate - market["market_other_rate"]
+    }
+    dominant_pressure = max(pressure.items(), key=lambda x: x[1])[0] if pressure else None
+
+    return {
+        "primary_tmc_group": primary_tmc_group,
+        "finrez": finrez_pre,
+        "finrez_total_info": finrez_total,
+        "margin_pre": margin_pre,
+        "margin_total": margin_total,
+        "markup": markup,
+        "market_margin_pre": market["market_margin_pre"],
+        "market_markup": market["market_markup"],
+        "market_logistics_rate": market["market_logistics_rate"],
+        "market_trade_invest_rate": market["market_trade_invest_rate"],
+        "market_staff_rate": market["market_staff_rate"],
+        "market_other_rate": market["market_other_rate"],
+        "delta_margin_vs_market": margin_pre - market["market_margin_pre"],
+        "delta_markup_vs_market": markup - market["market_markup"],
+        "delta_logistics_vs_market": logistics_rate - market["market_logistics_rate"],
+        "delta_trade_invest_vs_market": trade_invest_rate - market["market_trade_invest_rate"],
+        "delta_staff_vs_market": staff_rate - market["market_staff_rate"],
+        "delta_other_vs_market": other_rate - market["market_other_rate"],
+        "effect_uah": calc_effect_uah(revenue, margin_pre, market["market_margin_pre"]),
+        "dominant_pressure": dominant_pressure
+    }
+
+
 
 
 def load_decisions():
@@ -809,9 +913,8 @@ def load_data(force_reload=False):
 # BUILDERS
 # =========================================================
 
-def build_networks_summary(df, year, type_value=None, limit=0, category=None, business=None, tmc_group=None):
-    year_ctx = resolve_available_year(df, int(year))
-    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+def build_networks_summary(df, year, month=None, type_value=None, limit=0, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    year_ctx, year_df = apply_period_filter(df, int(year), month)
 
     if year_df.empty:
         payload = {
@@ -833,13 +936,25 @@ def build_networks_summary(df, year, type_value=None, limit=0, category=None, bu
         return attach_year_context(payload, year_ctx)
 
     year_df = product_filter_result["df"]
+
+    if manager_name and manager_type in ["manager_kam", "manager_national"]:
+        manager_result = apply_exact_filter(year_df, manager_type, manager_name)
+        if manager_result["status"] != "ok":
+            payload = {"status": manager_result["status"], "object": "network_summary", "message": manager_result["message"]}
+            if manager_result.get("suggestions"):
+                payload["suggestions"] = manager_result["suggestions"]
+            return attach_year_context(payload, year_ctx)
+        year_df = manager_result["df"]
+
     result = build_grouped_payload(year_df, "network", "network_summary", type_value=type_value, limit=limit)
+    vectra = enrich_vectra_payload(year_df, year_df) if not year_df.empty else None
+    if vectra:
+        result["vectra"] = vectra
     return attach_year_context(result, year_ctx)
 
 
-def build_network_summary(df, network_name, year, category=None, business=None, tmc_group=None, group_by=None):
-    year_ctx = resolve_available_year(df, int(year))
-    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+def build_network_summary(df, network_name, year, month=None, category=None, business=None, tmc_group=None, group_by=None, manager_name=None, manager_type="manager_kam"):
+    year_ctx, year_df = apply_period_filter(df, int(year), month)
 
     if year_df.empty:
         payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
@@ -856,6 +971,16 @@ def build_network_summary(df, network_name, year, category=None, business=None, 
         return attach_year_context(payload, year_ctx)
 
     year_df = product_filter_result["df"]
+
+    if manager_name and manager_type in ["manager_kam", "manager_national"]:
+        manager_result = apply_exact_filter(year_df, manager_type, manager_name)
+        if manager_result["status"] != "ok":
+            payload = {"status": manager_result["status"], "message": manager_result["message"]}
+            if manager_result.get("suggestions"):
+                payload["suggestions"] = manager_result["suggestions"]
+            return attach_year_context(payload, year_ctx)
+        year_df = manager_result["df"]
+
     market = calc_market_metrics(year_df) if not year_df.empty else {
         "market_margin_pre": 0.0,
         "market_margin_total": 0.0,
@@ -899,6 +1024,8 @@ def build_network_summary(df, network_name, year, category=None, business=None, 
 
     metrics = calc_metrics(filtered, market)
 
+    vectra = enrich_vectra_payload(year_df, filtered)
+
     payload = {
         "status": "ok",
         "object": "network_summary",
@@ -920,14 +1047,15 @@ def build_network_summary(df, network_name, year, category=None, business=None, 
         "gap_markup_total": metrics["gap_markup_total"],
         "sku_count": int(filtered["sku"].astype(str).nunique()),
         "tmc_group_count": int(filtered["tmc_group"].astype(str).nunique()),
-        "class": safe_network_class(metrics["revenue"], metrics["margin_pre"], metrics["finrez_pre"])
+        "class": safe_network_class(metrics["revenue"], metrics["margin_pre"], metrics["finrez_pre"]),
+        "vectra": vectra
     }
     return attach_year_context(payload, year_ctx)
 
 
-def build_networks_compare(df, year1, year2, type_value=None, limit=0, category=None, business=None, tmc_group=None):
-    first = build_networks_summary(df, year1, type_value=None, limit=0, category=category, business=business, tmc_group=tmc_group)
-    second = build_networks_summary(df, year2, type_value=None, limit=0, category=category, business=business, tmc_group=tmc_group)
+def build_networks_compare(df, year1, year2, month1=None, month2=None, type_value=None, limit=0, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    first = build_networks_summary(df, year1, month=month1, type_value=None, limit=0, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
+    second = build_networks_summary(df, year2, month=month2, type_value=None, limit=0, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
 
     if first.get("status") != "ok":
         return first
@@ -1028,12 +1156,12 @@ def build_networks_compare(df, year1, year2, type_value=None, limit=0, category=
     }
 
 
-def build_network_compare(df, network_name, year1, year2, category=None, business=None, tmc_group=None):
-    s1 = build_network_summary(df, network_name, year1, category=category, business=business, tmc_group=tmc_group)
+def build_network_compare(df, network_name, year1, year2, month1=None, month2=None, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    s1 = build_network_summary(df, network_name, year1, month=month1, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
     if s1.get("status") != "ok":
         return s1
 
-    s2 = build_network_summary(df, network_name, year2, category=category, business=business, tmc_group=tmc_group)
+    s2 = build_network_summary(df, network_name, year2, month=month2, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
     if s2.get("status") != "ok":
         return s2
 
@@ -1062,9 +1190,8 @@ def build_network_compare(df, network_name, year1, year2, category=None, busines
     }
 
 
-def build_sku_list(df, year, type_value=None, limit=0, network=None, category=None, business=None, tmc_group=None):
-    year_ctx = resolve_available_year(df, int(year))
-    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+def build_sku_list(df, year, month=None, type_value=None, limit=0, network=None, manager_name=None, manager_type="manager_kam", category=None, business=None, tmc_group=None):
+    year_ctx, year_df = apply_period_filter(df, int(year), month)
 
     if year_df.empty:
         payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
@@ -1081,6 +1208,18 @@ def build_sku_list(df, year, type_value=None, limit=0, network=None, category=No
         return attach_year_context(payload, year_ctx)
 
     year_df = product_filter_result["df"]
+
+    if manager_name and manager_type in ["manager_kam", "manager_national"]:
+        manager_result = apply_exact_filter(year_df, manager_type, manager_name)
+        if manager_result["status"] != "ok":
+            payload = {
+                "status": manager_result["status"],
+                "message": manager_result["message"]
+            }
+            if manager_result.get("suggestions"):
+                payload["suggestions"] = manager_result["suggestions"]
+            return attach_year_context(payload, year_ctx)
+        year_df = manager_result["df"]
 
     if network:
         result = apply_exact_filter(year_df, "network", network)
@@ -1100,9 +1239,11 @@ def build_sku_list(df, year, type_value=None, limit=0, network=None, category=No
     return attach_year_context(result, year_ctx)
 
 
-def build_sku_global(df, sku_query, year, compare_year=None, category=None, business=None, tmc_group=None):
+def build_sku_global(df, sku_query, year, month=None, compare_year=None, compare_month=None, category=None, business=None, tmc_group=None):
     year_ctx = resolve_available_year(df, int(year))
     base_year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+    if month is not None:
+        base_year_df = base_year_df[base_year_df["month"] == int(month)].copy()
 
     product_filter_result = apply_product_filters(base_year_df, category=category, business=business, tmc_group=tmc_group)
     if product_filter_result["status"] != "ok":
@@ -1147,6 +1288,14 @@ def build_sku_global(df, sku_query, year, compare_year=None, category=None, busi
         df["sku"].isin(matched_skus) &
         df["year"].isin(years)
     ].copy()
+
+    if month is not None:
+        current_mask = (filtered["year"] == year_ctx["effective_year"]) & (filtered["month"] == int(month))
+        if compare_year_ctx and compare_month is not None:
+            compare_mask = (filtered["year"] == compare_year_ctx["effective_year"]) & (filtered["month"] == int(compare_month))
+            filtered = filtered[current_mask | compare_mask].copy()
+        else:
+            filtered = filtered[current_mask].copy()
 
     product_filter_all = apply_product_filters(filtered, category=category, business=business, tmc_group=tmc_group)
     if product_filter_all["status"] != "ok":
@@ -1278,8 +1427,8 @@ def build_sku_global(df, sku_query, year, compare_year=None, category=None, busi
     return attach_year_context(payload, year_ctx)
 
 
-def build_network_pnl(df, network_name, year, category=None, business=None, tmc_group=None):
-    summary = build_network_summary(df, network_name, year, category=category, business=business, tmc_group=tmc_group)
+def build_network_pnl(df, network_name, year, month=None, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    summary = build_network_summary(df, network_name, year, month=month, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
     if summary.get("status") != "ok":
         return summary
 
@@ -1465,8 +1614,8 @@ def _diagnostic_from_row(row):
     }
 
 
-def build_diagnostics(df, network_name, year, category=None, business=None, tmc_group=None):
-    summary = build_network_summary(df, network_name, year, category=category, business=business, tmc_group=tmc_group)
+def build_diagnostics(df, network_name, year, month=None, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    summary = build_network_summary(df, network_name, year, month=month, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
     if summary.get("status") != "ok":
         return summary
 
@@ -1503,8 +1652,8 @@ def build_diagnostics(df, network_name, year, category=None, business=None, tmc_
     }
 
 
-def build_diagnostics_all(df, year, type_value=None, limit=0, category=None, business=None, tmc_group=None):
-    summary = build_networks_summary(df, year, type_value=type_value, limit=limit, category=category, business=business, tmc_group=tmc_group)
+def build_diagnostics_all(df, year, month=None, type_value=None, limit=0, category=None, business=None, tmc_group=None, manager_name=None, manager_type="manager_kam"):
+    summary = build_networks_summary(df, year, month=month, type_value=type_value, limit=limit, category=category, business=business, tmc_group=tmc_group, manager_name=manager_name, manager_type=manager_type)
     if summary.get("status") != "ok":
         return summary
 
@@ -1549,7 +1698,8 @@ def build_diagnostics_all(df, year, type_value=None, limit=0, category=None, bus
 def build_dimension_summary(
     df,
     year,
-    dimension,
+    month=None,
+    dimension=None,
     type_value=None,
     limit=0,
     manager_name=None,
@@ -1559,8 +1709,7 @@ def build_dimension_summary(
     tmc_group=None,
     group_by=None
 ):
-    year_ctx = resolve_available_year(df, int(year))
-    year_df = df[df["year"] == year_ctx["effective_year"]].copy()
+    year_ctx, year_df = apply_period_filter(df, int(year), month)
 
     if year_df.empty:
         payload = {"status": "not_found", "message": f"Нет данных за {year_ctx['effective_year']}"}
@@ -1605,6 +1754,7 @@ def build_dimension_summary(
 
         market = calc_market_metrics(df[df["year"] == year_ctx["effective_year"]].copy())
         metrics = calc_metrics(year_df, market)
+        vectra = enrich_vectra_payload(df[df["year"] == year_ctx["effective_year"]].copy(), year_df)
 
         payload = {
             "status": "ok",
@@ -1626,7 +1776,8 @@ def build_dimension_summary(
             "gap_market_total": metrics["gap_market_total"],
             "gap_markup_pre": metrics["gap_markup_pre"],
             "gap_markup_total": metrics["gap_markup_total"],
-            "class": classify_margin(metrics["margin_pre"])
+            "class": classify_margin(metrics["margin_pre"]),
+            "vectra": vectra
         }
         return attach_year_context(payload, year_ctx)
 
@@ -1792,7 +1943,7 @@ def root():
     return safe_json({
         "status": "ok",
         "service": "FMCG AI / Vectra Core API",
-        "version": "6.2.1"
+        "version": "7.0.0"
     })
 
 
@@ -1801,7 +1952,7 @@ def health():
     return safe_json({
         "status": "ok",
         "service": "alive",
-        "version": "6.2.1"
+        "version": "7.0.0"
     })
 
 
@@ -1842,7 +1993,10 @@ def data_info():
 @app.get("/network_summary")
 def network_summary(
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
     network: Optional[str] = Query(None, description="Название сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -1858,20 +2012,26 @@ def network_summary(
                 df,
                 network,
                 year,
+                month=month,
                 category=category,
                 business=business,
                 tmc_group=tmc_group,
-                group_by=group_by
+                group_by=group_by,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
         else:
             result = build_networks_summary(
                 df,
                 year,
+                month=month,
                 type_value=type,
                 limit=limit,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
 
         return safe_json(result)
@@ -1885,8 +2045,12 @@ def network_summary(
 @app.get("/network_compare")
 def network_compare(
     year1: int = Query(..., description="Первый год"),
+    month1: Optional[int] = Query(None, description="Первый месяц"),
     year2: int = Query(..., description="Второй год"),
+    month2: Optional[int] = Query(None, description="Второй месяц"),
     network: Optional[str] = Query(None, description="Название сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -1902,20 +2066,28 @@ def network_compare(
                 network,
                 year1,
                 year2,
+                month1=month1,
+                month2=month2,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
         else:
             result = build_networks_compare(
                 df,
                 year1,
                 year2,
+                month1=month1,
+                month2=month2,
                 type_value=type,
                 limit=limit,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
 
         return safe_json(result)
@@ -1929,9 +2101,13 @@ def network_compare(
 @app.get("/sku_global")
 def sku_global(
     year: int = Query(..., description="Основной год анализа"),
+    month: Optional[int] = Query(None, description="Месяц основного периода"),
     sku: Optional[str] = Query(None, description="SKU или часть названия SKU"),
     compare_year: Optional[int] = Query(None, description="Год сравнения"),
+    compare_month: Optional[int] = Query(None, description="Месяц периода сравнения"),
     network: Optional[str] = Query(None, description="Фильтр по сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -1946,7 +2122,9 @@ def sku_global(
                 df,
                 sku,
                 year,
+                month,
                 compare_year,
+                compare_month,
                 category=category,
                 business=business,
                 tmc_group=tmc_group
@@ -1955,9 +2133,12 @@ def sku_global(
             result = build_sku_list(
                 df,
                 year,
+                month=month,
                 type_value=type,
                 limit=limit,
                 network=network,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam"),
                 category=category,
                 business=business,
                 tmc_group=tmc_group
@@ -1975,6 +2156,9 @@ def sku_global(
 def network_pnl(
     network: str = Query(..., description="Название сети"),
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     category: Optional[str] = Query(None, description="Категория"),
     business: Optional[str] = Query(None, description="Бизнес"),
     tmc_group: Optional[str] = Query(None, description="Группа ТМЦ")
@@ -1985,9 +2169,12 @@ def network_pnl(
             df,
             network,
             year,
+            month=month,
             category=category,
             business=business,
-            tmc_group=tmc_group
+            tmc_group=tmc_group,
+            manager_name=manager_name,
+            manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
         )
         return safe_json(result)
     except Exception as e:
@@ -2000,7 +2187,10 @@ def network_pnl(
 @app.get("/diagnostics")
 def diagnostics(
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
     network: Optional[str] = Query(None, description="Название сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -2015,19 +2205,25 @@ def diagnostics(
                 df,
                 network,
                 year,
+                month=month,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
         else:
             result = build_diagnostics_all(
                 df,
                 year,
+                month=month,
                 type_value=type,
                 limit=limit,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
 
         return safe_json(result)
@@ -2041,6 +2237,7 @@ def diagnostics(
 @app.get("/manager_summary")
 def manager_summary(
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
     manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     manager_name: Optional[str] = Query(None, description="Имя менеджера"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
@@ -2057,6 +2254,7 @@ def manager_summary(
         result = build_dimension_summary(
             df,
             year,
+            month,
             manager_col,
             type_value=type,
             limit=limit,
@@ -2078,6 +2276,7 @@ def manager_summary(
 @app.get("/region_summary")
 def region_summary(
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -2089,6 +2288,7 @@ def region_summary(
         result = build_dimension_summary(
             df,
             year,
+            month,
             "region",
             type_value=type,
             limit=limit,
@@ -2368,11 +2568,65 @@ def effect_analysis(
         })
 
 
+
+@app.get("/period_compare")
+def period_compare(
+    year1: int = Query(..., description="Первый год"),
+    month1: Optional[int] = Query(None, description="Первый месяц"),
+    year2: int = Query(..., description="Второй год"),
+    month2: Optional[int] = Query(None, description="Второй месяц"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
+    network: Optional[str] = Query(None, description="Название сети"),
+    category: Optional[str] = Query(None, description="Категория"),
+    business: Optional[str] = Query(None, description="Бизнес"),
+    tmc_group: Optional[str] = Query(None, description="Группа ТМЦ")
+):
+    try:
+        df = load_data()
+        manager_col = "manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam"
+
+        if network:
+            result = build_network_compare(
+                df,
+                network_name=network,
+                year1=year1,
+                year2=year2,
+                month1=month1,
+                month2=month2,
+                category=category,
+                business=business,
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=manager_col
+            )
+        else:
+            result = build_networks_compare(
+                df,
+                year1=year1,
+                year2=year2,
+                month1=month1,
+                month2=month2,
+                category=category,
+                business=business,
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=manager_col
+            )
+
+        return safe_json(result)
+    except Exception as e:
+        return safe_json({"status": "error", "message": str(e)})
+
+
 # backward compatibility
 @app.get("/analyze")
 def analyze(
     year: int = Query(..., description="Год"),
+    month: Optional[int] = Query(None, description="Месяц"),
     network: Optional[str] = Query(None, description="Название сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss / loss_pre / destruction"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -2388,20 +2642,26 @@ def analyze(
                 df,
                 network,
                 year,
+                month=month,
                 category=category,
                 business=business,
                 tmc_group=tmc_group,
-                group_by=group_by
+                group_by=group_by,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
         else:
             result = build_networks_summary(
                 df,
                 year,
+                month=month,
                 type_value=type,
                 limit=limit,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
 
         return safe_json(result)
@@ -2415,8 +2675,12 @@ def analyze(
 @app.get("/compare")
 def compare(
     year1: int = Query(..., description="Первый год"),
+    month1: Optional[int] = Query(None, description="Первый месяц"),
     year2: int = Query(..., description="Второй год"),
+    month2: Optional[int] = Query(None, description="Второй месяц"),
     network: Optional[str] = Query(None, description="Название сети"),
+    manager_name: Optional[str] = Query(None, description="Имя менеджера"),
+    manager_type: str = Query("manager_kam", description="manager_kam / manager_national"),
     type: Optional[str] = Query(None, description="top / anti_top / loss"),
     limit: int = Query(0, description="Лимит строк"),
     category: Optional[str] = Query(None, description="Категория"),
@@ -2432,20 +2696,28 @@ def compare(
                 network,
                 year1,
                 year2,
+                month1=month1,
+                month2=month2,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
         else:
             result = build_networks_compare(
                 df,
                 year1,
                 year2,
+                month1=month1,
+                month2=month2,
                 type_value=type,
                 limit=limit,
                 category=category,
                 business=business,
-                tmc_group=tmc_group
+                tmc_group=tmc_group,
+                manager_name=manager_name,
+                manager_type=("manager_national" if normalize_text(manager_type) == "manager_national" else "manager_kam")
             )
 
         return safe_json(result)
