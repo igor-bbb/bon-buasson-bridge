@@ -6,7 +6,7 @@ import io
 app = FastAPI()
 
 # 🔗 ВСТАВЬ СВОЙ CSV URL
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
 
 
 # ===== UTILS =====
