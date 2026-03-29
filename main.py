@@ -6,7 +6,6 @@ import os
 
 app = FastAPI()
 
-# 👉 берём из Render
 SHEET_URL = os.getenv("VECTRA_GOOGLE_SHEET_URL")
 
 
@@ -26,9 +25,7 @@ def load_data():
     response = requests.get(SHEET_URL, timeout=30)
     response.raise_for_status()
 
-    # 🔥 универсальный фикс
     text = response.content.decode("utf-8", errors="replace")
-
     reader = csv.DictReader(io.StringIO(text))
     return list(reader)
 
@@ -39,7 +36,6 @@ def normalize(rows):
     for row in rows:
         revenue = to_float(row.get("revenue"))
 
-        # 🔴 убираем мусор
         if revenue == 0:
             continue
 
@@ -72,6 +68,29 @@ def normalize(rows):
     return result
 
 
+def aggregate_period(data, period):
+    rows = [r for r in data if r["period"] == period]
+
+    revenue = round(sum(r["revenue"] for r in rows), 2)
+    cost = round(sum(r["cost"] for r in rows), 2)
+    finrez = round(sum(r["finrez"] for r in rows), 2)
+
+    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+    business = 10.0
+    gap = round(business - margin, 2)
+
+    return {
+        "period": period,
+        "rows": len(rows),
+        "revenue": revenue,
+        "cost": cost,
+        "finrez": finrez,
+        "margin": margin,
+        "business": business,
+        "gap": gap
+    }
+
+
 @app.get("/")
 def root():
     return {"status": "ok"}
@@ -85,4 +104,25 @@ def get_data():
     return {
         "rows_count": len(data),
         "preview": data[:20]
+    }
+
+
+@app.get("/compare")
+def compare(period_a: str, period_b: str):
+    rows = load_data()
+    data = normalize(rows)
+
+    a = aggregate_period(data, period_a)
+    b = aggregate_period(data, period_b)
+
+    return {
+        "period_a": a,
+        "period_b": b,
+        "delta": {
+            "revenue": round(b["revenue"] - a["revenue"], 2),
+            "cost": round(b["cost"] - a["cost"], 2),
+            "finrez": round(b["finrez"] - a["finrez"], 2),
+            "margin": round(b["margin"] - a["margin"], 2),
+            "gap": round(b["gap"] - a["gap"], 2)
+        }
     }
