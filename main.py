@@ -99,6 +99,38 @@ def get_sku(manager: str, period: str, network: str):
 
     if not data:
         return {"error": "no data"}
+        @app.get("/full")
+def full_flow(manager: str, period: str):
+    manager_key = (manager, period)
+    manager_data = DATA["manager"].get(manager_key)
+
+    if not manager_data:
+        return {"error": "manager not found"}
+
+    network_name = manager_data["network"]
+
+    network_key = (manager, period, network_name)
+    network_data = DATA["network"].get(network_key)
+
+    sku_key = (manager, period, network_name)
+    sku_data = DATA["sku"].get(sku_key)
+
+    return {
+        "manager": {
+            "name": manager,
+            "period": period,
+            "finrez": manager_data["finrez"],
+            "margin": manager_data["margin"],
+            "business": manager_data["business"],
+            "gap": manager_data["gap"],
+        },
+        "network": {
+            "name": network_name,
+            "finrez": network_data["finrez"] if network_data else None,
+            "margin": network_data["margin"] if network_data else None,
+        },
+        "sku": sku_data,
+    }
 
     return {
         "level": "sku",
