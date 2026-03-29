@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Query
 app = FastAPI(title="VECTRA", version="3.0.0")
 
 DATA_PATH = os.getenv("VECTRA_DATA_PATH", "data.csv")
+GOOGLE_SHEET_URL = os.getenv("VECTRA_GOOGLE_SHEET_URL")
+GOOGLE_SHEET_GID = os.getenv("VECTRA_GOOGLE_SHEET_GID", "0")
 
 
 @dataclass(frozen=True)
@@ -65,11 +67,47 @@ def _to_number(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").fillna(0.0)
 
 
-def load_data() -> pd.DataFrame:
-    if not os.path.exists(DATA_PATH):
-        raise HTTPException(status_code=500, detail="STATUS: NO DATA")
+def _google_sheet_to_csv_url(sheet_url: str, gid: str = "0") -> str:
+    sheet_url = sheet_url.strip()
 
-    df = pd.read_csv(DATA_PATH)
+    if "/export?" in sheet_url and "format=csv" in sheet_url:
+        return sheet_url
+
+    if "/edit" in sheet_url:
+        base = sheet_url.split("/edit")[0]
+        return f"{base}/export?format=csv&gid={gid}"
+
+    if "/gviz/tq?" in sheet_url:
+        return sheet_url
+
+    if "/d/" in sheet_url:
+        base = sheet_url.split("#")[0].rstrip("/")
+        return f"{base}/export?format=csv&gid={gid}"
+
+    return sheet_url
+
+
+def _resolve_data_source() -> str:
+    if GOOGLE_SHEET_URL:
+        return _google_sheet_to_csv_url(GOOGLE_SHEET_URL, GOOGLE_SHEET_GID)
+    return DATA_PATH
+
+
+def load_data() -> pd.DataFrame:
+    source = _resolve_data_source()
+
+    if source.startswith("http://") or source.startswith("https://"):
+        try:
+            df = pd.read_csv(source)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"STATUS: NO DATA | cannot load google sheet: {e}",
+            )
+    else:
+        if not os.path.exists(source):
+            raise HTTPException(status_code=500, detail="STATUS: NO DATA")
+        df = pd.read_csv(source)
 
     missing = [c for c in REQUIRED_BASE_COLUMNS if c not in df.columns]
     if missing:
@@ -536,5 +574,7 @@ def compare_endpoint(year: int = Query(...), month: int = Query(...), manager: O
 
 @app.get("/health")
 def health() -> Dict[str, str]:
-    return {"status": "ok", "version": app.version}
+    source = _resolve_data_source()
+    return {"status": "ok", "version": app.version, "data_source": source}
+
  
