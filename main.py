@@ -89,38 +89,50 @@ def load_rows_from_sheet() -> List[Dict[str, Any]]:
     return list(reader)
 
 
-def normalize_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def normalize_rows(rows):
     normalized = []
 
     for row in rows:
-        period = norm_text(get_first(row, ["period", "период"]))
-        manager = norm_text(get_first(row, ["manager", "менеджер"]))
-        network = norm_text(get_first(row, ["network", "сеть"]))
-        sku = norm_text(get_first(row, ["sku", "товар", "sku_name"]))
-        finrez = to_float(get_first(row, ["finrez", "финрез", "fin_result"]))
-        margin = to_float(get_first(row, ["margin", "маржа"]))
-        business = to_float(get_first(row, ["business", "business_margin", "бизнес"]))
-        gap = to_float(get_first(row, ["gap", "разрыв"]))
-        action = norm_text(get_first(row, ["action", "действие"]))
-        effect = to_float(get_first(row, ["effect", "effect_uah", "эффект"]))
+        period = str(row.get("period", "")).strip()
+        manager = str(row.get("manager_kam", "")).strip()
+        network = str(row.get("network", "")).strip()
+        sku = str(row.get("sku", "")).strip()
 
-        if not manager or not period:
-            continue
+        revenue = to_float(row.get("revenue"))
+        cost = to_float(row.get("cost_price"))
 
-        normalized.append(
-            {
-                "period": period,
-                "manager": manager,
-                "network": network,
-                "sku": sku,
-                "finrez": finrez,
-                "margin": margin,
-                "business": business,
-                "gap": gap,
-                "action": action,
-                "effect": effect,
-            }
-        )
+        # ===== CORE LOGIC =====
+        finrez = revenue - cost
+
+        margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+
+        # пока фикс — можно потом вынести в config
+        business = 10.0
+
+        gap = round(margin - business, 2)
+
+        # ===== ACTION LOGIC =====
+        if margin < 0:
+            action = "вывести SKU"
+        elif margin < 5:
+            action = "пересмотреть цену"
+        else:
+            action = "оставить"
+
+        effect = abs(finrez) if finrez < 0 else 0.0
+
+        normalized.append({
+            "period": period,
+            "manager": manager,
+            "network": network,
+            "sku": sku,
+            "finrez": finrez,
+            "margin": margin,
+            "business": business,
+            "gap": gap,
+            "action": action,
+            "effect": effect
+        })
 
     return normalized
 
