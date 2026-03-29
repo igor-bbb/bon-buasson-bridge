@@ -126,3 +126,65 @@ def compare(period_a: str, period_b: str):
             "gap": round(b["gap"] - a["gap"], 2)
         }
     }
+
+@app.get("/manager")
+def manager(name: str, period: str):
+    rows = load_data()
+    data = normalize(rows)
+
+    # фильтр по менеджеру + периоду
+    rows_filtered = [
+        r for r in data
+        if r["period"] == period and name.lower() in str(r["manager"]).lower()
+    ]
+
+    if not rows_filtered:
+        return {"error": "manager not found or no data"}
+
+    revenue = round(sum(r["revenue"] for r in rows_filtered), 2)
+    cost = round(sum(r["cost"] for r in rows_filtered), 2)
+    finrez = round(sum(r["finrez"] for r in rows_filtered), 2)
+
+    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+    business = 10.0
+    gap = round(business - margin, 2)
+
+    # 🔥 поиск самой проблемной сети
+    network_map = {}
+
+    for r in rows_filtered:
+        net = r["network"]
+
+        if net not in network_map:
+            network_map[net] = {
+                "revenue": 0,
+                "finrez": 0
+            }
+
+        network_map[net]["revenue"] += r["revenue"]
+        network_map[net]["finrez"] += r["finrez"]
+
+    worst_network = None
+    worst_margin = 999
+
+    for net, val in network_map.items():
+        rev = val["revenue"]
+        fr = val["finrez"]
+
+        m = (fr / rev * 100) if rev != 0 else 0
+
+        if m < worst_margin:
+            worst_margin = m
+            worst_network = net
+
+    return {
+        "manager": name,
+        "period": period,
+        "revenue": revenue,
+        "cost": cost,
+        "finrez": finrez,
+        "margin": margin,
+        "gap": gap,
+        "worst_network": worst_network,
+        "worst_margin": round(worst_margin, 2)
+    }
