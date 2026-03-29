@@ -2,16 +2,14 @@ from fastapi import FastAPI
 import requests
 import csv
 import io
-import os
 
 app = FastAPI()
 
 # =========================
-# CONFIG
+# ЖЁСТКО ЗАШИТАЯ ССЫЛКА (без env)
 # =========================
 
-SHEET_URL = os.getenv("VECTRA_GOOGLE_SHEET_URL")
-SHEET_GID = os.getenv("VECTRA_GOOGLE_SHEET_GID")
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
 
 
 # =========================
@@ -25,20 +23,12 @@ def to_float(x):
         return 0.0
 
 
-def build_csv_url():
-    if "export?format=csv" in SHEET_URL:
-        return f"{SHEET_URL}&gid={SHEET_GID}"
-    return f"{SHEET_URL}?format=csv&gid={SHEET_GID}"
-
-
 # =========================
 # LOAD DATA
 # =========================
 
 def load_data():
-    url = build_csv_url()
-
-    response = requests.get(url)
+    response = requests.get(SHEET_URL)
     text = response.text
 
     reader = csv.DictReader(io.StringIO(text))
@@ -63,7 +53,7 @@ def normalize(rows):
         revenue = to_float(row.get("revenue"))
         cost = to_float(row.get("total_cost"))
 
-        # ВАЖНО: берем ДО распределения
+        # КЛЮЧЕВОЕ: ДО распределения
         finrez = to_float(row.get("finrez_pre"))
         margin = to_float(row.get("margin_pre"))
 
@@ -91,6 +81,11 @@ def normalize(rows):
 # ENDPOINTS
 # =========================
 
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+
 @app.get("/data")
 def get_data():
     rows = load_data()
@@ -100,8 +95,3 @@ def get_data():
         "rows_count": len(data),
         "preview": data[:20]
     }
-
-
-@app.get("/")
-def root():
-    return {"status": "ok"}
