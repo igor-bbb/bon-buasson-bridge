@@ -216,9 +216,9 @@ def audit_fields(period: str):
     finrez_pre_sum = round(sum(r["finrez_pre"] for r in rows_filtered), 2)
     finrez_total_sum = round(sum(r["finrez_total"] for r in rows_filtered), 2)
 
+    gross_margin_calc = round((gross_profit_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
     margin_pre_calc = round((finrez_pre_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
     margin_total_calc = round((finrez_total_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
-    gross_margin_calc = round((gross_profit_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
 
     return {
         "period": period,
