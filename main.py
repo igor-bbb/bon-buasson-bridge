@@ -9,33 +9,10 @@ app = FastAPI(title="VECTRA CORE")
 
 
 # =========================
-# CONFIG FROM RENDER ENV
+# CONFIG
 # =========================
 
 SHEET_URL = os.getenv("VECTRA_GOOGLE_SHEET_URL", "").strip()
-SHEET_GID = os.getenv("VECTRA_GOOGLE_SHEET_GID", "").strip()
-
-
-def build_csv_url() -> str:
-    if not SHEET_URL:
-        return ""
-
-    # если уже export-ссылка
-    if "export?format=csv" in SHEET_URL:
-        if "gid=" in SHEET_URL:
-            return SHEET_URL
-        if SHEET_GID:
-            sep = "&" if "?" in SHEET_URL else "?"
-            return f"{SHEET_URL}{sep}gid={SHEET_GID}"
-        return SHEET_URL
-
-    # если обычная ссылка на Google Sheet
-    if "/edit" in SHEET_URL:
-        base = SHEET_URL.split("/edit")[0]
-        gid = SHEET_GID if SHEET_GID else "0"
-        return f"{base}/export?format=csv&gid={gid}"
-
-    return SHEET_URL
 
 
 # =========================
@@ -50,69 +27,57 @@ def to_float(x):
     try:
         if x is None:
             return 0.0
-        text = str(x).strip().replace(" ", "").replace(",", ".")
+        text = str(x).replace(" ", "").replace(",", ".")
         if text == "":
             return 0.0
         return float(text)
-    except Exception:
+    except:
         return 0.0
 
 
-def norm_text(x):
-    if x is None:
-        return ""
-    return str(x).strip()
+def norm(x):
+    return str(x).strip() if x else ""
 
 
 # =========================
-# LOAD RAW DATA FROM SHEET
+# LOAD DATA
 # =========================
 
 def load_data():
-    csv_url = build_csv_url()
-    if not csv_url:
+    if not SHEET_URL:
         return []
 
-    response = requests.get(csv_url, timeout=30)
+    response = requests.get(SHEET_URL, timeout=30)
     response.raise_for_status()
 
-    # ключевая правка по кодировке
     text = response.content.decode("utf-8")
 
     reader = csv.DictReader(io.StringIO(text))
-    rows = list(reader)
-    return rows
+    return list(reader)
 
 
 # =========================
-# NORMALIZATION
+# NORMALIZATION (ВАЖНО)
 # =========================
 
 def normalize(rows):
     result = []
 
     for row in rows:
-        period = norm_text(row.get("period"))
-        manager = norm_text(row.get("manager_kam"))
-        network = norm_text(row.get("network"))
-        sku = norm_text(row.get("sku"))
+        period = norm(row.get("period"))
+        manager = norm(row.get("manager_kam"))
+        network = norm(row.get("network"))
+        sku = norm(row.get("sku"))
 
         revenue = to_float(row.get("revenue"))
-        finrez = to_float(row.get("gross_profit"))
+        finrez = to_float(row.get("finrez_sum"))
+        margin = to_float(row.get("margin_sum"))
 
-        # если gross_profit пустой, fallback
-        if finrez == 0 and revenue != 0:
-            cost = to_float(row.get("cost_price"))
-            finrez = revenue - cost
-
-        margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
-
-        # пока фиксированная база бизнеса
         business = 10.0
         gap = round(margin - business, 2)
 
         if margin < 0:
-            action = "вывести SKU"
+            action = "убрать SKU"
         elif margin < 5:
             action = "пересмотреть цену"
         else:
@@ -141,43 +106,38 @@ def normalize(rows):
 
 
 # =========================
-# AGGREGATIONS
+# FILTER
 # =========================
 
-def filter_manager_rows(data, manager_name, period):
-    manager_name = norm_text(manager_name).lower()
-    period = norm_text(period)
-
+def filter_manager(data, name, period):
+    name = name.lower()
     return [
         r for r in data
-        if r["period"] == period and manager_name in r["manager"].lower()
+        if r["period"] == period and name in r["manager"].lower()
     ]
 
 
-def aggregate_manager(rows):
+# =========================
+# AGGREGATION
+# =========================
+
+def agg_manager(rows):
     if not rows:
         return None
 
-    finrez = sum(r["finrez"] for r in rows)
     revenue = sum(r["revenue"] for r in rows)
-    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+    finrez = sum(r["finrez"] for r in rows)
+    margin = round((finrez / revenue * 100), 2) if revenue else 0.0
+
     business = 10.0
     gap = round(margin - business, 2)
 
-    network_map = {}
+    networks = {}
     for r in rows:
-        network = r["network"]
-        if not network:
-            continue
-        network_map.setdefault(network, 0.0)
-        network_map[network] += r["finrez"]
+        networks.setdefault(r["network"], 0)
+        networks[r["network"]] += r["finrez"]
 
-    if network_map:
-        main_network = min(network_map, key=network_map.get)
-        main_loss = round(network_map[main_network], 2)
-    else:
-        main_network = None
-        main_loss = 0.0
+    main_network = min(networks, key=networks.get) if networks else None
 
     return {
         "finrez": round(finrez, 2),
@@ -185,89 +145,61 @@ def aggregate_manager(rows):
         "business": business,
         "gap": gap,
         "main_network": main_network,
-        "main_loss": main_loss
+        "main_loss": round(networks.get(main_network, 0), 2)
     }
 
 
-def aggregate_network(rows, network_name):
-    network_name = norm_text(network_name)
-    network_rows = [r for r in rows if r["network"] == network_name]
+def agg_network(rows, network_name):
+    rows = [r for r in rows if r["network"] == network_name]
 
-    if not network_rows:
+    if not rows:
         return None
 
-    finrez = sum(r["finrez"] for r in network_rows)
-    revenue = sum(r["revenue"] for r in network_rows)
-    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
-    business = 10.0
-    gap = round(margin - business, 2)
+    revenue = sum(r["revenue"] for r in rows)
+    finrez = sum(r["finrez"] for r in rows)
+    margin = round((finrez / revenue * 100), 2) if revenue else 0.0
 
     return {
         "finrez": round(finrez, 2),
         "margin": margin,
-        "business": business,
-        "gap": gap,
-        "loss": round(finrez, 2)
+        "business": 10.0,
+        "gap": round(margin - 10.0, 2)
     }
 
 
-def aggregate_sku(rows, network_name):
-    network_name = norm_text(network_name)
-    sku_rows = [r for r in rows if r["network"] == network_name]
-
-    if not sku_rows:
-        return []
+def agg_sku(rows, network_name):
+    rows = [r for r in rows if r["network"] == network_name]
 
     sku_map = {}
 
-    for r in sku_rows:
-        sku_name = r["sku"]
-        if not sku_name:
-            continue
+    for r in rows:
+        sku = r["sku"]
+        if sku not in sku_map:
+            sku_map[sku] = {"revenue": 0, "finrez": 0}
 
-        if sku_name not in sku_map:
-            sku_map[sku_name] = {
-                "name": sku_name,
-                "revenue": 0.0,
-                "finrez": 0.0
-            }
+        sku_map[sku]["revenue"] += r["revenue"]
+        sku_map[sku]["finrez"] += r["finrez"]
 
-        sku_map[sku_name]["revenue"] += r["revenue"]
-        sku_map[sku_name]["finrez"] += r["finrez"]
+    result = []
 
-    items = []
-    for _, item in sku_map.items():
-        revenue = item["revenue"]
-        finrez = item["finrez"]
-        margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
-        business = 10.0
-        gap = round(margin - business, 2)
+    for name, v in sku_map.items():
+        revenue = v["revenue"]
+        finrez = v["finrez"]
+        margin = round((finrez / revenue * 100), 2) if revenue else 0
 
-        if margin < 0:
-            action = "вывести SKU"
-        elif margin < 5:
-            action = "пересмотреть цену"
-        else:
-            action = "оставить"
-
-        effect = abs(finrez) if finrez < 0 else 0.0
-
-        items.append({
-            "name": item["name"],
+        result.append({
+            "name": name,
             "finrez": round(finrez, 2),
             "margin": margin,
-            "business": business,
-            "gap": gap,
-            "action": action,
-            "effect": round(effect, 2)
+            "gap": round(margin - 10.0, 2),
+            "action": "убрать SKU" if margin < 0 else "пересмотреть" if margin < 5 else "держать"
         })
 
-    items.sort(key=lambda x: x["finrez"])
-    return items
+    return sorted(result, key=lambda x: x["finrez"])
 
 
 # =========================
-# ENDPOINTS
+# API
 # =========================
 
 @app.get("/")
@@ -275,141 +207,49 @@ def root():
     return json_response({"status": "ok"})
 
 
-@app.get("/health")
-def health():
-    return json_response({
-        "status": "ok",
-        "sheet_url_exists": bool(SHEET_URL),
-        "sheet_gid_exists": bool(SHEET_GID),
-        "csv_url": build_csv_url()
-    })
-
-
 @app.get("/data")
 def data():
-    try:
-        rows = load_data()
-        normalized = normalize(rows)
-        return json_response({
-            "rows_count": len(normalized),
-            "preview": normalized[:5]
-        })
-    except Exception as e:
-        return json_response({
-            "error": str(e),
-            "csv_url": build_csv_url()
-        })
+    rows = load_data()
+    normed = normalize(rows)
+
+    return json_response({
+        "rows_count": len(normed),
+        "preview": normed[:5]
+    })
 
 
 @app.get("/manager")
 def manager(name: str, period: str):
-    try:
-        rows = load_data()
-        normalized = normalize(rows)
-        filtered = filter_manager_rows(normalized, name, period)
-        agg = aggregate_manager(filtered)
+    data = normalize(load_data())
+    rows = filter_manager(data, name, period)
+    agg = agg_manager(rows)
 
-        if not agg:
-            return json_response({"error": "manager not found"})
-
-        return json_response({
-            "level": "manager",
-            "manager": name,
-            "period": period,
-            "finrez": agg["finrez"],
-            "margin": agg["margin"],
-            "business": agg["business"],
-            "gap": agg["gap"],
-            "main_network": agg["main_network"],
-            "main_loss": agg["main_loss"]
-        })
-    except Exception as e:
-        return json_response({"error": str(e)})
+    return json_response({
+        "manager": name,
+        "period": period,
+        **agg
+    })
 
 
 @app.get("/network")
 def network(name: str, period: str, network: str):
-    try:
-        rows = load_data()
-        normalized = normalize(rows)
-        filtered = filter_manager_rows(normalized, name, period)
-        agg = aggregate_network(filtered, network)
+    data = normalize(load_data())
+    rows = filter_manager(data, name, period)
+    agg = agg_network(rows, network)
 
-        if not agg:
-            return json_response({"error": "network not found"})
-
-        return json_response({
-            "level": "network",
-            "manager": name,
-            "period": period,
-            "network": network,
-            "finrez": agg["finrez"],
-            "margin": agg["margin"],
-            "business": agg["business"],
-            "gap": agg["gap"],
-            "loss": agg["loss"]
-        })
-    except Exception as e:
-        return json_response({"error": str(e)})
+    return json_response({
+        "network": network,
+        **agg
+    })
 
 
 @app.get("/sku")
 def sku(name: str, period: str, network: str):
-    try:
-        rows = load_data()
-        normalized = normalize(rows)
-        filtered = filter_manager_rows(normalized, name, period)
-        items = aggregate_sku(filtered, network)
+    data = normalize(load_data())
+    rows = filter_manager(data, name, period)
+    result = agg_sku(rows, network)
 
-        if not items:
-            return json_response({"error": "sku not found"})
-
-        return json_response({
-            "level": "sku",
-            "manager": name,
-            "period": period,
-            "network": network,
-            "items": items[:20]
-        })
-    except Exception as e:
-        return json_response({"error": str(e)})
-
-
-@app.get("/full")
-def full(name: str, period: str):
-    try:
-        rows = load_data()
-        normalized = normalize(rows)
-        filtered = filter_manager_rows(normalized, name, period)
-
-        manager_agg = aggregate_manager(filtered)
-        if not manager_agg:
-            return json_response({"error": "manager not found"})
-
-        network_name = manager_agg["main_network"]
-        network_agg = aggregate_network(filtered, network_name) if network_name else None
-        sku_items = aggregate_sku(filtered, network_name) if network_name else []
-
-        return json_response({
-            "manager": {
-                "name": name,
-                "period": period,
-                "finrez": manager_agg["finrez"],
-                "margin": manager_agg["margin"],
-                "business": manager_agg["business"],
-                "gap": manager_agg["gap"],
-                "main_network": manager_agg["main_network"],
-                "main_loss": manager_agg["main_loss"]
-            },
-            "network": {
-                "name": network_name,
-                "finrez": network_agg["finrez"] if network_agg else None,
-                "margin": network_agg["margin"] if network_agg else None,
-                "business": network_agg["business"] if network_agg else None,
-                "gap": network_agg["gap"] if network_agg else None,
-                "loss": network_agg["loss"] if network_agg else None
-            },
-            "sku": sku_items[:20]
-        })
-    except Exception as e:
-        return json_response({"error": str(e)})
+    return json_response({
+        "network": network,
+        "items": result[:20]
+    })
