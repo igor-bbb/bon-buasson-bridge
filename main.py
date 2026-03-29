@@ -26,7 +26,7 @@ def load_data():
     response = requests.get(SHEET_URL, timeout=30)
     response.raise_for_status()
 
-    text = response.content.decode("utf-8", errors="ignore")
+    text = response.content.decode("cp1251")  # ← ВОТ ЭТО ВАЖНО
     reader = csv.DictReader(io.StringIO(text))
     return list(reader)
 
