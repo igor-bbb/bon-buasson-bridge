@@ -29,7 +29,7 @@ def to_float(x):
 
 def load_data():
     response = requests.get(SHEET_URL)
-    text = response.text
+    text = response.content.decode("utf-8-sig")
 
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
