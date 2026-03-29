@@ -6,6 +6,9 @@ app = FastAPI(title="vectra-core-v1")
 
 
 # ===== MOCK DATA =====
+# ВАЖНО:
+# Это тестовые данные.
+# Пока Google Sheets не подключен, система работает на этом словаре.
 
 DATA = {
     "manager": {
@@ -166,7 +169,7 @@ def full_flow(manager: str, period: str):
         "network": {
             "name": network_name,
             "finrez": network_data["finrez"] if network_data else None,
-            "margin": network_data["margin"] if network_data else None,
+[29.03.2026 19:27] VECTRA: "margin": network_data["margin"] if network_data else None,
             "business": network_data["business"] if network_data else None,
             "gap": network_data["gap"] if network_data else None,
             "loss": network_data["loss"] if network_data else None,
