@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
+
 from fastapi import FastAPI
-from typing import Optional
 
 app = FastAPI(title="vectra-core-v1")
 
 
-# ===== MOCK DATA (вместо Google Sheets пока) =====
+# ===== MOCK DATA =====
 
 DATA = {
     "manager": {
@@ -24,6 +24,7 @@ DATA = {
             "margin": -5.1,
             "business": 10.0,
             "gap": -15.1,
+            "loss": -18000,
         }
     },
     "sku": {
@@ -32,25 +33,41 @@ DATA = {
                 "name": "Bon Buasson 2L Lemon",
                 "finrez": -6000,
                 "margin": -8.5,
+                "business": 15.0,
+                "gap": -23.5,
+                "action": "вывести SKU из сети",
+                "effect": 6000,
             },
             {
                 "name": "Bon Buasson 2L Orange",
                 "finrez": -4200,
                 "margin": -6.2,
+                "business": 15.0,
+                "gap": -21.2,
+                "action": "вывести SKU из сети",
+                "effect": 4200,
             },
         ]
     },
 }
 
 
-# ===== HEALTH =====
+# ===== SERVICE CHECK =====
+
+@app.get("/")
+def root():
+    return {"status": "vectra running"}
+
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "vectra-core-v1"}
+    return {
+        "status": "ok",
+        "service": "vectra-core-v1",
+    }
 
 
-# ===== VECTRA ENTRY =====
+# ===== LEVEL: MANAGER =====
 
 @app.get("/manager")
 def get_manager(manager: str, period: str):
@@ -58,7 +75,7 @@ def get_manager(manager: str, period: str):
     data = DATA["manager"].get(key)
 
     if not data:
-        return {"error": "no data"}
+        return {"error": "manager not found"}
 
     return {
         "level": "manager",
@@ -69,9 +86,12 @@ def get_manager(manager: str, period: str):
         "business": data["business"],
         "gap": data["gap"],
         "main_network": data["network"],
+        "main_loss": data["loss"],
         "next": "network",
     }
 
+
+# ===== LEVEL: NETWORK =====
 
 @app.get("/network")
 def get_network(manager: str, period: str, network: str):
@@ -79,18 +99,23 @@ def get_network(manager: str, period: str, network: str):
     data = DATA["network"].get(key)
 
     if not data:
-        return {"error": "no data"}
+        return {"error": "network not found"}
 
     return {
         "level": "network",
+        "manager": manager,
+        "period": period,
         "network": network,
         "finrez": data["finrez"],
         "margin": data["margin"],
         "business": data["business"],
         "gap": data["gap"],
+        "loss": data["loss"],
         "next": "sku",
     }
 
+
+# ===== LEVEL: SKU =====
 
 @app.get("/sku")
 def get_sku(manager: str, period: str, network: str):
@@ -98,8 +123,20 @@ def get_sku(manager: str, period: str, network: str):
     data = DATA["sku"].get(key)
 
     if not data:
-        return {"error": "no data"}
-        @app.get("/full")
+        return {"error": "sku not found"}
+
+    return {
+        "level": "sku",
+        "manager": manager,
+        "period": period,
+        "network": network,
+        "items": data,
+    }
+
+
+# ===== FULL FLOW =====
+
+@app.get("/full")
 def full_flow(manager: str, period: str):
     manager_key = (manager, period)
     manager_data = DATA["manager"].get(manager_key)
@@ -123,16 +160,16 @@ def full_flow(manager: str, period: str):
             "margin": manager_data["margin"],
             "business": manager_data["business"],
             "gap": manager_data["gap"],
+            "main_network": manager_data["network"],
+            "main_loss": manager_data["loss"],
         },
         "network": {
             "name": network_name,
             "finrez": network_data["finrez"] if network_data else None,
             "margin": network_data["margin"] if network_data else None,
+            "business": network_data["business"] if network_data else None,
+            "gap": network_data["gap"] if network_data else None,
+            "loss": network_data["loss"] if network_data else None,
         },
-        "sku": sku_data,
-    }
-
-    return {
-        "level": "sku",
-        "items": data,
+        "sku": sku_data if sku_data else [],
     }
