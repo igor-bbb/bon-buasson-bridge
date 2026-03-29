@@ -5,41 +5,29 @@ import io
 
 app = FastAPI()
 
-# =========================
-# ЖЁСТКО ЗАШИТАЯ ССЫЛКА (без env)
-# =========================
-
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1YQEbf2DpWaBjjGGYw_0gtRUrn_QgwXKipUn1IsxJSno/export?format=csv&gid=1050155540"
 
 
-# =========================
-# UTILS
-# =========================
-
 def to_float(x):
     try:
-        return float(str(x).replace(",", "."))
+        if x is None:
+            return 0.0
+        s = str(x).strip().replace(" ", "").replace(",", ".").replace("%", "")
+        if s == "":
+            return 0.0
+        return float(s)
     except:
         return 0.0
 
 
-# =========================
-# LOAD DATA
-# =========================
-
 def load_data():
-    response = requests.get(SHEET_URL)
-    text = response.content.decode("utf-8-sig")
+    response = requests.get(SHEET_URL, timeout=30)
+    response.raise_for_status()
 
+    text = response.content.decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
-    rows = list(reader)
+    return list(reader)
 
-    return rows
-
-
-# =========================
-# NORMALIZE
-# =========================
 
 def normalize(rows):
     result = []
@@ -53,12 +41,11 @@ def normalize(rows):
         revenue = to_float(row.get("revenue"))
         cost = to_float(row.get("total_cost"))
 
-        # КЛЮЧЕВОЕ: ДО распределения
         finrez = to_float(row.get("finrez_pre"))
         margin = to_float(row.get("margin_pre"))
 
         business = 10.0
-        gap = business - margin
+        gap = round(business - margin, 2)
 
         result.append({
             "period": period,
@@ -77,10 +64,6 @@ def normalize(rows):
     return result
 
 
-# =========================
-# ENDPOINTS
-# =========================
-
 @app.get("/")
 def root():
     return {"status": "ok"}
@@ -90,7 +73,6 @@ def root():
 def get_data():
     rows = load_data()
     data = normalize(rows)
-
     return {
         "rows_count": len(data),
         "preview": data[:20]
