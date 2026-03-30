@@ -4,7 +4,8 @@ import os
 import csv
 import requests
 from io import StringIO
-from typing import Dict, List, Any
+from typing import Dict, Any, Iterator, Optional
+
 
 app = FastAPI(title="VECTRA CORE")
 
@@ -35,13 +36,14 @@ def to_float(x: Any) -> float:
 
 def normalize_period(row: Dict[str, Any]) -> str:
     period = clean_text(row.get("period"))
+
     if period:
-        # если уже YYYY-MM
+        # если уже формат YYYY-MM
         if len(period) == 7 and period[4] == "-":
             return period
 
-        # если вдруг дата вида 2026-03-30 или 30.03.2026
-        if len(period) >= 7 and period[:4].isdigit():
+        # если формат длиннее, но начинается с YYYY-MM
+        if len(period) >= 7 and period[:4].isdigit() and period[4] == "-":
             return period[:7]
 
     year = clean_text(row.get("year"))
@@ -57,49 +59,12 @@ def normalize_period(row: Dict[str, Any]) -> str:
     return period
 
 
-def clean_headers(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    cleaned = []
-    for row in rows:
-        new_row = {}
-        for k, v in row.items():
-            key = clean_text(k).lower()
-            new_row[key] = v
-        cleaned.append(new_row)
+def clean_row_keys(row: Dict[str, Any]) -> Dict[str, Any]:
+    cleaned = {}
+    for k, v in row.items():
+        key = clean_text(k).lower()
+        cleaned[key] = v
     return cleaned
-
-
-def detect_csv_delimiter(text: str) -> str:
-    sample = text[:5000]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;")
-        return dialect.delimiter
-    except Exception:
-        return ","
-
-
-def load_data_raw() -> List[Dict[str, Any]]:
-    if not SHEET_URL:
-        raise ValueError("VECTRA_GOOGLE_SHEET_URL is empty")
-
-    response = requests.get(SHEET_URL, timeout=60)
-    response.raise_for_status()
-
-    csv_text = response.content.decode("utf-8-sig", errors="replace")
-
-    try:
-        reader = csv.DictReader(StringIO(csv_text), delimiter=';')
-        rows = list(reader)
-
-        # если получили одну колонку — значит разделитель не тот
-        if len(rows) > 0 and len(list(rows[0].keys())) == 1:
-            raise ValueError("wrong delimiter")
-
-    except:
-        reader = csv.DictReader(StringIO(csv_text), delimiter=',')
-        rows = list(reader)
-
-    rows = clean_headers(rows)
-    return rows
 
 
 def pick(row: Dict[str, Any], *keys: str) -> Any:
@@ -110,94 +75,100 @@ def pick(row: Dict[str, Any], *keys: str) -> Any:
     return ""
 
 
-def normalize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    result = []
+def get_csv_text() -> str:
+    if not SHEET_URL:
+        raise ValueError("VECTRA_GOOGLE_SHEET_URL is empty")
 
-    for row in rows:
-        period = normalize_period(row)
+    response = requests.get(SHEET_URL, timeout=60)
+    response.raise_for_status()
 
-        manager_national = clean_text(pick(row, "manager_national"))
-        manager_kam = clean_text(pick(row, "manager_kam"))
-        manager = manager_kam or manager_national
-
-        network = clean_text(pick(row, "network"))
-        business_name = clean_text(pick(row, "business"))
-        category = clean_text(pick(row, "category"))
-        tmc_group = clean_text(pick(row, "tmc_group"))
-        sku = clean_text(pick(row, "sku"))
-
-        revenue = to_float(pick(row, "revenue"))
-        cost_price = to_float(pick(row, "cost_price"))
-        gross_profit = to_float(pick(row, "gross_profit"))
-        total_cost = to_float(pick(row, "total_cost"))
-        finrez_pre = to_float(pick(row, "finrez_pre"))
-        margin_pre = to_float(pick(row, "margin_pre"))
-        finrez_total = to_float(pick(row, "finrez_total"))
-        margin_total = to_float(pick(row, "margin_total"))
-
-        # поддержка случая, если margin хранится как доля 0.27 вместо 27.0
-        if abs(margin_pre) <= 1 and revenue != 0 and finrez_pre != 0:
-            margin_pre = round(margin_pre * 100, 2)
-
-        if abs(margin_total) <= 1 and revenue != 0 and finrez_total != 0:
-            margin_total = round(margin_total * 100, 2)
-
-        # если period пустой — строка не годится
-        if period == "":
-            continue
-
-        # если revenue нет — строка не нужна для аналитики
-        if revenue == 0:
-            continue
-
-        business_target = 10.0
-        gap = round(business_target - margin_pre, 2)
-
-        result.append({
-            "period": period,
-            "manager_national": manager_national,
-            "manager_kam": manager_kam,
-            "manager": manager,
-            "network": network,
-            "business_name": business_name,
-            "category": category,
-            "tmc_group": tmc_group,
-            "sku": sku,
-            "revenue": revenue,
-            "cost_price": cost_price,
-            "gross_profit": gross_profit,
-            "total_cost": total_cost,
-            "finrez": finrez_pre,
-            "margin": margin_pre,
-            "finrez_pre": finrez_pre,
-            "margin_pre": margin_pre,
-            "finrez_total": finrez_total,
-            "margin_total": margin_total,
-            "business": business_target,
-            "gap": gap
-        })
-
-    return result
+    # UTF-8 with BOM support
+    return response.content.decode("utf-8-sig", errors="replace")
 
 
-def aggregate_period(data: List[Dict[str, Any]], period: str) -> Dict[str, Any]:
-    rows = [r for r in data if r["period"] == period]
+def build_reader(csv_text: str) -> csv.DictReader:
+    # сначала пробуем ;
+    reader_semicolon = csv.DictReader(StringIO(csv_text), delimiter=";")
+    first_row = next(reader_semicolon, None)
 
-    revenue = round(sum(r["revenue"] for r in rows), 2)
-    cost = round(sum(r["total_cost"] for r in rows), 2)
-    finrez = round(sum(r["finrez_pre"] for r in rows), 2)
-    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
-    business = 10.0
-    gap = round(business - margin, 2)
+    if first_row is not None and len(list(first_row.keys())) > 1:
+        # возвращаем новый reader с тем же разделителем
+        return csv.DictReader(StringIO(csv_text), delimiter=";")
+
+    # если не сработало — пробуем ,
+    return csv.DictReader(StringIO(csv_text), delimiter=",")
+
+
+def iter_raw_rows(limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
+    csv_text = get_csv_text()
+    reader = build_reader(csv_text)
+
+    for i, row in enumerate(reader):
+        yield clean_row_keys(row)
+
+        if limit is not None and i + 1 >= limit:
+            break
+
+
+def normalize_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    period = normalize_period(row)
+
+    manager_national = clean_text(pick(row, "manager_national"))
+    manager_kam = clean_text(pick(row, "manager_kam"))
+    manager = manager_kam or manager_national
+
+    network = clean_text(pick(row, "network"))
+    business_name = clean_text(pick(row, "business"))
+    category = clean_text(pick(row, "category"))
+    tmc_group = clean_text(pick(row, "tmc_group"))
+    sku = clean_text(pick(row, "sku"))
+
+    revenue = to_float(pick(row, "revenue"))
+    cost_price = to_float(pick(row, "cost_price"))
+    gross_profit = to_float(pick(row, "gross_profit", "gross_pro"))
+    total_cost = to_float(pick(row, "total_cost", "total_cosf", "total_cost "))
+    finrez_pre = to_float(pick(row, "finrez_pre"))
+    margin_pre = to_float(pick(row, "margin_pre"))
+    finrez_total = to_float(pick(row, "finrez_total"))
+    margin_total = to_float(pick(row, "margin_total"))
+
+    if period == "":
+        return None
+
+    if revenue == 0:
+        return None
+
+    # если маржа хранится как доля, а не процент
+    if abs(margin_pre) <= 1 and finrez_pre != 0:
+        margin_pre = round(margin_pre * 100, 2)
+
+    if abs(margin_total) <= 1 and finrez_total != 0:
+        margin_total = round(margin_total * 100, 2)
+
+    business_target = 10.0
+    gap = round(business_target - margin_pre, 2)
 
     return {
         "period": period,
-        "rows": len(rows),
+        "manager_national": manager_national,
+        "manager_kam": manager_kam,
+        "manager": manager,
+        "network": network,
+        "business_name": business_name,
+        "category": category,
+        "tmc_group": tmc_group,
+        "sku": sku,
         "revenue": revenue,
-        "cost": cost,
-        "finrez": finrez,
-        "margin": margin,
-        "business": business,
+        "cost_price": cost_price,
+        "gross_profit": gross_profit,
+        "total_cost": total_cost,
+        "finrez": finrez_pre,
+        "margin": margin_pre,
+        "finrez_pre": finrez_pre,
+        "margin_pre": margin_pre,
+        "finrez_total": finrez_total,
+        "margin_total": margin_total,
+        "business": business_target,
         "gap": gap
     }
 
@@ -217,7 +188,7 @@ def health():
 
 @app.get("/data_raw")
 def data_raw():
-    rows = load_data_raw()
+    rows = list(iter_raw_rows(limit=20))
 
     if not rows:
         return json_response({
@@ -235,22 +206,110 @@ def data_raw():
 
 @app.get("/data")
 def get_data():
-    rows = load_data_raw()
-    data = normalize(rows)
+    preview = []
+    count = 0
+
+    for raw_row in iter_raw_rows(limit=1000):
+        row = normalize_row(raw_row)
+        if row is None:
+            continue
+
+        count += 1
+        if len(preview) < 10:
+            preview.append(row)
 
     return json_response({
-        "rows_count": len(data),
-        "preview": data[:10]
+        "rows_count": count,
+        "preview": preview
+    })
+
+
+@app.get("/audit_fields")
+def audit_fields(period: str):
+    rows_count = 0
+    revenue_sum = 0.0
+    gross_profit_sum = 0.0
+    total_cost_sum = 0.0
+    finrez_pre_sum = 0.0
+    finrez_total_sum = 0.0
+
+    for raw_row in iter_raw_rows():
+        row = normalize_row(raw_row)
+        if row is None:
+            continue
+
+        if row["period"] != period:
+            continue
+
+        rows_count += 1
+        revenue_sum += row["revenue"]
+        gross_profit_sum += row["gross_profit"]
+        total_cost_sum += row["total_cost"]
+        finrez_pre_sum += row["finrez_pre"]
+        finrez_total_sum += row["finrez_total"]
+
+    if rows_count == 0:
+        return json_response({"error": "no data for period"})
+
+    gross_margin_calc = round((gross_profit_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
+    margin_pre_calc = round((finrez_pre_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
+    margin_total_calc = round((finrez_total_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
+
+    return json_response({
+        "period": period,
+        "rows": rows_count,
+        "revenue_sum": round(revenue_sum, 2),
+        "gross_profit_sum": round(gross_profit_sum, 2),
+        "total_cost_sum": round(total_cost_sum, 2),
+        "finrez_pre_sum": round(finrez_pre_sum, 2),
+        "finrez_total_sum": round(finrez_total_sum, 2),
+        "gross_margin_calc": gross_margin_calc,
+        "margin_pre_calc": margin_pre_calc,
+        "margin_total_calc": margin_total_calc
     })
 
 
 @app.get("/compare")
 def compare(period_a: str, period_b: str):
-    rows = load_data_raw()
-    data = normalize(rows)
+    agg = {
+        period_a: {"rows": 0, "revenue": 0.0, "cost": 0.0, "finrez": 0.0},
+        period_b: {"rows": 0, "revenue": 0.0, "cost": 0.0, "finrez": 0.0},
+    }
 
-    a = aggregate_period(data, period_a)
-    b = aggregate_period(data, period_b)
+    for raw_row in iter_raw_rows():
+        row = normalize_row(raw_row)
+        if row is None:
+            continue
+
+        p = row["period"]
+        if p not in agg:
+            continue
+
+        agg[p]["rows"] += 1
+        agg[p]["revenue"] += row["revenue"]
+        agg[p]["cost"] += row["total_cost"]
+        agg[p]["finrez"] += row["finrez_pre"]
+
+    def build_period_result(period_key: str) -> Dict[str, Any]:
+        revenue = agg[period_key]["revenue"]
+        finrez = agg[period_key]["finrez"]
+        margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+        business = 10.0
+        gap = round(business - margin, 2)
+
+        return {
+            "period": period_key,
+            "rows": agg[period_key]["rows"],
+            "revenue": round(revenue, 2),
+            "cost": round(agg[period_key]["cost"], 2),
+            "finrez": round(finrez, 2),
+            "margin": margin,
+            "business": business,
+            "gap": gap
+        }
+
+    a = build_period_result(period_a)
+    b = build_period_result(period_b)
 
     return json_response({
         "period_a": a,
@@ -267,33 +326,43 @@ def compare(period_a: str, period_b: str):
 
 @app.get("/manager")
 def manager(name: str, period: str):
-    rows = load_data_raw()
-    data = normalize(rows)
+    name_lower = clean_text(name).lower()
 
-    rows_filtered = [
-        r for r in data
-        if r["period"] == period and name.lower() in clean_text(r["manager"]).lower()
-    ]
+    rows_count = 0
+    revenue = 0.0
+    cost = 0.0
+    finrez = 0.0
+    network_map: Dict[str, Dict[str, float]] = {}
 
-    if not rows_filtered:
-        return json_response({"error": "manager not found or no data"})
+    for raw_row in iter_raw_rows():
+        row = normalize_row(raw_row)
+        if row is None:
+            continue
 
-    revenue = round(sum(r["revenue"] for r in rows_filtered), 2)
-    cost = round(sum(r["total_cost"] for r in rows_filtered), 2)
-    finrez = round(sum(r["finrez_pre"] for r in rows_filtered), 2)
-    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
-    business = 10.0
-    gap = round(business - margin, 2)
+        if row["period"] != period:
+            continue
 
-    network_map = {}
+        if name_lower not in clean_text(row["manager"]).lower():
+            continue
 
-    for r in rows_filtered:
-        net = r["network"]
+        rows_count += 1
+        revenue += row["revenue"]
+        cost += row["total_cost"]
+        finrez += row["finrez_pre"]
+
+        net = row["network"]
         if net not in network_map:
             network_map[net] = {"revenue": 0.0, "finrez": 0.0}
 
-        network_map[net]["revenue"] += r["revenue"]
-        network_map[net]["finrez"] += r["finrez_pre"]
+        network_map[net]["revenue"] += row["revenue"]
+        network_map[net]["finrez"] += row["finrez_pre"]
+
+    if rows_count == 0:
+        return json_response({"error": "manager not found or no data"})
+
+    margin = round((finrez / revenue * 100), 2) if revenue != 0 else 0.0
+    business = 10.0
+    gap = round(business - margin, 2)
 
     worst_network = ""
     worst_margin = 999999.0
@@ -310,45 +379,12 @@ def manager(name: str, period: str):
     return json_response({
         "manager": name,
         "period": period,
-        "revenue": revenue,
-        "cost": cost,
-        "finrez": finrez,
+        "rows": rows_count,
+        "revenue": round(revenue, 2),
+        "cost": round(cost, 2),
+        "finrez": round(finrez, 2),
         "margin": margin,
         "gap": gap,
         "worst_network": worst_network,
         "worst_margin": round(worst_margin, 2)
-    })
-
-
-@app.get("/audit_fields")
-def audit_fields(period: str):
-    rows = load_data_raw()
-    data = normalize(rows)
-
-    rows_filtered = [r for r in data if r["period"] == period]
-
-    if not rows_filtered:
-        return json_response({"error": "no data for period"})
-
-    revenue_sum = round(sum(r["revenue"] for r in rows_filtered), 2)
-    gross_profit_sum = round(sum(r["gross_profit"] for r in rows_filtered), 2)
-    total_cost_sum = round(sum(r["total_cost"] for r in rows_filtered), 2)
-    finrez_pre_sum = round(sum(r["finrez_pre"] for r in rows_filtered), 2)
-    finrez_total_sum = round(sum(r["finrez_total"] for r in rows_filtered), 2)
-
-    gross_margin_calc = round((gross_profit_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
-    margin_pre_calc = round((finrez_pre_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
-    margin_total_calc = round((finrez_total_sum / revenue_sum * 100), 2) if revenue_sum != 0 else 0.0
-
-    return json_response({
-        "period": period,
-        "rows": len(rows_filtered),
-        "revenue_sum": revenue_sum,
-        "gross_profit_sum": gross_profit_sum,
-        "total_cost_sum": total_cost_sum,
-        "finrez_pre_sum": finrez_pre_sum,
-        "finrez_total_sum": finrez_total_sum,
-        "gross_margin_calc": gross_margin_calc,
-        "margin_pre_calc": margin_pre_calc,
-        "margin_total_calc": margin_total_calc
     })
