@@ -21,13 +21,22 @@ def to_float(x):
         return 0.0
 
 
-def load_data():
-    response = requests.get(SHEET_URL, timeout=30)
-    response.raise_for_status()
+import requests
+import csv
+from io import StringIO
 
-    text = response.content.decode("utf-8", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
-    return list(reader)
+def load_data():
+    url = os.getenv("VECTRA_GOOGLE_SHEET_URL")
+
+    response = requests.get(url)
+    response.encoding = 'utf-8'  # 🔥 ВАЖНО
+
+    csv_text = response.text
+
+    reader = csv.DictReader(StringIO(csv_text))
+    rows = list(reader)
+
+    return rows
 
 
 def normalize(rows):
