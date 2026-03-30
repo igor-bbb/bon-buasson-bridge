@@ -85,10 +85,19 @@ def load_data_raw() -> List[Dict[str, Any]]:
     response.raise_for_status()
 
     csv_text = response.content.decode("utf-8-sig", errors="replace")
-    delimiter = detect_csv_delimiter(csv_text)
 
-    reader = csv.DictReader(StringIO(csv_text), delimiter=delimiter)
-    rows = list(reader)
+    try:
+        reader = csv.DictReader(StringIO(csv_text), delimiter=';')
+        rows = list(reader)
+
+        # если получили одну колонку — значит разделитель не тот
+        if len(rows) > 0 and len(list(rows[0].keys())) == 1:
+            raise ValueError("wrong delimiter")
+
+    except:
+        reader = csv.DictReader(StringIO(csv_text), delimiter=',')
+        rows = list(reader)
+
     rows = clean_headers(rows)
     return rows
 
