@@ -29,9 +29,9 @@ def load_data():
     url = os.getenv("VECTRA_GOOGLE_SHEET_URL")
 
     response = requests.get(url)
-    response.encoding = 'utf-8'  # 🔥 ВАЖНО
 
-    csv_text = response.text
+    # 🔥 ВАЖНО: читаем как bytes → потом декодируем
+    csv_text = response.content.decode('utf-8-sig')
 
     reader = csv.DictReader(StringIO(csv_text))
     rows = list(reader)
