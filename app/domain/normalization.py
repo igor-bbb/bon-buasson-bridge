@@ -15,7 +15,10 @@ def to_float(x: Any) -> float:
         s = clean_text(x)
         if s == "":
             return 0.0
-        s = s.replace(" ", "").replace(",", ".").replace("%", "")
+
+        s = re.sub(r"\s+", "", s)
+        s = s.replace("%", "").replace(",", ".")
+
         return float(s)
     except Exception:
         return 0.0
