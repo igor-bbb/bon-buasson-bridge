@@ -7,8 +7,14 @@ from app.config import EMPTY_SKU_LABEL
 def clean_text(x: Any) -> str:
     if x is None:
         return ""
-    return str(x).replace("\ufeff", "").replace("\xa0", " ").strip()
 
+    return (
+        str(x)
+        .replace("\ufeff", "")
+        .replace("\xa0", " ")
+        .strip()
+        .lower()
+    )
 
 def to_float(x: Any) -> float:
     try:
