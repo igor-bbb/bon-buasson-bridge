@@ -6,9 +6,22 @@ from app.presentation.contracts import error_response
 from app.query.entity_resolution import detect_level_and_object_name
 
 SUPPORTED_LEVELS = ['business', 'manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']
-LEVEL_WORD_NORMALIZATION = {'топ_менеджер': 'manager_top', 'top_manager': 'manager_top'}
+LEVEL_WORD_NORMALIZATION = {
+    'топ_менеджер': 'manager_top',
+    'top_manager': 'manager_top',
+}
 SUPPORTED_QUERY_TYPES = ['summary', 'drill_down', 'reasons', 'losses']
-COMPARISON_MARKERS = ['сравни', 'сравнить', 'vs', 'против']
+
+COMPARISON_MARKERS = [
+    'сравни',
+    'сравнить',
+    'сравнение',
+    'vs',
+    'versus',
+    'против',
+    'по сравнению с',
+    'относительно',
+]
 
 
 def detect_query_type(message: str) -> str:
@@ -46,14 +59,21 @@ def _month_token_to_number(token: str) -> Optional[str]:
     return None
 
 
-def _append_period(periods: List[str], period: str) -> None:
-    periods.append(period)
+def _append_unique_period(found: List[Tuple[int, str]], position: int, period: str) -> None:
+    if period not in [p for _, p in found]:
+        found.append((position, period))
+
+
+def _overlaps(span_a: Tuple[int, int], span_b: Tuple[int, int]) -> bool:
+    return not (span_a[1] <= span_b[0] or span_b[1] <= span_a[0])
 
 
 def extract_periods_from_text(message: str) -> List[str]:
     text = clean_text(message).lower()
-    periods: List[str] = []
+    found: List[Tuple[int, str]] = []
+    occupied_spans: List[Tuple[int, int]] = []
 
+    # 1. Диапазоны месяцев: "январь-март 2026"
     range_match = re.search(
         r'(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])\s*[-–]\s*'
         r'(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])\s+'
@@ -67,38 +87,57 @@ def extract_periods_from_text(message: str) -> List[str]:
         if start_month and end_month:
             return [f'{year}-{start_month}:{year}-{end_month}']
 
+    # 2. YYYY-MM
     for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
-        _append_period(periods, f'{match.group(1)}-{match.group(2)}')
+        period = f'{match.group(1)}-{match.group(2)}'
+        _append_unique_period(found, match.start(), period)
+        occupied_spans.append(match.span())
 
+    # 3. MM/YYYY, MM.YYYY, MM-YYYY, MM YYYY
     for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
         year = _normalize_year(match.group(2))
         month = f'{int(match.group(1)):02d}'
-        _append_period(periods, f'{year}-{month}')
+        period = f'{year}-{month}'
+        _append_unique_period(found, match.start(), period)
+        occupied_spans.append(match.span())
 
+    # 4. Название месяца + год
     month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
     for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
         month = _month_token_to_number(match.group(1))
         if month and match.group(2):
             year = _normalize_year(match.group(2))
-            _append_period(periods, f'{year}-{month}')
+            period = f'{year}-{month}'
+            _append_unique_period(found, match.start(), period)
+            occupied_spans.append(match.span())
 
-    if periods:
-        return periods[:2]
-
-    years = []
+    # 5. Отдельные годы, которые не входят в уже найденные конструкции
     for match in re.finditer(r'\b(20\d{2}|\d{2})\b', text):
-        token = match.group(1)
-        normalized = _normalize_year(token)
-        if normalized not in years:
-            years.append(normalized)
-    return years[:2]
+        span = match.span()
+        if any(_overlaps(span, occupied) for occupied in occupied_spans):
+            continue
+        normalized = _normalize_year(match.group(1))
+        _append_unique_period(found, match.start(), normalized)
+
+    found.sort(key=lambda x: x[0])
+    return [period for _, period in found[:2]]
 
 
 def _has_comparison_connector(message: str) -> bool:
     text = f' {clean_text(message).lower()} '
+
     if any(marker in text for marker in COMPARISON_MARKERS):
         return True
-    return re.search(r'\sк\s+(20\d{2}|\d{2}|[а-я]+)', text) is not None
+
+    # "к 2025", "к февралю 2025", "к 2026-02"
+    if re.search(
+        r'\sк\s+((20\d{2}|\d{2})|(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})|'
+        r'(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]))',
+        text,
+    ):
+        return True
+
+    return False
 
 
 def detect_mode(periods: List[str], message: str) -> str:
@@ -112,10 +151,12 @@ def detect_mode(periods: List[str], message: str) -> str:
 def _split_periods_for_mode(periods: List[str], mode: str) -> Tuple[Optional[str], Optional[str]]:
     if not periods:
         return None, None
+
     if mode == 'comparison':
         current = periods[0]
         previous = periods[1] if len(periods) > 1 else None
         return current, previous
+
     return periods[0], None
 
 
@@ -127,8 +168,8 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not period_current:
         return error_response('period not recognized')
 
-    period_for_entity = period_current
-    level, object_name = detect_level_and_object_name(message, period_for_entity)
+    # Для entity resolution используем текущий период
+    level, object_name = detect_level_and_object_name(message, period_current)
     if not level:
         return error_response('level not recognized')
 
