@@ -29,6 +29,6 @@ def get_csv_text() -> str:
     response = requests.get(url)
     response.raise_for_status()
 
-    CSV_TEXT_CACHE = response.content.decode("utf-8")
+    CSV_TEXT_CACHE = response.content.decode("utf-8-sig")
 
     return CSV_TEXT_CACHE
