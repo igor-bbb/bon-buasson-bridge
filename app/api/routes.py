@@ -127,3 +127,14 @@ def meta_data_quality():
         'personnel_cost': inspect_personnel_cost_support(),
         'popup_ux_note': 'popup подтверждение убирается не в core, а на уровне клиента/интеграции: пользователь должен ходить только в внутренний endpoint /vectra/query',
     })
+
+@router.get("/debug/raw_networks")
+def debug_raw_networks():
+    from app.domain.filters import get_normalized_rows
+
+    rows = get_normalized_rows()
+
+    return {
+        "count": len(rows),
+        "sample": rows[:20]
+    }
