@@ -1,8 +1,8 @@
 from collections import defaultdict
 from typing import Any, Dict, List
-
+from app.domain.filters import filter_rows, get_normalized_rows
 from app.config import LOW_VOLUME_THRESHOLD
-from app.domain.filters import filter_rows
+
 from app.domain.metrics import (
     aggregate_metrics,
     build_effects,
@@ -183,7 +183,8 @@ def get_business_comparison(period: str) -> Dict[str, Any]:
 
 
 def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[str, Any]:
-    object_rows = filter_rows(period=period, **filters)
+    rows = get_normalized_rows()
+    object_rows = filter_rows(rows, period=period, **filters)
     business_rows = filter_rows(period=period)
 
     if not object_rows:
