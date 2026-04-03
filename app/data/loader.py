@@ -29,7 +29,6 @@ def get_csv_text() -> str:
     response = requests.get(url)
     response.raise_for_status()
 
-    # 🔴 СОХРАНЯЕМ В CACHE
-    CSV_TEXT_CACHE = response.text
+    CSV_TEXT_CACHE = response.content.decode("utf-8")
 
     return CSV_TEXT_CACHE
