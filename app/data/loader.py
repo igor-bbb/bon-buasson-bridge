@@ -1,10 +1,11 @@
 import requests
-
 from app.config import SHEET_URL
-
 
 GOOGLE_SHEETS_EDIT_TOKEN = '/edit'
 GOOGLE_SHEETS_EXPORT_TOKEN = '/export?format=csv'
+
+# 🔴 CACHE
+CSV_TEXT_CACHE = None
 
 
 def normalize_sheet_url(url: str) -> str:
@@ -14,23 +15,21 @@ def normalize_sheet_url(url: str) -> str:
 
 
 def get_csv_text() -> str:
+    global CSV_TEXT_CACHE
+
+    # 🔴 ЕСЛИ УЖЕ ЗАГРУЖАЛИ — ВЕРНУТЬ ИЗ CACHE
+    if CSV_TEXT_CACHE is not None:
+        return CSV_TEXT_CACHE
+
     if not SHEET_URL:
         raise ValueError('VECTRA_GOOGLE_SHEET_URL is empty')
 
     url = normalize_sheet_url(SHEET_URL)
-    response = requests.get(
-        url,
-        timeout=60,
-        headers={'Accept': 'text/csv, text/plain;q=0.9, */*;q=0.8'},
-    )
+
+    response = requests.get(url)
     response.raise_for_status()
 
-    for encoding in ('utf-8-sig', response.encoding, 'utf-8', 'cp1251'):
-        if not encoding:
-            continue
-        try:
-            return response.content.decode(encoding, errors='replace')
-        except Exception:
-            continue
+    # 🔴 СОХРАНЯЕМ В CACHE
+    CSV_TEXT_CACHE = response.text
 
-    return response.text
+    return CSV_TEXT_CACHE
