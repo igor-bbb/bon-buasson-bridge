@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Any, Dict, List
+
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.config import LOW_VOLUME_THRESHOLD
 
@@ -61,7 +62,10 @@ def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Di
 def compute_level_median_gap(level: str, period: str) -> Any:
     if level == 'business':
         return None
-    rows = filter_rows(period=period)
+
+    rows = get_normalized_rows()
+    rows = filter_rows(rows, period=period)
+
     grouped_rows = _group_rows_by_level(rows, level)
     items = []
     for chunk in grouped_rows:
@@ -168,7 +172,9 @@ def build_comparison_payload(
 
 
 def get_business_comparison(period: str) -> Dict[str, Any]:
-    business_rows = filter_rows(period=period)
+    rows = get_normalized_rows()
+    business_rows = filter_rows(rows, period=period)
+
     if not business_rows:
         return {'error': 'business not found or no data'}
 
@@ -184,8 +190,9 @@ def get_business_comparison(period: str) -> Dict[str, Any]:
 
 def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[str, Any]:
     rows = get_normalized_rows()
+
     object_rows = filter_rows(rows, period=period, **filters)
-    business_rows = filter_rows(period=period)
+    business_rows = filter_rows(rows, period=period)
 
     if not object_rows:
         return {'error': f'{level} not found or no data'}
