@@ -40,16 +40,6 @@ LEVEL_COMPARATORS = {
 }
 
 
-CHILD_LEVEL_BY_LEVEL = {
-    'business': 'manager_top',
-    'manager_top': 'manager',
-    'manager': 'network',
-    'network': 'category',
-    'category': 'tmc_group',
-    'tmc_group': 'sku',
-}
-
-
 def _run_summary(level: str, object_name: str, period: str) -> Dict[str, Any]:
     return LEVEL_COMPARATORS[level](object_name, period)
 
@@ -99,14 +89,11 @@ def _merge_with_session_context(query: Dict[str, Any], session_ctx: Dict[str, An
     if not merged.get('period_previous') and session_ctx.get('period_previous'):
         merged['period_previous'] = session_ctx['period_previous']
 
-    if (
-       merged.get('query_type') == 'drill_down'
-       or not merged.get('object_name')
-       ):
-        current_level = session_ctx.get('level')
-        if current_level in CHILD_LEVEL_BY_LEVEL:
-            merged['level'] = CHILD_LEVEL_BY_LEVEL[current_level]
-        elif not merged.get('level') and session_ctx.get('level'):
+    # КРИТИЧНО:
+    # для drill_down сохраняем родительский уровень из контекста,
+    # а не переводим его в дочерний.
+    if merged.get('query_type') == 'drill_down':
+        if session_ctx.get('level'):
             merged['level'] = session_ctx['level']
     else:
         if not merged.get('level') and session_ctx.get('level'):
