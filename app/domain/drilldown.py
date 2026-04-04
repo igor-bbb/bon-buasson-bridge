@@ -141,6 +141,12 @@ def get_network_categories_comparison(network: str, period: str) -> Dict[str, An
     rows = get_normalized_rows()
     network_rows, meta = filter_rows(rows, period=period, network=network)
 
+    print("DEBUG get_network_categories_comparison")
+    print("DEBUG network =", repr(network))
+    print("DEBUG period =", repr(period))
+    print("DEBUG rows after filter =", len(network_rows))
+    print("DEBUG trace =", meta.get("trace"))
+
     if not network_rows:
         return _handle_empty(meta)
 
