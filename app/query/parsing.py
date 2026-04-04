@@ -172,7 +172,8 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     # Для entity resolution используем текущий период
     level, object_name = detect_level_and_object_name(message, period_current)
 
-    if not level:
+    # Для drill_down разрешаем отсутствие level — orchestration подставит его из session context
+    if not level and query_type != 'drill_down':
         return error_response('level not recognized')
 
     # Для drill_down разрешаем отсутствие объекта — orchestration подставит из session context
