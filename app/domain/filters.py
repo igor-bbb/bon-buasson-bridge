@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.data.reader import iter_raw_rows
 from app.domain.normalization import clean_text, normalize_row, normalize_sku_name
 
-# 🔴 CACHE НОРМАЛИЗОВАННЫХ СТРОК
+
 NORMALIZED_CACHE = None
 
 
@@ -24,24 +24,58 @@ def get_normalized_rows(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     return NORMALIZED_CACHE
 
 
-def period_matches(row_period: str, period_selector: str) -> bool:
-    row_period_clean = clean_text(str(row_period))
+# ========================
+# PERIOD
+# ========================
+
+def _parse_period(value: str) -> Optional[tuple]:
+    """
+    Преобразует YYYY-MM → (YYYY, MM)
+    """
+    if "-" not in value:
+        return None
+
+    try:
+        year, month = value.split("-", 1)
+        return int(year), int(month)
+    except:
+        return None
+
+
+def period_matches(row_period: str, period_selector: Optional[str]) -> bool:
+    if not period_selector:
+        return True
+
+    row_clean = clean_text(str(row_period))
     selector = clean_text(period_selector)
 
     if selector == "":
         return False
 
+    # диапазон
     if ":" in selector:
         start, end = selector.split(":", 1)
-        start = clean_text(start)
-        end = clean_text(end)
-        return start <= row_period_clean <= end
 
+        start_parsed = _parse_period(start)
+        end_parsed = _parse_period(end)
+        row_parsed = _parse_period(row_clean)
+
+        if not start_parsed or not end_parsed or not row_parsed:
+            return False
+
+        return start_parsed <= row_parsed <= end_parsed
+
+    # год
     if len(selector) == 4 and selector.isdigit():
-        return row_period_clean.startswith(f"{selector}-")
+        return row_clean.startswith(f"{selector}-")
 
-    return row_period_clean == selector
+    # точное совпадение
+    return row_clean == selector
 
+
+# ========================
+# CLEANING
+# ========================
 
 def is_total_value(value: Any) -> bool:
     text = clean_text(str(value))
@@ -62,6 +96,10 @@ def remove_total_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     return cleaned
 
+
+# ========================
+# EMPTY DIAGNOSTICS
+# ========================
 
 def find_zero_step(trace: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     for step in reversed(trace):
@@ -85,7 +123,7 @@ def detect_empty_reason(
         return f"Пустой период: {value}"
 
     if kind == "missing_field":
-        return f"Поле фильтра отсутствует в строках данных: {field}"
+        return f"Поле фильтра отсутствует в данных: {field}"
 
     non_period_filters = [
         k for k, v in filters.items()
@@ -95,8 +133,12 @@ def detect_empty_reason(
     if field in non_period_filters and len(non_period_filters) == 1:
         return f"Объект не найден: {field} = {value}"
 
-    return f"Конфликт фильтров: выборка обнулилась на {field} = {value}"
+    return f"Конфликт фильтров: обнуление на {field} = {value}"
 
+
+# ========================
+# MAIN FILTER
+# ========================
 
 def filter_rows(
     rows: List[Dict[str, Any]],
@@ -109,6 +151,7 @@ def filter_rows(
     tmc_group: Optional[str] = None,
     sku: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+
     filters = {
         "period": period,
         "business": business,
@@ -146,67 +189,37 @@ def filter_rows(
 
         return filtered_rows
 
+    # PERIOD
     result = apply_filter(
         result,
         "period",
         period,
-        lambda r: period_matches(str(r.get("period", "")), period),
+        lambda r: period_matches(r.get("period"), period),
         kind="period",
     )
 
+    # DIMENSIONS
+    def eq(field_name, value):
+        value_clean = clean_text(value)
+        return lambda r: clean_text(str(r.get(field_name, ""))) == value_clean
+
     if business is not None:
-        business_clean = clean_text(business)
-        result = apply_filter(
-            result,
-            "business",
-            business,
-            lambda r: clean_text(str(r.get("business", ""))) == business_clean,
-        )
+        result = apply_filter(result, "business", business, eq("business", business))
 
     if manager_top is not None:
-        manager_top_clean = clean_text(manager_top)
-        result = apply_filter(
-            result,
-            "manager_top",
-            manager_top,
-            lambda r: clean_text(str(r.get("manager_top", ""))) == manager_top_clean,
-        )
+        result = apply_filter(result, "manager_top", manager_top, eq("manager_top", manager_top))
 
     if manager is not None:
-        manager_clean = clean_text(manager)
-        result = apply_filter(
-            result,
-            "manager",
-            manager,
-            lambda r: clean_text(str(r.get("manager", ""))) == manager_clean,
-        )
+        result = apply_filter(result, "manager", manager, eq("manager", manager))
 
     if network is not None:
-        network_clean = clean_text(network)
-        result = apply_filter(
-            result,
-            "network",
-            network,
-            lambda r: clean_text(str(r.get("network", ""))) == network_clean,
-        )
+        result = apply_filter(result, "network", network, eq("network", network))
 
     if category is not None:
-        category_clean = clean_text(category)
-        result = apply_filter(
-            result,
-            "category",
-            category,
-            lambda r: clean_text(str(r.get("category", ""))) == category_clean,
-        )
+        result = apply_filter(result, "category", category, eq("category", category))
 
     if tmc_group is not None:
-        tmc_group_clean = clean_text(tmc_group)
-        result = apply_filter(
-            result,
-            "tmc_group",
-            tmc_group,
-            lambda r: clean_text(str(r.get("tmc_group", ""))) == tmc_group_clean,
-        )
+        result = apply_filter(result, "tmc_group", tmc_group, eq("tmc_group", tmc_group))
 
     if sku is not None:
         sku_clean = normalize_sku_name(sku)
