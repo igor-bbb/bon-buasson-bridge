@@ -129,7 +129,6 @@ def _has_comparison_connector(message: str) -> bool:
     if any(marker in text for marker in COMPARISON_MARKERS):
         return True
 
-    # "к 2025", "к февралю 2025", "к 2026-02"
     if re.search(
         r'\sк\s+((20\d{2}|\d{2})|(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})|'
         r'(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]))',
@@ -168,19 +167,17 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not period_current:
         return error_response('period not recognized')
 
+    query_type = detect_query_type(message)
+
     # Для entity resolution используем текущий период
     level, object_name = detect_level_and_object_name(message, period_current)
+
     if not level:
         return error_response('level not recognized')
 
-    if object_name is None:
-    # разрешаем отсутствие объекта для drill_down
-    query_type = detect_query_type(message)
-
-    if query_type != 'drill_down':
+    # Для drill_down разрешаем отсутствие объекта — orchestration подставит из session context
+    if object_name is None and query_type != 'drill_down':
         return error_response('object not recognized')
-
-    query_type = detect_query_type(message)
 
     if mode == 'comparison' and not period_previous:
         return error_response('comparison period not recognized')
