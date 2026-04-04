@@ -8,10 +8,6 @@ from app.domain.normalization import normalize_sku_name
 from app.domain.sorting import sort_items_by_top_problem
 
 
-# ========================
-# HELPERS
-# ========================
-
 def _handle_empty(meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'error': 'no data after filtering',
@@ -91,10 +87,6 @@ def _run_drilldown(
     }
 
 
-# ========================
-# DRILLDOWN FUNCTIONS
-# ========================
-
 def get_business_manager_tops_comparison(period: str) -> Dict[str, Any]:
     return _run_drilldown(
         filter_kwargs={},
@@ -157,6 +149,36 @@ def get_tmc_group_skus_comparison(tmc_group: str, period: str) -> Dict[str, Any]
         child_level='sku',
         parent_level='tmc_group',
         parent_object=tmc_group,
+        period=period,
+        transform_sku=True,
+    )
+
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
+# ========================
+# ПРОДУКТОВЫЕ DRILL-DOWN ПО ТЗ
+# ========================
+
+def get_manager_categories_comparison(manager: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='category',
+        child_level='category',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+    )
+
+
+def get_category_skus_comparison(category: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'category': category},
+        group_field='sku',
+        child_level='sku',
+        parent_level='category',
+        parent_object=category,
         period=period,
         transform_sku=True,
     )
