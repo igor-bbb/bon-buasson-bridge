@@ -30,17 +30,25 @@ MONTH_NAME_PATTERN = (
 
 
 def detect_query_type(message: str) -> str:
-    text = clean_text(message).lower()
+    text = clean_text(message).lower().strip()
+
+    if text == 'сигнал':
+        return 'summary'
+    if text == 'причины':
+        return 'reasons'
+    if text == 'потери':
+        return 'losses'
 
     drill_markers = [
         'разложи', 'разложить', 'спустись', 'ниже', 'детализация',
         'drill', 'drill down', 'drill_down',
-        'сети', 'категории', 'категория', 'группы', 'группы тмц', 'группа тмц',
-        'товары', 'sku', 'менеджеры', 'топ-менеджеры', 'топ менеджеры'
+        'категории', 'категория',
+        'товары', 'sku',
+        'менеджеры', 'менеджер', 'топ-менеджеры', 'топ менеджеры'
     ]
     reasons_markers = [
-        'почему', 'причины', 'reasons', 'статьи', 'структура отклонений',
-        'сигнал', 'сигналы', 'диагноз', 'диагностика', 'вывод'
+        'почему', 'причины', 'reasons', 'статьи',
+        'структура отклонений', 'диагноз', 'диагностика', 'вывод'
     ]
     losses_markers = ['где теряем', 'потери', 'дренаж', 'losses', 'убыток', 'убыточные']
 
@@ -94,47 +102,23 @@ def _expand_month_range(start_period: str, end_period: str) -> List[str]:
     return months
 
 
-def _format_period_from_months(months: List[str]) -> Optional[str]:
-    if not months:
-        return None
-
-    unique_months = sorted(set(months))
-    if len(unique_months) == 1:
-        return unique_months[0]
-
-    consecutive = True
-    expanded = _expand_month_range(unique_months[0], unique_months[-1])
-    if expanded != unique_months:
-        consecutive = False
-
-    if consecutive:
-        return f'{unique_months[0]}:{unique_months[-1]}'
-
-    return ' + '.join(unique_months)
-
-
 def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
     found: List[Tuple[int, str]] = []
-    occupied_spans: List[Tuple[int, int]] = []
 
-    def append_unique(position: int, period: str, span: Tuple[int, int]) -> None:
+    def append_unique(position: int, period: str) -> None:
         if period not in [p for _, p in found]:
             found.append((position, period))
-            occupied_spans.append(span)
 
-    # YYYY-MM
     for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
         period = f'{match.group(1)}-{match.group(2)}'
-        append_unique(match.start(), period, match.span())
+        append_unique(match.start(), period)
 
-    # MM/YYYY, MM.YYYY, MM-YYYY, MM YYYY
     for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
         year = _normalize_year(match.group(2))
         month = f'{int(match.group(1)):02d}'
         period = f'{year}-{month}'
-        append_unique(match.start(), period, match.span())
+        append_unique(match.start(), period)
 
-    # Месяц + год
     month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
     for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
         month = _month_token_to_number(match.group(1))
@@ -142,14 +126,13 @@ def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
         if month and year_raw:
             year = _normalize_year(year_raw)
             period = f'{year}-{month}'
-            append_unique(match.start(), period, match.span())
+            append_unique(match.start(), period)
 
     found.sort(key=lambda x: x[0])
     return found
 
 
 def _extract_range_period(text: str) -> Optional[str]:
-    # январь-февраль 2026
     match = re.search(
         rf'\b({MONTH_NAME_PATTERN})\s*[-–]\s*({MONTH_NAME_PATTERN})\s+((?:20)?\d{{2,4}})\b',
         text,
@@ -163,7 +146,6 @@ def _extract_range_period(text: str) -> Optional[str]:
             end_period = f'{year}-{end_month}'
             return f'{start_period}:{end_period}'
 
-    # 2026-01:2026-02
     match = re.search(r'\b(20\d{2}-0[1-9]|20\d{2}-1[0-2])\s*:\s*(20\d{2}-0[1-9]|20\d{2}-1[0-2])\b', text)
     if match:
         start_period = match.group(1)
@@ -174,13 +156,11 @@ def _extract_range_period(text: str) -> Optional[str]:
 
 
 def _extract_ytd_period(text: str) -> Optional[str]:
-    # с начала 2026
     match = re.search(r'\bс\s+начала\s+(20\d{2}|\d{2})\b', text)
     if match:
         year = _normalize_year(match.group(1))
         return f'{year}-01:YTD'
 
-    # до февраля 2026
     match = re.search(rf'\bдо\s+({MONTH_NAME_PATTERN}|0?[1-9]|1[0-2])\s+((?:20)?\d{{2,4}})\b', text)
     if match:
         month = _month_token_to_number(match.group(1))
@@ -188,7 +168,6 @@ def _extract_ytd_period(text: str) -> Optional[str]:
         if month:
             return f'{year}-01:{year}-{month}'
 
-    # до 2026-02
     match = re.search(r'\bдо\s+(20\d{2})-(0[1-9]|1[0-2])\b', text)
     if match:
         year = match.group(1)
@@ -199,7 +178,6 @@ def _extract_ytd_period(text: str) -> Optional[str]:
 
 
 def _extract_list_period(text: str) -> Optional[str]:
-    # Явный список через +
     if '+' not in text:
         return None
 
@@ -238,7 +216,6 @@ def _has_comparison_connector(message: str) -> bool:
     if any(marker in text for marker in COMPARISON_MARKERS):
         return True
 
-    # "к 2025", "к февралю 2025", "к январю-февралю 2025"
     if re.search(
         rf'\sк\s+('
         rf'(20\d{{2}}|\d{{2}})|'
@@ -265,7 +242,6 @@ def detect_mode(periods: List[str], message: str) -> str:
 def _split_comparison_message(message: str) -> Tuple[str, Optional[str]]:
     text = clean_text(message)
 
-    # сначала более длинные разделители
     split_patterns = [
         r'\bпо сравнению с\b',
         r'\bсравнить\b',
@@ -282,7 +258,6 @@ def _split_comparison_message(message: str) -> Tuple[str, Optional[str]]:
         if len(parts) == 2:
             return parts[0].strip(), parts[1].strip()
 
-    # обработка "к 2025", "к февралю 2025" и т.д.
     match = re.search(
         rf'^(.*?)(\sк\s+('
         rf'(20\d{{2}}|\d{{2}})|'
@@ -324,8 +299,6 @@ def _split_periods_for_mode(periods: List[str], mode: str, message: str) -> Tupl
     current_period = _extract_single_period_spec(left_text)
     previous_period = _extract_single_period_spec(right_text) if right_text else None
 
-    # fallback: если comparison найден, но split не дал результата,
-    # используем первые два найденных периода только как аварийный сценарий
     if not current_period and periods:
         current_period = periods[0]
     if not previous_period and len(periods) > 1:
@@ -344,15 +317,12 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
 
     query_type = detect_query_type(message)
 
-    # Для entity resolution используем текущий период
     level, object_name = detect_level_and_object_name(message, period_current)
 
-    # Для drill_down разрешаем отсутствие level — orchestration подставит его из session context
     if not level and query_type != 'drill_down':
         return error_response('level not recognized')
 
-    # Для drill_down разрешаем отсутствие объекта — orchestration подставит из session context
-    if object_name is None and query_type != 'drill_down':
+    if object_name is None and query_type != 'drill_down' and level != 'business':
         return error_response('object not recognized')
 
     if mode == 'comparison' and not period_previous:
