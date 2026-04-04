@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.config import LOW_VOLUME_THRESHOLD
@@ -51,11 +51,13 @@ def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Di
         return [rows]
 
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
     for row in rows:
         name = row.get(level, '')
         if name == '':
             continue
         groups[name].append(row)
+
     return list(groups.values())
 
 
@@ -64,12 +66,17 @@ def compute_level_median_gap(level: str, period: str) -> Any:
         return None
 
     rows = get_normalized_rows()
-    rows = filter_rows(rows, period=period)
+    rows, _ = filter_rows(rows, period=period)
+
+    if not rows:
+        return None
 
     grouped_rows = _group_rows_by_level(rows, level)
+
     items = []
     for chunk in grouped_rows:
         items.append({'object_metrics': aggregate_metrics(chunk)})
+
     return compute_median_gap(items)
 
 
@@ -80,6 +87,7 @@ def build_comparison_payload(
     business_metrics: Dict[str, float],
     period: str,
 ) -> Dict[str, Any]:
+
     expected_metrics, invalid_benchmark, negative_benchmark = build_expected_metrics(
         object_metrics=object_metrics,
         business_metrics=business_metrics,
@@ -153,32 +161,27 @@ def build_comparison_payload(
             'suggested_action': suggested_action,
             'next_step': next_step,
         },
-        'object_metrics': object_metrics,
-        'business_metrics': business_metrics,
-        'expected_metrics': expected_metrics,
-        'gaps_by_metric': gaps_by_metric,
-        'effects_by_metric': effects_by_metric,
-        'margin_gap': margin_gap,
-        'median_gap': median_gap,
-        'kpi_zone': kpi_zone,
-        'top_drain_metric': top_drain_metric,
-        'top_drain_effect': top_drain_effect,
-        'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
-        'total_loss': total_loss,
-        'loss_share': loss_share,
-        'status': status,
         'flags': flags,
+    }
+
+
+def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'error': 'no data after filtering',
+        'reason': meta.get('empty_reason'),
+        'trace': meta.get('trace'),
     }
 
 
 def get_business_comparison(period: str) -> Dict[str, Any]:
     rows = get_normalized_rows()
-    business_rows = filter_rows(rows, period=period)
+    business_rows, meta = filter_rows(rows, period=period)
 
     if not business_rows:
-        return {'error': 'business not found or no data'}
+        return _handle_empty_filter(meta)
 
     business_metrics = aggregate_metrics(business_rows)
+
     return build_comparison_payload(
         level='business',
         object_name='business',
@@ -191,14 +194,18 @@ def get_business_comparison(period: str) -> Dict[str, Any]:
 def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[str, Any]:
     rows = get_normalized_rows()
 
-    object_rows = filter_rows(rows, period=period, **filters)
-    business_rows = filter_rows(rows, period=period)
+    object_rows, object_meta = filter_rows(rows, period=period, **filters)
+    business_rows, business_meta = filter_rows(rows, period=period)
 
     if not object_rows:
-        return {'error': f'{level} not found or no data'}
+        return _handle_empty_filter(object_meta)
+
+    if not business_rows:
+        return _handle_empty_filter(business_meta)
 
     object_metrics = aggregate_metrics(object_rows)
     business_metrics = aggregate_metrics(business_rows)
+
     object_name = next(iter(filters.values()))
 
     return build_comparison_payload(
