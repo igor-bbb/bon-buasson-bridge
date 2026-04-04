@@ -26,6 +26,9 @@ from app.presentation.views import (
 from app.query.parsing import parse_query_intent
 
 
+SESSION_STORE: Dict[str, Dict[str, Any]] = {}
+
+
 LEVEL_COMPARATORS = {
     'business': lambda object_name, period: get_business_comparison(period=period),
     'manager_top': lambda object_name, period: get_manager_top_comparison(manager_top=object_name, period=period),
@@ -34,6 +37,16 @@ LEVEL_COMPARATORS = {
     'category': lambda object_name, period: get_category_comparison(category=object_name, period=period),
     'tmc_group': lambda object_name, period: get_tmc_group_comparison(tmc_group=object_name, period=period),
     'sku': lambda object_name, period: get_sku_comparison(sku=object_name, period=period),
+}
+
+
+CHILD_LEVEL_BY_LEVEL = {
+    'business': 'manager_top',
+    'manager_top': 'manager',
+    'manager': 'network',
+    'network': 'category',
+    'category': 'tmc_group',
+    'tmc_group': 'sku',
 }
 
 
@@ -57,6 +70,46 @@ def _build_comparison_mode_payload(query: Dict[str, Any]) -> Dict[str, Any]:
 
     data = build_comparison_management_view(query, current, previous)
     return ok_response(query, data)
+
+
+def _get_session_context(session_id: str) -> Dict[str, Any]:
+    return SESSION_STORE.get(session_id, {})
+
+
+def _save_session_context(session_id: str, query: Dict[str, Any]) -> None:
+    SESSION_STORE[session_id] = {
+        'level': query.get('level'),
+        'object_name': query.get('object_name'),
+        'period_current': query.get('period_current'),
+        'period_previous': query.get('period_previous'),
+        'mode': query.get('mode'),
+        'query_type': query.get('query_type'),
+    }
+
+
+def _merge_with_session_context(query: Dict[str, Any], session_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(query)
+
+    if not merged.get('object_name') and session_ctx.get('object_name'):
+        merged['object_name'] = session_ctx['object_name']
+
+    if not merged.get('period_current') and session_ctx.get('period_current'):
+        merged['period_current'] = session_ctx['period_current']
+
+    if not merged.get('period_previous') and session_ctx.get('period_previous'):
+        merged['period_previous'] = session_ctx['period_previous']
+
+    if merged.get('query_type') == 'drill_down':
+        current_level = session_ctx.get('level')
+        if current_level in CHILD_LEVEL_BY_LEVEL:
+            merged['level'] = CHILD_LEVEL_BY_LEVEL[current_level]
+        elif not merged.get('level') and session_ctx.get('level'):
+            merged['level'] = session_ctx['level']
+    else:
+        if not merged.get('level') and session_ctx.get('level'):
+            merged['level'] = session_ctx['level']
+
+    return merged
 
 
 def route_query(query: Dict[str, Any]) -> Dict[str, Any]:
@@ -229,10 +282,19 @@ def route_query(query: Dict[str, Any]) -> Dict[str, Any]:
     return not_implemented_response(query, 'scenario not implemented')
 
 
-def orchestrate_vectra_query(message: str) -> Dict[str, Any]:
+def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[str, Any]:
     parsed = parse_query_intent(message)
 
     if parsed['status'] != 'ok':
         return parsed
 
-    return route_query(parsed['query'])
+    query = parsed['query']
+    session_ctx = _get_session_context(session_id)
+    query = _merge_with_session_context(query, session_ctx)
+
+    response = route_query(query)
+
+    if response.get('status') == 'ok':
+        _save_session_context(session_id, query)
+
+    return response
