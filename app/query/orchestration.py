@@ -282,6 +282,8 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     session_ctx = _get_session_context(session_id)
     query = _merge_with_session_context(query, session_ctx)
 
+    print("DEBUG FINAL QUERY =", query)
+
     response = route_query(query)
 
     if response.get('status') == 'ok':
