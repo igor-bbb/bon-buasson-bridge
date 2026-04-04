@@ -4,22 +4,31 @@ from app.domain.normalization import clean_text
 from app.query.entity_dictionary import get_entity_dictionary, normalize_entity_text
 
 BUSINESS_MARKERS = ['бизнес', 'business', 'компания', 'весь бизнес', 'все сети']
+
 ENTITY_PRIORITY = ['manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']
+
 LEVEL_HINTS = {
-    'manager_top': ['топ менеджер', 'top manager', 'нац менеджер', 'национальный менеджер'],
-    'manager': ['менеджер'],
-    'network': ['сеть', 'network'],
+    'manager_top': ['топ менеджер', 'топ-менеджер', 'top manager', 'нац менеджер', 'национальный менеджер'],
+    'manager': ['менеджер', 'менеджеры'],
+    'network': ['сеть', 'сети', 'network'],
     'category': ['категория', 'категории', 'category'],
     'tmc_group': ['группа тмц', 'группы тмц', 'tmc group'],
-    'sku': ['sku', 'товар', 'позиция'],
+    'sku': ['sku', 'товар', 'товары', 'позиция', 'позиции'],
 }
 
-# Слова-команды drilldown, которые НЕ должны сами по себе считаться объектом
 GENERIC_DRILL_WORDS = {
     'сеть', 'сети', 'network',
     'категория', 'категории', 'category',
     'группа', 'группы', 'группа тмц', 'группы тмц', 'tmc group',
     'sku', 'товар', 'товары', 'позиция', 'позиции',
+    'менеджер', 'менеджеры',
+    'топ менеджер', 'топ менеджеры', 'топ-менеджер', 'топ-менеджеры',
+}
+
+SERVICE_WORDS = {
+    'покажи', 'показать', 'покажи мне', 'дай', 'выведи', 'открой',
+    'разложи', 'разложить', 'спустись', 'ниже', 'детализация',
+    'по', 'за', 'на', 'в', 'мне'
 }
 
 TRANSLIT_MAP = {
@@ -57,19 +66,38 @@ def _level_hint_score(text: str, level: str) -> int:
     return 0
 
 
+def _is_business_message(text: str) -> bool:
+    padded = f' {text} '
+    return any(f' {marker} ' in padded for marker in BUSINESS_MARKERS)
+
+
+def _strip_service_words(text: str) -> str:
+    tokens = _tokenize(text)
+    filtered = [t for t in tokens if t not in SERVICE_WORDS]
+    return ' '.join(filtered)
+
+
 def _is_generic_drill_message(text: str) -> bool:
     normalized = normalize_entity_text(text)
-    return normalized in GENERIC_DRILL_WORDS
+    stripped = normalize_entity_text(_strip_service_words(normalized))
+
+    if normalized in GENERIC_DRILL_WORDS:
+        return True
+
+    if stripped in GENERIC_DRILL_WORDS:
+        return True
+
+    return False
 
 
 def detect_level_and_object_name(message: str, period: str) -> Tuple[Optional[str], Optional[str]]:
     text = normalize_entity_text(message)
 
-    if any(marker in text for marker in BUSINESS_MARKERS):
+    if _is_business_message(text):
         return 'business', 'business'
 
-    # Если сообщение — просто команда drilldown ("категории", "сети", "sku"),
-    # не пытаемся выдумывать новый объект.
+    # Команды drilldown без нового объекта:
+    # "категории", "покажи категории", "дай товары", "сети"
     if _is_generic_drill_message(text):
         return None, None
 
@@ -84,7 +112,7 @@ def detect_level_and_object_name(message: str, period: str) -> Tuple[Optional[st
 
             alias_normalized = normalize_entity_text(alias)
 
-            # Не даём общим словам drilldown становиться "объектом"
+            # Не даем общим словам drilldown становиться объектом
             if alias_normalized in GENERIC_DRILL_WORDS:
                 continue
 
