@@ -107,7 +107,8 @@ def tmc_group_skus_comparison(tmc_group: str, period: str):
 
 @router.post('/vectra/query')
 def vectra_query(request: VectraQueryRequest):
-    return json_response(orchestrate_vectra_query(request.message))
+    session_id = getattr(request, 'session_id', None) or 'default'
+    return json_response(orchestrate_vectra_query(request.message, session_id=session_id))
 
 
 @router.get('/meta/entities')
@@ -116,7 +117,11 @@ def meta_entities(period: str = ''):
     return json_response({
         'status': 'ok',
         'period': period or None,
-        'entity_counts': {key: len(value.get('canonical', [])) for key, value in payload.items() if isinstance(value, dict) and 'canonical' in value},
+        'entity_counts': {
+            key: len(value.get('canonical', []))
+            for key, value in payload.items()
+            if isinstance(value, dict) and 'canonical' in value
+        },
     })
 
 
@@ -125,16 +130,17 @@ def meta_data_quality():
     return json_response({
         'status': 'ok',
         'personnel_cost': inspect_personnel_cost_support(),
-        'popup_ux_note': 'popup подтверждение убирается не в core, а на уровне клиента/интеграции: пользователь должен ходить только в внутренний endpoint /vectra/query',
+        'popup_ux_note': 'popup подтверждение убирается не в core, а на уровне клиента/интеграции: пользователь должен ходить только во внутренний endpoint /vectra/query',
     })
 
-@router.get("/debug/raw_networks")
+
+@router.get('/debug/raw_networks')
 def debug_raw_networks():
     from app.domain.filters import get_normalized_rows
 
     rows = get_normalized_rows()
 
-    return {
-        "count": len(rows),
-        "sample": rows[:20]
-    }
+    return json_response({
+        'count': len(rows),
+        'sample': rows[:20],
+    })
