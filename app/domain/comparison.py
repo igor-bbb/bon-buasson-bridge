@@ -1,9 +1,8 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.filters import filter_rows, get_normalized_rows
 from app.config import LOW_VOLUME_THRESHOLD
-
+from app.domain.filters import filter_rows, get_normalized_rows
 from app.domain.metrics import (
     aggregate_metrics,
     build_effects,
@@ -15,7 +14,6 @@ from app.domain.metrics import (
     compute_per_metric_effects,
     compute_total_loss,
     detect_kpi_zone,
-    detect_next_step,
     detect_priority,
     detect_status,
     detect_suggested_action,
@@ -23,23 +21,18 @@ from app.domain.metrics import (
 from app.domain.sorting import pick_top_drain
 
 
-# ========================
-# HIERARCHY
-# ========================
-
+# Пользовательская цепочка по ТЗ.
+# Внутренние уровни network и tmc_group остаются доступными,
+# но не являются основным маршрутом VECTRA.
 CHILD_LEVEL_BY_LEVEL = {
     'business': 'manager_top',
     'manager_top': 'manager',
-    'manager': 'network',
+    'manager': 'category',
     'network': 'category',
-    'category': 'tmc_group',
+    'category': 'sku',
     'tmc_group': 'sku',
 }
 
-
-# ========================
-# FLAGS
-# ========================
 
 def build_flags(
     object_metrics: Dict[str, float],
@@ -53,10 +46,6 @@ def build_flags(
         'negative_benchmark': negative_benchmark,
     }
 
-
-# ========================
-# GROUPING
-# ========================
 
 def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Dict[str, Any]]]:
     if level == 'business':
@@ -72,10 +61,6 @@ def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Di
 
     return list(groups.values())
 
-
-# ========================
-# MEDIAN CACHE
-# ========================
 
 MEDIAN_CACHE: Dict[Tuple[str, str], Optional[float]] = {}
 
@@ -109,9 +94,15 @@ def compute_level_median_gap(level: str, period: str) -> Optional[float]:
     return median
 
 
-# ========================
-# CORE PAYLOAD
-# ========================
+def _compute_gap_loss_money(margin_gap: float, revenue: float) -> float:
+    # По ТЗ:
+    # потери = GAP (в п.п.) × выручка объекта
+    # margin_gap = object_margin - business_margin
+    # потери считаем только когда объект ниже бизнеса
+    if margin_gap >= 0:
+        return 0.0
+    return round(abs(margin_gap) / 100.0 * revenue, 2)
+
 
 def build_comparison_payload(
     level: str,
@@ -151,6 +142,7 @@ def build_comparison_payload(
     total_loss = compute_total_loss(effects_by_metric)
     per_metric_effects = compute_per_metric_effects(effects_by_metric)
     loss_share = compute_loss_share(total_loss, business_metrics)
+    gap_loss_money = _compute_gap_loss_money(margin_gap, object_metrics['revenue'])
 
     status = detect_status(object_metrics['finrez_pre'], kpi_zone)
     priority = detect_priority(status, total_loss, loss_share, object_metrics['kpi_gap'], margin_gap)
@@ -164,8 +156,12 @@ def build_comparison_payload(
         'period': period,
 
         'signal': {
-            'finrez_pre': object_metrics['finrez_pre'],
             'status': status,
+            'finrez_pre': object_metrics['finrez_pre'],
+            'margin_gap': margin_gap,
+            'kpi_gap': object_metrics['kpi_gap'],
+            'median_gap': median_gap,
+            'kpi_zone': kpi_zone,
         },
 
         'navigation': {
@@ -189,10 +185,14 @@ def build_comparison_payload(
             'expected_metrics': expected_metrics,
             'gaps_by_metric': gaps_by_metric,
             'effects_by_metric': effects_by_metric,
+            'top_drain_metric': top_drain_metric,
+            'top_drain_effect': top_drain_effect,
+            'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
         },
 
         'impact': {
             'total_loss': total_loss,
+            'gap_loss_money': gap_loss_money,
             'per_metric_effects': per_metric_effects,
         },
 
@@ -207,12 +207,13 @@ def build_comparison_payload(
         },
 
         'flags': flags,
+
+        # Оставляем top-level для совместимости с текущими вьюхами и сортировкой.
+        'top_drain_metric': top_drain_metric,
+        'top_drain_effect': top_drain_effect,
+        'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
     }
 
-
-# ========================
-# EMPTY
-# ========================
 
 def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
@@ -221,10 +222,6 @@ def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
         'trace': meta.get('trace'),
     }
 
-
-# ========================
-# PUBLIC API
-# ========================
 
 def get_business_comparison(period: str) -> Dict[str, Any]:
     rows = get_normalized_rows()
