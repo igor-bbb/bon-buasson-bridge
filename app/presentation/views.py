@@ -1,6 +1,36 @@
 from typing import Any, Dict, List
 
 
+LEVEL_LABELS_RU = {
+    'business': 'Бизнес',
+    'manager_top': 'Топ-менеджер',
+    'manager': 'Менеджер',
+    'network': 'Сеть',
+    'category': 'Категория',
+    'tmc_group': 'Группа ТМЦ',
+    'sku': 'SKU',
+}
+
+STATUS_RANK = {'ok': 0, 'risk': 1, 'critical': 2}
+PRIORITY_RANK = {'low': 0, 'medium': 1, 'high': 2}
+
+METRIC_LABELS = {
+    'retro_bonus': 'ретро',
+    'logistics_cost': 'логистика',
+    'personnel_cost': 'персонал',
+    'other_costs': 'прочие затраты',
+    'finrez_pre': 'финрез до распределения',
+    'markup': 'наценка',
+    'margin_pre': 'маржа до распределения',
+    'margin_gap': 'отклонение маржи к бизнесу',
+    'kpi_gap': 'KPI_GAP',
+}
+
+
+def _level_label(level: str) -> str:
+    return LEVEL_LABELS_RU.get(level, level)
+
+
 def sort_effect_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     def sort_key(item: Dict[str, Any]):
         is_negative = item["is_negative_for_business"]
@@ -20,6 +50,7 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
     for metric, payload in effects_by_metric.items():
         reasons.append({
             "metric": metric,
+            "metric_label": METRIC_LABELS.get(metric, metric),
             "effect_value": payload["effect_value"],
             "effect_direction": payload["effect_direction"],
             "type": payload["type"],
@@ -30,9 +61,11 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "level": comparison_payload["level"],
+        "level_label": _level_label(comparison_payload["level"]),
         "object_name": comparison_payload["object_name"],
         "period": comparison_payload["period"],
         "top_drain_metric": comparison_payload["top_drain_metric"],
+        "top_drain_metric_label": METRIC_LABELS.get(comparison_payload["top_drain_metric"], comparison_payload["top_drain_metric"]),
         "top_drain_effect": comparison_payload["top_drain_effect"],
         "reasons": reasons,
     }
@@ -46,6 +79,7 @@ def build_losses_view_from_summary(comparison_payload: Dict[str, Any]) -> Dict[s
         if payload["is_negative_for_business"]:
             losses.append({
                 "metric": metric,
+                "metric_label": METRIC_LABELS.get(metric, metric),
                 "effect_value": payload["effect_value"],
                 "type": payload["type"],
                 "is_negative_for_business": payload["is_negative_for_business"],
@@ -55,9 +89,11 @@ def build_losses_view_from_summary(comparison_payload: Dict[str, Any]) -> Dict[s
 
     return {
         "level": comparison_payload["level"],
+        "level_label": _level_label(comparison_payload["level"]),
         "object_name": comparison_payload["object_name"],
         "period": comparison_payload["period"],
         "top_drain_metric": comparison_payload["top_drain_metric"],
+        "top_drain_metric_label": METRIC_LABELS.get(comparison_payload["top_drain_metric"], comparison_payload["top_drain_metric"]),
         "top_drain_effect": comparison_payload["top_drain_effect"],
         "losses": losses,
     }
@@ -71,6 +107,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
         losses.append({
             "object_name": item["object_name"],
             "top_drain_metric": item["top_drain_metric"],
+            "top_drain_metric_label": METRIC_LABELS.get(item["top_drain_metric"], item["top_drain_metric"]),
             "top_drain_effect": item["top_drain_effect"],
             "is_negative_for_business": item["top_drain_is_negative_for_business"],
             "flags": item["flags"],
@@ -93,27 +130,13 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
 
     return {
         "level": drilldown_payload["level"],
+        "level_label": _level_label(drilldown_payload["level"]),
         "object_name": drilldown_payload["object_name"],
         "period": drilldown_payload["period"],
         "children_level": drilldown_payload["children_level"],
+        "children_level_label": _level_label(drilldown_payload["children_level"]),
         "losses": losses,
     }
-
-
-STATUS_RANK = {'ok': 0, 'risk': 1, 'critical': 2}
-PRIORITY_RANK = {'low': 0, 'medium': 1, 'high': 2}
-METRIC_LABELS = {
-    'retro_bonus': 'ретро',
-    'logistics_cost': 'логистика',
-    'personnel_cost': 'персонал',
-    'other_costs': 'прочие затраты',
-    'finrez_pre': 'финрез до распределения',
-    'markup': 'наценка',
-    'margin_pre': 'маржа до распределения',
-    'margin_gap': 'отклонение маржи к бизнесу',
-    'kpi_gap': 'KPI_GAP',
-}
-
 
 
 def _status_change_label(current_status: str, previous_status: str) -> str:
@@ -126,7 +149,6 @@ def _status_change_label(current_status: str, previous_status: str) -> str:
     return 'риск без изменений'
 
 
-
 def _priority_change_label(current_priority: str, previous_priority: str) -> str:
     current_rank = PRIORITY_RANK.get(current_priority, 0)
     previous_rank = PRIORITY_RANK.get(previous_priority, 0)
@@ -137,14 +159,12 @@ def _priority_change_label(current_priority: str, previous_priority: str) -> str
     return 'приоритет без изменений'
 
 
-
 def _finrez_delta_status(delta_finrez: float) -> str:
     if delta_finrez > 0:
         return 'рост прибыли'
     if delta_finrez < 0:
         return 'падение прибыли'
     return 'без изменений'
-
 
 
 def _kpi_direction(delta_kpi_gap: float) -> str:
@@ -155,7 +175,6 @@ def _kpi_direction(delta_kpi_gap: float) -> str:
     return 'без изменений'
 
 
-
 def _context_direction(delta_value: float) -> str:
     if delta_value > 0:
         return 'улучшение'
@@ -164,14 +183,12 @@ def _context_direction(delta_value: float) -> str:
     return 'без изменений'
 
 
-
 def _cost_direction(delta_value: float) -> str:
     if delta_value > 0:
         return 'ухудшение'
     if delta_value < 0:
         return 'улучшение'
     return 'без изменений'
-
 
 
 def _find_main_change(changes: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -186,7 +203,6 @@ def _find_main_change(changes: List[Dict[str, Any]]) -> Dict[str, Any]:
             'is_negative_for_business': False,
         }
     return max(source, key=lambda x: abs(x['delta_value']))
-
 
 
 def _build_comparison_action(main_change: Dict[str, Any], level: str, deterioration: bool, fallback_next_step: str) -> Dict[str, str]:
@@ -215,7 +231,6 @@ def _build_comparison_action(main_change: Dict[str, Any], level: str, deteriorat
         'suggested_action': suggestion,
         'next_step': next_step,
     }
-
 
 
 def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, Any], previous: Dict[str, Any]) -> Dict[str, Any]:
@@ -248,6 +263,7 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
     return {
         'mode': 'comparison',
         'level': query['level'],
+        'level_label': _level_label(query['level']),
         'object_name': query['object_name'],
         'period_current': query['period_current'],
         'period_previous': query['period_previous'],
