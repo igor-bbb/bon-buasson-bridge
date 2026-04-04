@@ -24,16 +24,16 @@ def pick_top_drain(
 
 def sort_items_by_top_problem(items: List[Dict[str, Any]]) -> None:
     def sort_key(item: Dict[str, Any]):
-        low_volume = item["flags"]["low_volume"]
-        top_effect = item["top_drain_effect"]
-        is_negative = item["top_drain_is_negative_for_business"]
+        flags = item.get("flags", {})
+        low_volume = flags.get("low_volume", False)
+
+        top_effect = item.get("top_drain_effect", 0)
+        is_negative = item.get("top_drain_is_negative_for_business", False)
 
         if low_volume:
             return (1, 0.0)
 
-        if is_negative:
-            return (0, -abs(top_effect))
-
-        return (0, float("inf"))
+        return (0, -abs(top_effect) if is_negative else 0)
 
     items.sort(key=sort_key)
+    
