@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.config import LOW_VOLUME_THRESHOLD
@@ -23,8 +23,12 @@ from app.domain.metrics import (
 from app.domain.sorting import pick_top_drain
 
 
+# ========================
+# HIERARCHY
+# ========================
+
 CHILD_LEVEL_BY_LEVEL = {
-    'business': 'manager',
+    'business': 'manager_top',
     'manager_top': 'manager',
     'manager': 'network',
     'network': 'category',
@@ -32,6 +36,10 @@ CHILD_LEVEL_BY_LEVEL = {
     'tmc_group': 'sku',
 }
 
+
+# ========================
+# FLAGS
+# ========================
 
 def build_flags(
     object_metrics: Dict[str, float],
@@ -46,6 +54,10 @@ def build_flags(
     }
 
 
+# ========================
+# GROUPING
+# ========================
+
 def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Dict[str, Any]]]:
     if level == 'business':
         return [rows]
@@ -53,22 +65,36 @@ def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Di
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
     for row in rows:
-        name = row.get(level, '')
-        if name == '':
+        name = row.get(level)
+        if not name:
             continue
         groups[name].append(row)
 
     return list(groups.values())
 
 
-def compute_level_median_gap(level: str, period: str) -> Any:
+# ========================
+# MEDIAN CACHE
+# ========================
+
+MEDIAN_CACHE: Dict[Tuple[str, str], Optional[float]] = {}
+
+
+def compute_level_median_gap(level: str, period: str) -> Optional[float]:
+    cache_key = (level, period)
+
+    if cache_key in MEDIAN_CACHE:
+        return MEDIAN_CACHE[cache_key]
+
     if level == 'business':
+        MEDIAN_CACHE[cache_key] = None
         return None
 
     rows = get_normalized_rows()
     rows, _ = filter_rows(rows, period=period)
 
     if not rows:
+        MEDIAN_CACHE[cache_key] = None
         return None
 
     grouped_rows = _group_rows_by_level(rows, level)
@@ -77,8 +103,15 @@ def compute_level_median_gap(level: str, period: str) -> Any:
     for chunk in grouped_rows:
         items.append({'object_metrics': aggregate_metrics(chunk)})
 
-    return compute_median_gap(items)
+    median = compute_median_gap(items)
+    MEDIAN_CACHE[cache_key] = median
 
+    return median
+
+
+# ========================
+# CORE PAYLOAD
+# ========================
 
 def build_comparison_payload(
     level: str,
@@ -113,57 +146,73 @@ def build_comparison_payload(
 
     median_gap = compute_level_median_gap(level=level, period=period)
     kpi_zone = detect_kpi_zone(object_metrics['kpi_gap'], median_gap)
+
     margin_gap = compute_margin_gap(object_metrics, business_metrics)
     total_loss = compute_total_loss(effects_by_metric)
     per_metric_effects = compute_per_metric_effects(effects_by_metric)
     loss_share = compute_loss_share(total_loss, business_metrics)
+
     status = detect_status(object_metrics['finrez_pre'], kpi_zone)
     priority = detect_priority(status, total_loss, loss_share, object_metrics['kpi_gap'], margin_gap)
-    next_step = detect_next_step(level)
+
+    next_step = CHILD_LEVEL_BY_LEVEL.get(level)
     suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
 
     return {
         'level': level,
         'object_name': object_name,
         'period': period,
+
         'signal': {
             'finrez_pre': object_metrics['finrez_pre'],
             'status': status,
         },
+
         'navigation': {
             'kpi_gap': object_metrics['kpi_gap'],
             'median_gap': median_gap,
             'kpi_zone': kpi_zone,
         },
+
         'context': {
             'margin_pre_object': object_metrics['margin_pre'],
             'margin_pre_business': business_metrics['margin_pre'],
             'margin_gap': margin_gap,
         },
+
         'metrics': {
             'object_metrics': object_metrics,
             'business_metrics': business_metrics,
         },
+
         'diagnosis': {
             'expected_metrics': expected_metrics,
             'gaps_by_metric': gaps_by_metric,
             'effects_by_metric': effects_by_metric,
         },
+
         'impact': {
             'total_loss': total_loss,
             'per_metric_effects': per_metric_effects,
         },
+
         'priority': {
             'loss_share': loss_share,
             'priority': priority,
         },
+
         'action': {
             'suggested_action': suggested_action,
             'next_step': next_step,
         },
+
         'flags': flags,
     }
 
+
+# ========================
+# EMPTY
+# ========================
 
 def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
@@ -172,6 +221,10 @@ def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
         'trace': meta.get('trace'),
     }
 
+
+# ========================
+# PUBLIC API
+# ========================
 
 def get_business_comparison(period: str) -> Dict[str, Any]:
     rows = get_normalized_rows()
@@ -191,7 +244,13 @@ def get_business_comparison(period: str) -> Dict[str, Any]:
     )
 
 
-def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[str, Any]:
+def _single_object_comparison(
+    level: str,
+    object_name: str,
+    period: str,
+    **filters: Any
+) -> Dict[str, Any]:
+
     rows = get_normalized_rows()
 
     object_rows, object_meta = filter_rows(rows, period=period, **filters)
@@ -206,8 +265,6 @@ def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[s
     object_metrics = aggregate_metrics(object_rows)
     business_metrics = aggregate_metrics(business_rows)
 
-    object_name = next(iter(filters.values()))
-
     return build_comparison_payload(
         level=level,
         object_name=object_name,
@@ -218,24 +275,24 @@ def _single_object_comparison(level: str, period: str, **filters: Any) -> Dict[s
 
 
 def get_manager_top_comparison(manager_top: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('manager_top', period, manager_top=manager_top)
+    return _single_object_comparison('manager_top', manager_top, period, manager_top=manager_top)
 
 
 def get_manager_comparison(manager: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('manager', period, manager=manager)
+    return _single_object_comparison('manager', manager, period, manager=manager)
 
 
 def get_network_comparison(network: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('network', period, network=network)
+    return _single_object_comparison('network', network, period, network=network)
 
 
 def get_category_comparison(category: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('category', period, category=category)
+    return _single_object_comparison('category', category, period, category=category)
 
 
 def get_tmc_group_comparison(tmc_group: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('tmc_group', period, tmc_group=tmc_group)
+    return _single_object_comparison('tmc_group', tmc_group, period, tmc_group=tmc_group)
 
 
 def get_sku_comparison(sku: str, period: str) -> Dict[str, Any]:
-    return _single_object_comparison('sku', period, sku=sku)
+    return _single_object_comparison('sku', sku, period, sku=sku)
