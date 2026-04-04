@@ -174,6 +174,10 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
         return error_response('level not recognized')
 
     if object_name is None:
+    # разрешаем отсутствие объекта для drill_down
+    query_type = detect_query_type(message)
+
+    if query_type != 'drill_down':
         return error_response('object not recognized')
 
     query_type = detect_query_type(message)
