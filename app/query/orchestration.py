@@ -99,7 +99,10 @@ def _merge_with_session_context(query: Dict[str, Any], session_ctx: Dict[str, An
     if not merged.get('period_previous') and session_ctx.get('period_previous'):
         merged['period_previous'] = session_ctx['period_previous']
 
-    if merged.get('query_type') == 'drill_down':
+    if (
+       merged.get('query_type') == 'drill_down'
+       or not merged.get('object_name')
+       ):
         current_level = session_ctx.get('level')
         if current_level in CHILD_LEVEL_BY_LEVEL:
             merged['level'] = CHILD_LEVEL_BY_LEVEL[current_level]
