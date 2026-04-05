@@ -45,10 +45,19 @@ SPECIAL_QUERY_TYPES = {
     'сигнал': 'summary',
 }
 
+LEVEL_HINTS = {
+    'manager_top': ['топы', 'топ менеджеры', 'топ менеджер', 'топ-менеджеры', 'топ-менеджер'],
+    'manager': ['менеджеры', 'менеджер'],
+    'network': ['сети', 'сеть'],
+    'category': ['категории', 'категория'],
+    'tmc_group': ['группы тмц', 'группа тмц', 'группы', 'группа'],
+    'sku': ['товары', 'товар', 'sku', 'скю'],
+}
+
 SERVICE_PREFIXES = [
+    'покажи мне',
     'покажи',
     'показать',
-    'покажи мне',
     'дай',
     'выведи',
     'разложи',
@@ -59,7 +68,6 @@ SERVICE_PREFIXES = [
 
 def normalize_user_message(message: str) -> str:
     text = clean_text(message)
-
     text = text.replace('–', '-').replace('—', '-')
     text = re.sub(r'[,:;!?]+', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -70,18 +78,6 @@ def normalize_user_message(message: str) -> str:
 
     text = re.sub(r'\s+', ' ', text).strip()
     return text
-
-
-def detect_query_type(message: str) -> str:
-    text = normalize_user_message(message)
-
-    if text in SPECIAL_QUERY_TYPES:
-        return SPECIAL_QUERY_TYPES[text]
-
-    if text in SHORT_DRILL_COMMANDS:
-        return 'drill_down'
-
-    return 'summary'
 
 
 def _normalize_year(year_str: str) -> str:
@@ -107,17 +103,14 @@ def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
         if period not in [p for _, p in found]:
             found.append((position, period))
 
-    # YYYY-MM
     for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
         append_unique(match.start(), f'{match.group(1)}-{match.group(2)}')
 
-    # MM YYYY / MM.YYYY / MM/YYYY / MM-YYYY
     for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
         year = _normalize_year(match.group(2))
         month = f'{int(match.group(1)):02d}'
         append_unique(match.start(), f'{year}-{month}')
 
-    # textual month + year
     month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
     for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
         month = _month_token_to_number(match.group(1))
@@ -150,13 +143,56 @@ def detect_mode(periods: List[str], message: str) -> str:
     return 'diagnosis'
 
 
+def _detect_target_level(text: str) -> Optional[str]:
+    for level, aliases in LEVEL_HINTS.items():
+        for alias in aliases:
+            if f' {alias} ' in f' {text} ':
+                return level
+    return None
+
+
+def _strip_level_hints(text: str) -> str:
+    cleaned = f' {text} '
+    for aliases in LEVEL_HINTS.values():
+        for alias in sorted(aliases, key=len, reverse=True):
+            cleaned = cleaned.replace(f' {alias} ', ' ')
+    return re.sub(r'\s+', ' ', cleaned).strip()
+
+
+def _resolve_base_level_for_target(target_level: str, scope_level: Optional[str]) -> Optional[str]:
+    if target_level == 'manager_top':
+        return 'business'
+    if target_level == 'manager':
+        if scope_level == 'manager_top':
+            return 'manager_top'
+        return 'business'
+    if target_level == 'network':
+        if scope_level == 'manager':
+            return 'manager'
+        return 'business'
+    if target_level == 'category':
+        if scope_level in {'network', 'manager'}:
+            return scope_level
+        return None
+    if target_level == 'tmc_group':
+        if scope_level == 'category':
+            return 'category'
+        if scope_level == 'network':
+            return 'network'
+        return None
+    if target_level == 'sku':
+        if scope_level in {'category', 'tmc_group', 'network'}:
+            return scope_level
+        return None
+    return None
+
+
 def parse_query_intent(message: str) -> Dict[str, Any]:
     text = normalize_user_message(message)
 
     if not text:
         return error_response('empty message')
 
-    # короткие follow-up команды: период и объект должны прийти из session
     if text in SHORT_DRILL_COMMANDS:
         return {
             'status': 'ok',
@@ -189,7 +225,7 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
         }
 
     periods = extract_periods_from_text(text)
-    mode = detect_mode(text, text)
+    mode = detect_mode(periods, text)
 
     period_current = periods[0] if len(periods) >= 1 else None
     period_previous = periods[1] if mode == 'comparison' and len(periods) >= 2 else None
@@ -197,23 +233,52 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not period_current:
         return error_response('period not recognized')
 
-    level, object_name = detect_level_and_object_name(text, period_current)
+    target_level = _detect_target_level(text)
+    stripped_text = _strip_level_hints(text) if target_level else text
 
-    # если период есть, но объект не найден — считаем запросом на бизнес
-    if not level:
-        level = 'business'
-        object_name = 'business'
+    scope_level, scope_object_name = detect_level_and_object_name(stripped_text, period_current)
+
+    if target_level:
+        base_level = _resolve_base_level_for_target(target_level, scope_level)
+
+        if target_level in {'manager_top', 'manager'} and scope_level is None:
+            base_level = 'business'
+
+        if scope_level is None and target_level in {'category', 'tmc_group', 'sku', 'network'}:
+            return error_response('object not recognized')
+
+        if not base_level:
+            return error_response('invalid level/object combination')
+
+        return {
+            'status': 'ok',
+            'query': {
+                'mode': mode,
+                'level': base_level,
+                'object_name': 'business' if base_level == 'business' else scope_object_name,
+                'period_current': period_current,
+                'period_previous': period_previous,
+                'query_type': 'drill_down',
+                'target_level': target_level,
+                'period': period_current,
+                'object': 'business' if base_level == 'business' else scope_object_name,
+            },
+        }
+
+    if not scope_level:
+        scope_level = 'business'
+        scope_object_name = 'business'
 
     return {
         'status': 'ok',
         'query': {
             'mode': mode,
-            'level': level,
-            'object_name': object_name,
+            'level': scope_level,
+            'object_name': scope_object_name,
             'period_current': period_current,
             'period_previous': period_previous,
             'query_type': 'summary',
             'period': period_current,
-            'object': object_name,
+            'object': scope_object_name,
         },
     }
