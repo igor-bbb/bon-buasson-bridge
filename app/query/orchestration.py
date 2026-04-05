@@ -37,7 +37,7 @@ from app.presentation.views import (
 from app.query.parsing import parse_query_intent
 
 
-# Встроенное хранение контекста. Отдельный session.py не нужен.
+# встроенная сессия, отдельный session.py не нужен
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -63,6 +63,8 @@ SHORT_COMMAND_TARGETS = {
     'категория': 'category',
     'группы': 'tmc_group',
     'группа': 'tmc_group',
+    'группы тмц': 'tmc_group',
+    'группа тмц': 'tmc_group',
     'товары': 'sku',
     'товар': 'sku',
     'sku': 'sku',
@@ -101,6 +103,7 @@ def _is_short_command(message: str) -> bool:
 
 
 def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_level: str, period: str) -> Dict[str, Any]:
+    # business-wide navigation
     if scope_level == 'business':
         if target_level == 'manager_top':
             return get_business_manager_tops_comparison(period=period)
@@ -115,15 +118,18 @@ def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_lev
         if target_level == 'sku':
             return get_business_skus_comparison(period=period)
 
+    # manager_top-specific
     if scope_level == 'manager_top' and scope_object_name and target_level == 'manager':
         return get_manager_top_managers_comparison(manager_top=scope_object_name, period=period)
 
+    # manager-specific
     if scope_level == 'manager' and scope_object_name:
         if target_level == 'network':
             return get_manager_networks_comparison(manager=scope_object_name, period=period)
         if target_level == 'category':
             return get_manager_categories_comparison(manager=scope_object_name, period=period)
 
+    # network-specific
     if scope_level == 'network' and scope_object_name:
         if target_level == 'category':
             return get_network_categories_comparison(network=scope_object_name, period=period)
@@ -132,12 +138,14 @@ def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_lev
         if target_level == 'sku':
             return get_network_skus_comparison(network=scope_object_name, period=period)
 
+    # category-specific
     if scope_level == 'category' and scope_object_name:
         if target_level == 'tmc_group':
             return get_category_tmc_groups_comparison(category=scope_object_name, period=period)
         if target_level == 'sku':
             return get_category_skus_comparison(category=scope_object_name, period=period)
 
+    # tmc_group-specific
     if scope_level == 'tmc_group' and scope_object_name and target_level == 'sku':
         return get_tmc_group_skus_comparison(tmc_group=scope_object_name, period=period)
 
@@ -151,7 +159,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
         return {}
 
     if not session_ctx or not session_ctx.get('scope_level') or not session_ctx.get('period_current'):
-        return {'status': 'error', 'reason': 'уточни объект и период'}
+        return {'status': 'error', 'reason': 'уточни объект'}
 
     target = SHORT_COMMAND_TARGETS[normalized]
 
@@ -254,7 +262,7 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any]) -> Di
     target_level = query.get('target_level')
 
     if not scope_level or not period:
-        return {'status': 'error', 'reason': 'уточни объект и период'}
+        return {'status': 'error', 'reason': 'уточни объект'}
 
     if not target_level:
         target_level = DEFAULT_NEXT_LEVEL.get(scope_level)
@@ -273,6 +281,7 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     session_ctx = get_session(session_id)
     normalized = _normalize_message(message)
 
+    # short commands always go through session first
     if _is_short_command(normalized):
         parsed = _build_query_from_short_command(normalized, session_ctx)
         if parsed.get('status') != 'ok':
