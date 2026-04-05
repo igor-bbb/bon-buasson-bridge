@@ -35,7 +35,20 @@ from app.presentation.views import (
     build_reasons_view,
 )
 from app.query.parsing import parse_query_intent
-from app.query.session import get_session, update_session
+
+
+# Встроенное хранение контекста. Отдельный session.py не нужен.
+SESSION_STORE: Dict[str, Dict[str, Any]] = {}
+
+
+def get_session(session_id: str) -> Dict[str, Any]:
+    return SESSION_STORE.get(session_id, {})
+
+
+def update_session(session_id: str, data: Dict[str, Any]) -> None:
+    current = SESSION_STORE.get(session_id, {})
+    current.update(data)
+    SESSION_STORE[session_id] = current
 
 
 SHORT_COMMAND_TARGETS = {
@@ -68,7 +81,6 @@ DEFAULT_NEXT_LEVEL = {
     'tmc_group': 'sku',
 }
 
-
 SUMMARY_EXECUTORS = {
     'business': lambda obj, p: get_business_comparison(period=p),
     'manager_top': lambda obj, p: get_manager_top_comparison(manager_top=obj, period=p),
@@ -89,7 +101,6 @@ def _is_short_command(message: str) -> bool:
 
 
 def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_level: str, period: str) -> Dict[str, Any]:
-    # business-wide navigation
     if scope_level == 'business':
         if target_level == 'manager_top':
             return get_business_manager_tops_comparison(period=period)
@@ -104,18 +115,15 @@ def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_lev
         if target_level == 'sku':
             return get_business_skus_comparison(period=period)
 
-    # manager_top-specific
     if scope_level == 'manager_top' and scope_object_name and target_level == 'manager':
         return get_manager_top_managers_comparison(manager_top=scope_object_name, period=period)
 
-    # manager-specific
     if scope_level == 'manager' and scope_object_name:
         if target_level == 'network':
             return get_manager_networks_comparison(manager=scope_object_name, period=period)
         if target_level == 'category':
             return get_manager_categories_comparison(manager=scope_object_name, period=period)
 
-    # network-specific
     if scope_level == 'network' and scope_object_name:
         if target_level == 'category':
             return get_network_categories_comparison(network=scope_object_name, period=period)
@@ -124,14 +132,12 @@ def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_lev
         if target_level == 'sku':
             return get_network_skus_comparison(network=scope_object_name, period=period)
 
-    # category-specific
     if scope_level == 'category' and scope_object_name:
         if target_level == 'tmc_group':
             return get_category_tmc_groups_comparison(category=scope_object_name, period=period)
         if target_level == 'sku':
             return get_category_skus_comparison(category=scope_object_name, period=period)
 
-    # tmc_group-specific
     if scope_level == 'tmc_group' and scope_object_name and target_level == 'sku':
         return get_tmc_group_skus_comparison(tmc_group=scope_object_name, period=period)
 
