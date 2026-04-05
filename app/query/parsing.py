@@ -1,12 +1,23 @@
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.normalization import MONTHS_RU, clean_text
 from app.presentation.contracts import error_response
 from app.query.entity_resolution import detect_level_and_object_name
 
 
-SHORT_COMMAND_LEVELS = {
+COMPARISON_MARKERS = [
+    'сравни',
+    'сравнить',
+    'сравнение',
+    'vs',
+    'versus',
+    'против',
+    'по сравнению с',
+    'относительно',
+]
+
+SHORT_DRILL_COMMANDS = {
     'топы': 'manager_top',
     'топ менеджеры': 'manager_top',
     'топ-менеджеры': 'manager_top',
@@ -18,11 +29,31 @@ SHORT_COMMAND_LEVELS = {
     'категория': 'category',
     'группы': 'tmc_group',
     'группа': 'tmc_group',
+    'группы тмц': 'tmc_group',
+    'группа тмц': 'tmc_group',
     'товары': 'sku',
     'товар': 'sku',
     'sku': 'sku',
     'скю': 'sku',
 }
+
+SPECIAL_QUERY_TYPES = {
+    'причины': 'reasons',
+    'потери': 'losses',
+    'сигнал': 'summary',
+}
+
+
+def detect_query_type(message: str) -> str:
+    text = clean_text(message).strip()
+
+    if text in SPECIAL_QUERY_TYPES:
+        return SPECIAL_QUERY_TYPES[text]
+
+    if text in SHORT_DRILL_COMMANDS:
+        return 'drill_down'
+
+    return 'summary'
 
 
 def _normalize_year(year_str: str) -> str:
@@ -32,92 +63,123 @@ def _normalize_year(year_str: str) -> str:
     return f'{year:04d}'
 
 
-def _month_token_to_number(token: str) -> Optional[str]:
-    token = clean_text(token).lower()
-    if token in MONTHS_RU:
-        return MONTHS_RU[token]
-    if re.fullmatch(r'0?[1-9]|1[0-2]', token):
-        return f'{int(token):02d}'
-    return None
+def _month_name_to_number(token: str) -> Optional[str]:
+    token = clean_text(token)
+    return MONTHS_RU.get(token)
 
 
-def extract_period_from_text(message: str) -> Optional[str]:
-    text = clean_text(message).lower()
+def _extract_period_tokens(text: str) -> List[str]:
+    periods: List[Tuple[int, str]] = []
 
-    match = re.search(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text)
-    if match:
-        return f'{match.group(1)}-{match.group(2)}'
+    def add_period(position: int, period: str) -> None:
+        if period not in [p for _, p in periods]:
+            periods.append((position, period))
 
-    match = re.search(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text)
-    if match:
-        month = f'{int(match.group(1)):02d}'
-        year = _normalize_year(match.group(2))
-        return f'{year}-{month}'
+    # 2026-02
+    for m in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
+        add_period(m.start(), f'{m.group(1)}-{m.group(2)}')
 
+    # 02 2026 / 02.2026 / 02/2026
+    for m in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
+        month = f'{int(m.group(1)):02d}'
+        year = _normalize_year(m.group(2))
+        add_period(m.start(), f'{year}-{month}')
+
+    # февраль 2026 / февраля 2026
     month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
-    match = re.search(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text)
-    if match and match.group(2):
-        month = _month_token_to_number(match.group(1))
-        year = _normalize_year(match.group(2))
-        if month:
-            return f'{year}-{month}'
+    for m in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
+        month = _month_name_to_number(m.group(1))
+        year_raw = m.group(2)
+        if month and year_raw:
+            year = _normalize_year(year_raw)
+            add_period(m.start(), f'{year}-{month}')
 
-    return None
+    periods.sort(key=lambda x: x[0])
+    return [p for _, p in periods]
 
 
-def _apply_level_filter(query: Dict[str, Any], level: str, object_name: Optional[str]) -> None:
-    if level == 'business':
-        return
+def extract_periods_from_text(message: str) -> List[str]:
+    text = clean_text(message)
+    return _extract_period_tokens(text)
 
-    field_map = {
-        'manager_top': 'manager_top',
-        'manager': 'manager',
-        'network': 'network',
-        'category': 'category',
-        'tmc_group': 'tmc_group',
-        'sku': 'sku',
-    }
 
-    field_name = field_map.get(level)
-    if field_name and object_name:
-        query[field_name] = object_name
+def _has_comparison(message: str) -> bool:
+    text = clean_text(message)
+    return any(marker in text for marker in COMPARISON_MARKERS)
+
+
+def detect_mode(periods: List[str], message: str) -> str:
+    if _has_comparison(message) and len(periods) >= 2:
+        return 'comparison'
+    return 'diagnosis'
 
 
 def parse_query_intent(message: str) -> Dict[str, Any]:
-    text = clean_text(message).lower().strip()
+    text = clean_text(message).strip()
 
     if not text:
         return error_response('empty message')
 
-    target_level = SHORT_COMMAND_LEVELS.get(text)
-    if target_level:
+    # короткие команды после установленного контекста
+    if text in SHORT_DRILL_COMMANDS:
         return {
             'status': 'ok',
             'query': {
+                'mode': 'diagnosis',
+                'level': None,
+                'object_name': None,
+                'period_current': None,
+                'period_previous': None,
                 'query_type': 'drill_down',
-                'target_level': target_level,
+                'target_level': SHORT_DRILL_COMMANDS[text],
+                'period': None,
+                'object': None,
             },
         }
 
-    period = extract_period_from_text(message)
-    level, object_name = detect_level_and_object_name(message, period)
+    if text in SPECIAL_QUERY_TYPES:
+        return {
+            'status': 'ok',
+            'query': {
+                'mode': 'diagnosis',
+                'level': None,
+                'object_name': None,
+                'period_current': None,
+                'period_previous': None,
+                'query_type': SPECIAL_QUERY_TYPES[text],
+                'period': None,
+                'object': None,
+            },
+        }
 
-    if not level and period:
+    periods = extract_periods_from_text(message)
+    mode = detect_mode(periods, message)
+
+    period_current = periods[0] if len(periods) >= 1 else None
+    period_previous = periods[1] if mode == 'comparison' and len(periods) >= 2 else None
+
+    if not period_current:
+        return error_response('period not recognized')
+
+    level, object_name = detect_level_and_object_name(message, period_current)
+
+    # если объект не найден, но есть период — считаем это запросом на бизнес
+    if not level:
         level = 'business'
         object_name = 'business'
 
-    if not level and not object_name and not period:
-        return error_response('object or period not recognized')
+    query_type = detect_query_type(message)
 
     query: Dict[str, Any] = {
-        'query_type': 'base',
+        'mode': mode,
         'level': level,
         'object_name': object_name,
-        'period': period,
+        'period_current': period_current,
+        'period_previous': period_previous,
+        'query_type': query_type,
+        'period': period_current,
+        'object': object_name,
     }
-
-    if level:
-        _apply_level_filter(query, level, object_name)
 
     return {
         'status': 'ok',
