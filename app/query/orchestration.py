@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from app.domain.comparison import (
     get_business_comparison,
@@ -30,8 +30,8 @@ from app.presentation.contracts import error_response, not_implemented_response,
 from app.presentation.views import (
     build_comparison_management_view,
     build_drilldown_management_view,
-    build_management_view,
     build_losses_view_from_children,
+    build_management_view,
     build_reasons_view,
 )
 from app.query.parsing import parse_query_intent
@@ -144,7 +144,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
     if normalized not in SHORT_COMMAND_TARGETS:
         return {}
 
-    if not session_ctx or not session_ctx.get('period_current'):
+    if not session_ctx or not session_ctx.get('scope_level') or not session_ctx.get('period_current'):
         return {'status': 'error', 'reason': 'уточни объект и период'}
 
     target = SHORT_COMMAND_TARGETS[normalized]
@@ -228,13 +228,15 @@ def _route_base_query(query: Dict[str, Any]) -> Dict[str, Any]:
         return ok_response(query, build_reasons_view(current))
 
     if query.get('query_type') == 'losses':
-        return ok_response(query, build_losses_view_from_children({
-            'level': current['level'],
-            'object_name': current['object_name'],
-            'period': current['period'],
-            'children_level': current['level'],
-            'items': [current],
-        }))
+        target_level = DEFAULT_NEXT_LEVEL.get(level)
+        if not target_level:
+            return not_implemented_response(query, 'losses not supported for this level')
+
+        source = _build_drill_from_scope(level, object_name, target_level, period)
+        if 'error' in source:
+            return error_response(source['error'], query)
+
+        return ok_response(query, build_losses_view_from_children(source))
 
     return ok_response(query, build_management_view(current))
 
@@ -257,9 +259,6 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any]) -> Di
     payload = _build_drill_from_scope(scope_level, scope_object_name, target_level, period)
     if 'error' in payload:
         return error_response(payload['error'], query)
-
-    if query.get('target_level') == 'losses':
-        return ok_response(query, build_losses_view_from_children(payload))
 
     return ok_response(query, build_drilldown_management_view(payload))
 
