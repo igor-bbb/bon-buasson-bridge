@@ -1,35 +1,50 @@
-def build_management_view(payload):
+from typing import Dict, Any, List
 
-    required = ['metrics', 'context', 'navigation', 'impact', 'signal']
 
-    for k in required:
-        if k not in payload:
-            return {
-                "status": "error",
-                "reason": f"missing {k}"
-            }
+def build_comparison_management_view(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Главный управленческий формат вывода
+    """
+
+    if 'error' in payload:
+        return payload
+
+    items = payload.get('items', [])
+
+    if not items:
+        return {
+            'status': 'empty',
+            'message': 'нет данных для анализа'
+        }
+
+    problems = []
+    risks = []
+    normals = []
+
+    for item in items:
+        margin = item.get('margin_pre', 0)
+
+        if margin < 0:
+            problems.append(item)
+        elif margin < 0.1:
+            risks.append(item)
+        else:
+            normals.append(item)
 
     return {
-        "level": payload.get("level"),
-        "object": payload.get("object_name"),
-        "period": payload.get("period"),
+        'status': 'ok',
+        'level': payload.get('children_level'),
+        'object': payload.get('object_name'),
+        'period': payload.get('period'),
 
-        "signal": payload.get("signal"),
+        'summary': {
+            'total': len(items),
+            'problems': len(problems),
+            'risks': len(risks),
+            'normal': len(normals),
+        },
 
-        "metrics": payload.get("metrics"),
-        "context": payload.get("context"),
-        "impact": payload.get("impact"),
-
-        "action": payload.get("action")
-    }
-
-
-def build_drilldown_management_view(payload):
-
-    return {
-        "level": payload.get("level"),
-        "object": payload.get("object_name"),
-        "period": payload.get("period"),
-        "children_level": payload.get("children_level"),
-        "items": payload.get("items", [])
+        'problems': problems[:10],
+        'risks': risks[:10],
+        'top': items[:10],
     }
