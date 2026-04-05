@@ -6,8 +6,6 @@ from app.presentation.contracts import error_response
 from app.query.entity_resolution import detect_level_and_object_name
 
 
-SUPPORTED_QUERY_TYPES = ['summary', 'drill_down', 'reasons', 'losses']
-
 COMPARISON_MARKERS = [
     'сравни',
     'сравнить',
@@ -19,15 +17,12 @@ COMPARISON_MARKERS = [
     'относительно',
 ]
 
-MONTH_NAME_PATTERN = (
-    r'январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|'
-    r'август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]'
-)
-
 SHORT_DRILL_COMMANDS = {
     'топы': 'manager_top',
     'топ менеджеры': 'manager_top',
+    'топ менеджер': 'manager_top',
     'топ-менеджеры': 'manager_top',
+    'топ-менеджер': 'manager_top',
     'менеджеры': 'manager',
     'менеджер': 'manager',
     'сети': 'network',
@@ -49,6 +44,44 @@ SPECIAL_QUERY_TYPES = {
     'потери': 'losses',
     'сигнал': 'summary',
 }
+
+SERVICE_PREFIXES = [
+    'покажи',
+    'показать',
+    'покажи мне',
+    'дай',
+    'выведи',
+    'разложи',
+    'разложить',
+    'открой',
+]
+
+
+def normalize_user_message(message: str) -> str:
+    text = clean_text(message)
+
+    text = text.replace('–', '-').replace('—', '-')
+    text = re.sub(r'[,:;!?]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    for prefix in sorted(SERVICE_PREFIXES, key=len, reverse=True):
+        if text.startswith(prefix + ' '):
+            text = text[len(prefix):].strip()
+
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def detect_query_type(message: str) -> str:
+    text = normalize_user_message(message)
+
+    if text in SPECIAL_QUERY_TYPES:
+        return SPECIAL_QUERY_TYPES[text]
+
+    if text in SHORT_DRILL_COMMANDS:
+        return 'drill_down'
+
+    return 'summary'
 
 
 def _normalize_year(year_str: str) -> str:
@@ -76,52 +109,34 @@ def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
 
     # YYYY-MM
     for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
-        period = f'{match.group(1)}-{match.group(2)}'
-        append_unique(match.start(), period)
+        append_unique(match.start(), f'{match.group(1)}-{match.group(2)}')
 
     # MM YYYY / MM.YYYY / MM/YYYY / MM-YYYY
     for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
         year = _normalize_year(match.group(2))
         month = f'{int(match.group(1)):02d}'
-        period = f'{year}-{month}'
-        append_unique(match.start(), period)
+        append_unique(match.start(), f'{year}-{month}')
 
-    # textual months
+    # textual month + year
     month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
     for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
         month = _month_token_to_number(match.group(1))
         year_raw = match.group(2)
         if month and year_raw:
             year = _normalize_year(year_raw)
-            period = f'{year}-{month}'
-            append_unique(match.start(), period)
+            append_unique(match.start(), f'{year}-{month}')
 
     found.sort(key=lambda x: x[0])
     return found
 
 
 def extract_periods_from_text(message: str) -> List[str]:
-    text = clean_text(message)
-    month_tokens = [period for _, period in _extract_month_year_tokens(text)]
-    if month_tokens:
-        return month_tokens[:2]
-    return []
-
-
-def detect_query_type(message: str) -> str:
-    text = clean_text(message).strip()
-
-    if text in SPECIAL_QUERY_TYPES:
-        return SPECIAL_QUERY_TYPES[text]
-
-    if text in SHORT_DRILL_COMMANDS:
-        return 'drill_down'
-
-    return 'summary'
+    text = normalize_user_message(message)
+    return [period for _, period in _extract_month_year_tokens(text)]
 
 
 def _has_comparison_connector(message: str) -> bool:
-    text = f' {clean_text(message)} '
+    text = f' {normalize_user_message(message)} '
     if any(marker in text for marker in COMPARISON_MARKERS):
         return True
     if 'прошлым годом' in text or 'прошлого года' in text:
@@ -136,12 +151,12 @@ def detect_mode(periods: List[str], message: str) -> str:
 
 
 def parse_query_intent(message: str) -> Dict[str, Any]:
-    text = clean_text(message).strip()
+    text = normalize_user_message(message)
 
     if not text:
         return error_response('empty message')
 
-    # short follow-up drill commands
+    # короткие follow-up команды: период и объект должны прийти из session
     if text in SHORT_DRILL_COMMANDS:
         return {
             'status': 'ok',
@@ -158,7 +173,6 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
             },
         }
 
-    # short follow-up special commands
     if text in SPECIAL_QUERY_TYPES:
         return {
             'status': 'ok',
@@ -174,8 +188,8 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
             },
         }
 
-    periods = extract_periods_from_text(message)
-    mode = detect_mode(periods, message)
+    periods = extract_periods_from_text(text)
+    mode = detect_mode(text, text)
 
     period_current = periods[0] if len(periods) >= 1 else None
     period_previous = periods[1] if mode == 'comparison' and len(periods) >= 2 else None
@@ -183,27 +197,23 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not period_current:
         return error_response('period not recognized')
 
-    query_type = detect_query_type(message)
+    level, object_name = detect_level_and_object_name(text, period_current)
 
-    level, object_name = detect_level_and_object_name(message, period_current)
-
-    # if no entity resolved but period exists -> business by default
+    # если период есть, но объект не найден — считаем запросом на бизнес
     if not level:
         level = 'business'
         object_name = 'business'
 
-    query: Dict[str, Any] = {
-        'mode': mode,
-        'level': level,
-        'object_name': object_name,
-        'period_current': period_current,
-        'period_previous': period_previous,
-        'query_type': query_type,
-        'period': period_current,
-        'object': object_name,
-    }
-
     return {
         'status': 'ok',
-        'query': query,
+        'query': {
+            'mode': mode,
+            'level': level,
+            'object_name': object_name,
+            'period_current': period_current,
+            'period_previous': period_previous,
+            'query_type': 'summary',
+            'period': period_current,
+            'object': object_name,
+        },
     }
