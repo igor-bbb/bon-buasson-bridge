@@ -21,15 +21,12 @@ from app.domain.metrics import (
 from app.domain.sorting import pick_top_drain
 
 
-# Пользовательская цепочка по ТЗ.
-# Внутренние уровни network и tmc_group остаются доступными,
-# но не являются основным маршрутом VECTRA.
 CHILD_LEVEL_BY_LEVEL = {
     'business': 'manager_top',
     'manager_top': 'manager',
-    'manager': 'category',
+    'manager': 'network',
     'network': 'category',
-    'category': 'sku',
+    'category': 'tmc_group',
     'tmc_group': 'sku',
 }
 
@@ -95,10 +92,6 @@ def compute_level_median_gap(level: str, period: str) -> Optional[float]:
 
 
 def _compute_gap_loss_money(margin_gap: float, revenue: float) -> float:
-    # По ТЗ:
-    # потери = GAP (в п.п.) × выручка объекта
-    # margin_gap = object_margin - business_margin
-    # потери считаем только когда объект ниже бизнеса
     if margin_gap >= 0:
         return 0.0
     return round(abs(margin_gap) / 100.0 * revenue, 2)
@@ -208,7 +201,6 @@ def build_comparison_payload(
 
         'flags': flags,
 
-        # Оставляем top-level для совместимости с текущими вьюхами и сортировкой.
         'top_drain_metric': top_drain_metric,
         'top_drain_effect': top_drain_effect,
         'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
