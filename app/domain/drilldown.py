@@ -192,6 +192,20 @@ def get_manager_categories_comparison(manager: str, period: str) -> Dict[str, An
     )
 
 
+def get_manager_skus_comparison(manager: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='sku',
+        child_level='sku',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+        transform_sku=True,
+    )
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
 def get_network_categories_comparison(network: str, period: str) -> Dict[str, Any]:
     return _run_drilldown(
         filter_kwargs={'network': network},
