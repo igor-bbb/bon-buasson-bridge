@@ -154,7 +154,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
         return {}
 
     if not session_ctx or not session_ctx.get('scope_level') or not session_ctx.get('period_current'):
-        return {'status': 'error', 'reason': 'уточни объект'}
+        return {'status': 'error', 'reason': 'нет контекста'}
 
     target = SHORT_COMMAND_TARGETS[normalized]
 
@@ -189,17 +189,17 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
     }
 
 
-def _store_scope_from_base(session_id: str, query: Dict[str, Any]) -> None:
+def _store_scope(session_id: str, level: str, object_name: str, period_current: str, period_previous: Any, mode: str) -> None:
     update_session(session_id, {
-        'scope_level': query.get('level'),
-        'scope_object_name': query.get('object_name'),
-        'period_current': query.get('period_current'),
-        'period_previous': query.get('period_previous'),
-        'mode': query.get('mode', 'diagnosis'),
+        'scope_level': level,
+        'scope_object_name': object_name,
+        'period_current': period_current,
+        'period_previous': period_previous,
+        'mode': mode,
     })
 
 
-def _route_base_query(query: Dict[str, Any]) -> Dict[str, Any]:
+def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
     level = query.get('level')
     period = query.get('period_current')
     object_name = query.get('object_name')
@@ -231,10 +231,16 @@ def _route_base_query(query: Dict[str, Any]) -> Dict[str, Any]:
         if 'error' in previous:
             return error_response(previous['error'], query)
 
-        return ok_response(query, build_comparison_management_view(query, current, previous))
+        response = ok_response(query, build_comparison_management_view(query, current, previous))
+        if response.get('status') == 'ok':
+            _store_scope(session_id, level, object_name, period, previous_period, mode)
+        return response
 
     if query.get('query_type') == 'reasons':
-        return ok_response(query, build_reasons_view(current))
+        response = ok_response(query, build_reasons_view(current))
+        if response.get('status') == 'ok':
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+        return response
 
     if query.get('query_type') == 'losses':
         target_level = DEFAULT_NEXT_LEVEL.get(level)
@@ -245,19 +251,28 @@ def _route_base_query(query: Dict[str, Any]) -> Dict[str, Any]:
         if 'error' in source:
             return error_response(source['error'], query)
 
-        return ok_response(query, build_losses_view_from_children(source))
+        response = ok_response(query, build_losses_view_from_children(source))
+        if response.get('status') == 'ok':
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+        return response
 
-    return ok_response(query, build_management_view(current))
+    response = ok_response(query, build_management_view(current))
+    if response.get('status') == 'ok':
+        _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+    return response
 
 
-def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any]) -> Dict[str, Any]:
-    scope_level = session_ctx.get('scope_level')
-    scope_object_name = session_ctx.get('scope_object_name')
-    period = session_ctx.get('period_current')
+def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    scope_level = query.get('level') or session_ctx.get('scope_level')
+    scope_object_name = query.get('object_name') if query.get('level') != 'business' else query.get('object_name')
+    if not scope_object_name:
+        scope_object_name = session_ctx.get('scope_object_name')
+
+    period = query.get('period_current') or session_ctx.get('period_current')
     target_level = query.get('target_level')
 
     if not scope_level or not period:
-        return {'status': 'error', 'reason': 'уточни объект'}
+        return {'status': 'error', 'reason': 'нет контекста'}
 
     if not target_level:
         target_level = DEFAULT_NEXT_LEVEL.get(scope_level)
@@ -269,7 +284,26 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any]) -> Di
     if 'error' in payload:
         return error_response(payload['error'], query)
 
-    return ok_response(query, build_drilldown_management_view(payload))
+    response = ok_response(query, build_drilldown_management_view(payload))
+
+    if response.get('status') == 'ok':
+        next_scope_level = target_level
+        next_scope_object_name = scope_object_name
+
+        items = payload.get('items', [])
+        if len(items) == 1:
+            next_scope_object_name = items[0].get('object_name', scope_object_name)
+
+        _store_scope(
+            session_id,
+            next_scope_level,
+            next_scope_object_name,
+            period,
+            query.get('period_previous'),
+            query.get('mode', 'diagnosis'),
+        )
+
+    return response
 
 
 def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[str, Any]:
@@ -289,10 +323,6 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     query_type = query.get('query_type', 'summary')
 
     if query_type == 'drill_down':
-        response = _route_drill_query(query, session_ctx)
-    else:
-        response = _route_base_query(query)
-        if response.get('status') == 'ok':
-            _store_scope_from_base(session_id, query)
+        return _route_drill_query(query, session_ctx, session_id)
 
-    return response
+    return _route_base_query(query, session_id)
