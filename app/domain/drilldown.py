@@ -157,10 +157,6 @@ def get_tmc_group_skus_comparison(tmc_group: str, period: str) -> Dict[str, Any]
     return result
 
 
-# ========================
-# ПРОДУКТОВЫЕ DRILL-DOWN ПО ТЗ
-# ========================
-
 def get_manager_categories_comparison(manager: str, period: str) -> Dict[str, Any]:
     return _run_drilldown(
         filter_kwargs={'manager': manager},
@@ -179,6 +175,32 @@ def get_category_skus_comparison(category: str, period: str) -> Dict[str, Any]:
         child_level='sku',
         parent_level='category',
         parent_object=category,
+        period=period,
+        transform_sku=True,
+    )
+
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
+def get_network_tmc_groups_comparison(network: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+    )
+
+
+def get_network_skus_comparison(network: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='sku',
+        child_level='sku',
+        parent_level='network',
+        parent_object=network,
         period=period,
         transform_sku=True,
     )
