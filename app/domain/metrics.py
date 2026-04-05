@@ -1,10 +1,12 @@
 from statistics import median
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.normalization import round_money
+from app.domain.normalization import round_money, round_percent
 
 MONEY_METRICS = [
     'revenue',
+    'cost',
+    'gross_profit',
     'retro_bonus',
     'logistics_cost',
     'personnel_cost',
@@ -24,29 +26,36 @@ METRIC_TYPES = {
 MIN_MEDIAN_SAMPLE = 3
 
 
-def safe_weighted_average(rows: List[Dict[str, Any]], field: str) -> float:
-    weighted_rows = [r for r in rows if r['revenue'] > 0]
-    total_revenue = sum(r['revenue'] for r in weighted_rows)
-    if total_revenue <= 0:
+def _safe_percent(numerator: float, denominator: float) -> float:
+    if denominator == 0:
         return 0.0
-    value = sum(r[field] * r['revenue'] for r in weighted_rows) / total_revenue
-    return round(value, 2)
+    return round_percent((numerator / denominator) * 100.0)
 
 
 def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
-    revenue = round_money(sum(r['revenue'] for r in rows))
-    retro_bonus = round_money(sum(r['retro_bonus'] for r in rows))
-    logistics_cost = round_money(sum(r['logistics_cost'] for r in rows))
-    personnel_cost = round_money(sum(r.get('personnel_cost', 0.0) for r in rows))
-    other_costs = round_money(sum(r['other_costs'] for r in rows))
-    finrez_pre = round_money(sum(r['finrez_pre'] for r in rows))
+    """
+    SKU-driven aggregation.
 
-    margin_pre = safe_weighted_average(rows, 'margin_pre')
-    markup = safe_weighted_average(rows, 'markup')
-    kpi_gap = round(markup - margin_pre, 2)
+    Все верхние уровни считаются только через сумму базовых значений.
+    Никаких средневзвешенных margin/markup поверх готовых процентов.
+    """
+    revenue = round_money(sum(r.get('revenue', 0.0) for r in rows))
+    cost = round_money(sum(r.get('cost', 0.0) for r in rows))
+    gross_profit = round_money(sum(r.get('gross_profit', 0.0) for r in rows))
+    retro_bonus = round_money(sum(r.get('retro_bonus', 0.0) for r in rows))
+    logistics_cost = round_money(sum(r.get('logistics_cost', 0.0) for r in rows))
+    personnel_cost = round_money(sum(r.get('personnel_cost', 0.0) for r in rows))
+    other_costs = round_money(sum(r.get('other_costs', 0.0) for r in rows))
+    finrez_pre = round_money(sum(r.get('finrez_pre', 0.0) for r in rows))
+
+    margin_pre = _safe_percent(finrez_pre, revenue)
+    markup = _safe_percent(gross_profit, cost)
+    kpi_gap = round_percent(markup - margin_pre)
 
     return {
         'revenue': revenue,
+        'cost': cost,
+        'gross_profit': gross_profit,
         'retro_bonus': retro_bonus,
         'logistics_cost': logistics_cost,
         'personnel_cost': personnel_cost,
@@ -122,7 +131,7 @@ def build_effects(gaps_by_metric: Dict[str, float]) -> Dict[str, Dict[str, Any]]
 
 
 def compute_margin_gap(object_metrics: Dict[str, float], business_metrics: Dict[str, float]) -> float:
-    return round(object_metrics['margin_pre'] - business_metrics['margin_pre'], 2)
+    return round_percent(object_metrics['margin_pre'] - business_metrics['margin_pre'])
 
 
 def compute_total_loss(effects_by_metric: Dict[str, Dict[str, Any]]) -> float:
@@ -141,7 +150,7 @@ def compute_loss_share(total_loss: float, business_metrics: Dict[str, float]) ->
     business_finrez_abs = abs(business_metrics['finrez_pre'])
     if business_finrez_abs <= 0:
         return 0.0
-    return round((total_loss / business_finrez_abs) * 100, 2)
+    return round_percent((total_loss / business_finrez_abs) * 100.0)
 
 
 def detect_status(finrez_pre: float, kpi_zone: Optional[str]) -> str:
@@ -168,7 +177,7 @@ def detect_priority(status: str, total_loss: float, loss_share: float, kpi_gap: 
 
 def detect_next_step(level: str) -> str:
     chain = {
-        'business': 'спуститься до топ-менеджеров или менеджеров',
+        'business': 'спуститься до топ-менеджеров',
         'manager_top': 'спуститься до менеджеров',
         'manager': 'спуститься до сетей',
         'network': 'спуститься до категорий',
