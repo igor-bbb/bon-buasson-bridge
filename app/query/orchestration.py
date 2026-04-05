@@ -214,25 +214,18 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     # DRILLDOWN (🔥 FIX)
     # =========================
     if query_type == 'drill_down':
-        target_level = query.get('target_level')
+    target_level = query.get('target_level')
 
-        response = _call_drill_handler(session, target_level)
+    response = _call_drill_handler(session, target_level)
 
-        if response.get('error') or response.get('status') == 'error':
-            return response
-
-        # 🔥 ОБНОВЛЯЕМ СЕССИЮ
-        session_update = {
-            'level': target_level or session.get('level'),
-            'period': session.get('period'),
-        }
-
-        # если есть объект — фиксируем
-        if 'object_name' in response:
-            session_update['object_name'] = response.get('object_name')
-
-        update_session(session_id, session_update)
-
+    if response.get('error') or response.get('status') == 'error':
         return response
 
-    return error_response('query type not recognized')
+    session_update = {
+        'level': target_level or session.get('level'),
+        'period': session.get('period'),
+    }
+
+    update_session(session_id, session_update)
+
+    return response
