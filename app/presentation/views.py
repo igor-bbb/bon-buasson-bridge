@@ -50,10 +50,21 @@ def _format_signal_message(payload: Dict[str, Any]) -> str:
     status = _status_label(payload['signal']['status'])
 
     if margin_gap < 0:
-        return f'Маржа ниже бизнеса на {margin_gap} п.п. — {status}'
+        return f'маржа ниже бизнеса на {abs(margin_gap)} п.п. — {status}'
     if margin_gap > 0:
-        return f'Маржа выше бизнеса на +{margin_gap} п.п. — {status}'
-    return f'Маржа на уровне бизнеса — {status}'
+        return f'маржа выше бизнеса на +{margin_gap} п.п. — {status}'
+    return f'маржа на уровне бизнеса — {status}'
+
+
+def _format_problem_message(payload: Dict[str, Any]) -> str:
+    margin_gap = _round(payload['context']['margin_gap'])
+    status = payload['signal']['status']
+
+    if margin_gap < 0:
+        return f'теряет относительно бизнеса — {_status_label(status)}'
+    if margin_gap > 0:
+        return f'работает выше бизнеса — {_status_label(status)}'
+    return f'работает на уровне бизнеса — {_status_label(status)}'
 
 
 def sort_effect_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -85,7 +96,7 @@ def _extract_reasons_from_summary(comparison_payload: Dict[str, Any]) -> List[Di
     return sort_effect_entries(reasons)
 
 
-def _extract_negative_reasons(reasons: List[Dict[str, Any]], limit: int = 3) -> List[Dict[str, Any]]:
+def _extract_negative_reasons(reasons: List[Dict[str, Any]], limit: int = 2) -> List[Dict[str, Any]]:
     negative = [item for item in reasons if item['is_negative_for_business']]
     if negative:
         return negative[:limit]
@@ -105,10 +116,40 @@ def _extract_data_flags(flags: Dict[str, Any]) -> List[str]:
     return result
 
 
+def _build_reason_summary(negative_reasons: List[Dict[str, Any]]) -> List[str]:
+    lines: List[str] = []
+    for item in negative_reasons:
+        sign = '-' if item['is_negative_for_business'] else '+'
+        lines.append(f"{item['metric_label']}: {sign}{abs(_round(item['effect_value']))} грн")
+    return lines
+
+
+def _build_action_summary(comparison_payload: Dict[str, Any]) -> str:
+    metric = comparison_payload['top_drain_metric']
+
+    if metric == 'retro_bonus':
+        return 'пересмотреть условия ретро'
+    if metric == 'logistics_cost':
+        return 'оптимизировать логистику'
+    if metric == 'personnel_cost':
+        return 'проверить загрузку команды'
+    if metric == 'other_costs':
+        return 'проверить прочие расходы'
+
+    return comparison_payload['action']['suggested_action']
+
+
+def _build_effect_summary(comparison_payload: Dict[str, Any]) -> str:
+    total_loss = _round(comparison_payload['impact']['total_loss'])
+    if total_loss > 0:
+        return f'потенциал: +{total_loss} грн'
+    return 'потерь не выявлено'
+
+
 def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
     object_metrics = comparison_payload['metrics']['object_metrics']
     reasons = _extract_reasons_from_summary(comparison_payload)
-    negative_reasons = _extract_negative_reasons(reasons, limit=3)
+    negative_reasons = _extract_negative_reasons(reasons, limit=2)
     flags = _extract_data_flags(comparison_payload.get('flags', {}))
 
     return {
@@ -151,16 +192,21 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
         },
 
         'action': {
-            'suggested_action': comparison_payload['action']['suggested_action'],
+            'suggested_action': _build_action_summary(comparison_payload),
             'next_step': comparison_payload['action']['next_step'],
+        },
+
+        'management': {
+            'problem': _format_problem_message(comparison_payload),
+            'reason': _build_reason_summary(negative_reasons),
+            'action': _build_action_summary(comparison_payload),
+            'effect': _build_effect_summary(comparison_payload),
         },
 
         'flags': {
             'business_flags': comparison_payload.get('flags', {}),
             'data_flags': flags,
         },
-
-        'source': comparison_payload,
     }
 
 
@@ -168,7 +214,7 @@ def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[s
     items = drilldown_payload['items']
 
     prepared_items = []
-    for item in items:
+    for item in items[:10]:
         management_item = build_management_view(item)
         prepared_items.append({
             'level': management_item['level'],
@@ -179,6 +225,7 @@ def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[s
             'cause': management_item['cause'],
             'money': management_item['money'],
             'action': management_item['action'],
+            'management': management_item['management'],
             'flags': management_item['flags'],
         })
 
@@ -196,7 +243,6 @@ def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[s
             'suggested_action': 'провалиться в следующий уровень и найти главный источник потери',
             'next_step': drilldown_payload['children_level'],
         },
-        'source': drilldown_payload,
     }
 
 
@@ -211,12 +257,17 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
         'top_drain_metric': comparison_payload['top_drain_metric'],
         'top_drain_metric_label': METRIC_LABELS.get(comparison_payload['top_drain_metric'], comparison_payload['top_drain_metric']),
         'top_drain_effect': _round(comparison_payload['top_drain_effect']),
-        'reasons': reasons,
+        'reasons': reasons[:10],
+        'management': {
+            'problem': _format_problem_message(comparison_payload),
+            'reason': _build_reason_summary(_extract_negative_reasons(reasons, limit=2)),
+            'action': _build_action_summary(comparison_payload),
+            'effect': _build_effect_summary(comparison_payload),
+        },
         'flags': {
             'business_flags': comparison_payload.get('flags', {}),
             'data_flags': _extract_data_flags(comparison_payload.get('flags', {})),
         },
-        'source': comparison_payload,
     }
 
 
@@ -238,6 +289,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
             'top_drain_metric_label': METRIC_LABELS.get(item['top_drain_metric'], item['top_drain_metric']),
             'top_drain_effect': _round(item['top_drain_effect']),
             'is_negative_for_business': item['top_drain_is_negative_for_business'],
+            'management': build_management_view(item)['management'],
             'flags': {
                 'business_flags': item.get('flags', {}),
                 'data_flags': _extract_data_flags(item.get('flags', {})),
@@ -263,12 +315,11 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
         'period': drilldown_payload['period'],
         'children_level': drilldown_payload['children_level'],
         'children_level_label': _level_label(drilldown_payload['children_level']),
-        'losses': losses,
+        'losses': losses[:10],
         'action': {
             'suggested_action': 'выбрать объект с максимальными потерями и провалиться глубже',
             'next_step': drilldown_payload['children_level'],
         },
-        'source': drilldown_payload,
     }
 
 
@@ -305,17 +356,17 @@ def _build_comparison_action(main_change: Dict[str, Any], level: str, deteriorat
     next_step = fallback_next_step
 
     if metric == 'retro_bonus':
-        suggestion = 'рост потерь связан с увеличением ретро — проверить условия контракта'
+        suggestion = 'пересмотреть условия ретро'
     elif metric == 'logistics_cost':
-        suggestion = 'рост потерь связан с логистикой — проверить схему поставки и стоимость обслуживания'
+        suggestion = 'оптимизировать логистику'
     elif metric == 'personnel_cost':
-        suggestion = 'рост потерь связан с персоналом — проверить нагрузку и модель покрытия'
+        suggestion = 'проверить загрузку команды'
     elif metric == 'other_costs':
-        suggestion = 'рост потерь связан с прочими затратами — проверить состав статьи и источник отклонения'
+        suggestion = 'проверить прочие расходы'
     elif metric == 'finrez_pre' and deterioration:
-        suggestion = 'просел финрез — проверить, какая статья дренирует деньги сильнее всего'
+        suggestion = 'проверить, какая статья дренирует деньги сильнее всего'
     elif deterioration:
-        suggestion = 'ситуация ухудшилась — подтвердить источник отклонения на следующем уровне'
+        suggestion = 'подтвердить источник отклонения на следующем уровне'
     else:
         suggestion = 'контролировать динамику и подтвердить, что улучшение устойчиво'
 
@@ -387,7 +438,7 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'cause': {
-            'items': diagnosis_changes,
+            'items': diagnosis_changes[:10],
             'main_driver_metric': main_change.get('metric'),
             'main_driver_label': main_change.get('label'),
             'main_driver_delta': main_change.get('delta_value'),
