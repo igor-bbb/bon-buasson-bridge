@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from app.domain.comparison import (
     get_business_comparison,
@@ -34,10 +34,10 @@ from app.presentation.views import (
     build_management_view,
     build_reasons_view,
 )
-from app.query.parsing import parse_query_intent
+from app.query.parsing import parse_query_intent, normalize_user_message
 
 
-# встроенная сессия, отдельный session.py не нужен
+# встроенная session-логика; отдельный session.py не нужен
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -54,7 +54,9 @@ def update_session(session_id: str, data: Dict[str, Any]) -> None:
 SHORT_COMMAND_TARGETS = {
     'топы': 'manager_top',
     'топ менеджеры': 'manager_top',
+    'топ менеджер': 'manager_top',
     'топ-менеджеры': 'manager_top',
+    'топ-менеджер': 'manager_top',
     'менеджеры': 'manager',
     'менеджер': 'manager',
     'сети': 'network',
@@ -95,7 +97,7 @@ SUMMARY_EXECUTORS = {
 
 
 def _normalize_message(message: str) -> str:
-    return (message or '').strip().lower()
+    return normalize_user_message(message)
 
 
 def _is_short_command(message: str) -> bool:
@@ -281,7 +283,7 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     session_ctx = get_session(session_id)
     normalized = _normalize_message(message)
 
-    # short commands always go through session first
+    # follow-up команды всегда идут через session раньше parser
     if _is_short_command(normalized):
         parsed = _build_query_from_short_command(normalized, session_ctx)
         if parsed.get('status') != 'ok':
