@@ -1,77 +1,268 @@
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
+from app.config import EMPTY_SKU_LABEL
 from app.domain.comparison import build_comparison_payload
-from app.domain.filters import get_normalized_rows
+from app.domain.filters import filter_rows, get_normalized_rows
+from app.domain.metrics import aggregate_metrics
+from app.domain.normalization import normalize_sku_name
+from app.domain.sorting import sort_items_by_top_problem
 
 
-LEVEL_ORDER = ['business', 'manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']
+def _handle_empty(meta: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'error': 'no data after filtering',
+        'reason': meta.get('empty_reason'),
+        'trace': meta.get('trace'),
+    }
 
 
-def _next_level(level: str) -> str:
-    if level not in LEVEL_ORDER:
-        return None
-    idx = LEVEL_ORDER.index(level)
-    if idx + 1 >= len(LEVEL_ORDER):
-        return None
-    return LEVEL_ORDER[idx + 1]
+def _group(rows: List[Dict[str, Any]], field: str) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+
+    for row in rows:
+        key = row.get(field)
+
+        if not key:
+            key = 'UNKNOWN'
+
+        grouped.setdefault(key, []).append(row)
+
+    return grouped
 
 
-def build_drilldown_payload(level: str, object_name: str, period: str) -> Dict[str, Any]:
+def _build_items(grouped, level, business_metrics, period):
+    items = []
 
-    children_level = _next_level(level)
+    for name, chunk in grouped.items():
+        item = build_comparison_payload(
+            level=level,
+            object_name=name,
+            object_metrics=aggregate_metrics(chunk),
+            business_metrics=business_metrics,
+            period=period,
+        )
+        items.append(item)
 
-    if not children_level:
-        return {
-            "level": level,
-            "object_name": object_name,
-            "period": period,
-            "children_level": None,
-            "items": []
-        }
+    sort_items_by_top_problem(items)
+
+    return items
+
+
+def _run_drilldown(
+    *,
+    filter_kwargs: Dict[str, Any],
+    group_field: str,
+    child_level: str,
+    parent_level: str,
+    parent_object: str,
+    period: str,
+    transform_sku: bool = False,
+) -> Dict[str, Any]:
 
     rows = get_normalized_rows()
+    filtered_rows, meta = filter_rows(rows, period=period, **filter_kwargs)
 
-    # фильтрация по текущему объекту
-    filtered = []
-    for r in rows:
-        if r.get("period") != period:
-            continue
-        if level != "business" and r.get(level) != object_name:
-            continue
-        filtered.append(r)
+    if not filtered_rows:
+        return _handle_empty(meta)
 
-    if not filtered:
-        return {
-            "level": level,
-            "object_name": object_name,
-            "period": period,
-            "children_level": children_level,
-            "items": []
-        }
+    business_rows, _ = filter_rows(rows, period=period)
+    business_metrics = aggregate_metrics(business_rows)
 
-    # группировка
-    grouped = {}
-    for r in filtered:
-        key = r.get(children_level)
-        if not key:
-            continue
-        grouped.setdefault(key, []).append(r)
+    if transform_sku:
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for row in filtered_rows:
+            sku_name = normalize_sku_name(row['sku'])
+            grouped.setdefault(sku_name, []).append(row)
+    else:
+        grouped = _group(filtered_rows, group_field)
 
-    items: List[Dict[str, Any]] = []
-
-    for child_name in grouped.keys():
-        payload = build_comparison_payload(
-            level=children_level,
-            object_name=child_name,
-            period=period
-        )
-        if payload:
-            items.append(payload)
+    items = _build_items(grouped, child_level, business_metrics, period)
 
     return {
-        "level": level,
-        "object_name": object_name,
-        "period": period,
-        "children_level": children_level,
-        "items": items
+        'level': parent_level,
+        'object_name': parent_object,
+        'period': period,
+        'children_level': child_level,
+        'items': items,
     }
+
+
+# business-wide drilldowns
+
+def get_business_manager_tops_comparison(period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='manager_top',
+        child_level='manager_top',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+    )
+
+
+def get_business_managers_comparison(period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='manager',
+        child_level='manager',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+    )
+
+
+def get_business_networks_comparison(period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='network',
+        child_level='network',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+    )
+
+
+def get_business_categories_comparison(period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='category',
+        child_level='category',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+    )
+
+
+def get_business_tmc_groups_comparison(period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+    )
+
+
+def get_business_skus_comparison(period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={},
+        group_field='sku',
+        child_level='sku',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        transform_sku=True,
+    )
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
+# specific drilldowns
+
+def get_manager_top_managers_comparison(manager_top: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager_top': manager_top},
+        group_field='manager',
+        child_level='manager',
+        parent_level='manager_top',
+        parent_object=manager_top,
+        period=period,
+    )
+
+
+def get_manager_networks_comparison(manager: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='network',
+        child_level='network',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+    )
+
+
+def get_manager_categories_comparison(manager: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='category',
+        child_level='category',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+    )
+
+
+def get_network_categories_comparison(network: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='category',
+        child_level='category',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+    )
+
+
+def get_network_tmc_groups_comparison(network: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+    )
+
+
+def get_network_skus_comparison(network: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='sku',
+        child_level='sku',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+        transform_sku=True,
+    )
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
+def get_category_tmc_groups_comparison(category: str, period: str) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'category': category},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='category',
+        parent_object=category,
+        period=period,
+    )
+
+
+def get_category_skus_comparison(category: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'category': category},
+        group_field='sku',
+        child_level='sku',
+        parent_level='category',
+        parent_object=category,
+        period=period,
+        transform_sku=True,
+    )
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
+
+
+def get_tmc_group_skus_comparison(tmc_group: str, period: str) -> Dict[str, Any]:
+    result = _run_drilldown(
+        filter_kwargs={'tmc_group': tmc_group},
+        group_field='sku',
+        child_level='sku',
+        parent_level='tmc_group',
+        parent_object=tmc_group,
+        period=period,
+        transform_sku=True,
+    )
+    result['empty_sku_policy'] = EMPTY_SKU_LABEL
+    return result
