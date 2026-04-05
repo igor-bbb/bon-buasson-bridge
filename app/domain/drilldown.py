@@ -58,7 +58,6 @@ def _run_drilldown(
     period: str,
     transform_sku: bool = False,
 ) -> Dict[str, Any]:
-
     rows = get_normalized_rows()
     filtered_rows, meta = filter_rows(rows, period=period, **filter_kwargs)
 
