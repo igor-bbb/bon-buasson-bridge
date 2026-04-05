@@ -32,6 +32,11 @@ METRIC_LABELS = {
     'kpi_gap': 'разрыв KPI',
 }
 
+MAX_DRILLDOWN_ITEMS = 5
+MAX_LOSSES_ITEMS = 5
+MAX_REASON_ITEMS = 10
+MAX_REASON_ITEMS_DRILLDOWN = 1
+
 
 def _level_label(level: str) -> str:
     return LEVEL_LABELS_RU.get(level, level)
@@ -210,24 +215,35 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _build_compact_drill_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    management_item = build_management_view(item)
+
+    compact_cause_items = management_item['cause'].get('items', [])[:MAX_REASON_ITEMS_DRILLDOWN]
+
+    return {
+        'level': management_item['level'],
+        'level_label': management_item['level_label'],
+        'object_name': management_item['object_name'],
+        'signal': management_item['signal'],
+        'basis': management_item['basis'],
+        'cause': {
+            'top_drain_metric': management_item['cause']['top_drain_metric'],
+            'top_drain_metric_label': management_item['cause']['top_drain_metric_label'],
+            'top_drain_effect': management_item['cause']['top_drain_effect'],
+            'items': compact_cause_items,
+        },
+        'money': management_item['money'],
+        'action': management_item['action'],
+        'management': management_item['management'],
+    }
+
+
 def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
     items = drilldown_payload['items']
 
     prepared_items = []
-    for item in items[:10]:
-        management_item = build_management_view(item)
-        prepared_items.append({
-            'level': management_item['level'],
-            'level_label': management_item['level_label'],
-            'object_name': management_item['object_name'],
-            'signal': management_item['signal'],
-            'basis': management_item['basis'],
-            'cause': management_item['cause'],
-            'money': management_item['money'],
-            'action': management_item['action'],
-            'management': management_item['management'],
-            'flags': management_item['flags'],
-        })
+    for item in items[:MAX_DRILLDOWN_ITEMS]:
+        prepared_items.append(_build_compact_drill_item(item))
 
     return {
         'mode': 'drill_down',
@@ -257,7 +273,7 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
         'top_drain_metric': comparison_payload['top_drain_metric'],
         'top_drain_metric_label': METRIC_LABELS.get(comparison_payload['top_drain_metric'], comparison_payload['top_drain_metric']),
         'top_drain_effect': _round(comparison_payload['top_drain_effect']),
-        'reasons': reasons[:10],
+        'reasons': reasons[:MAX_REASON_ITEMS],
         'management': {
             'problem': _format_problem_message(comparison_payload),
             'reason': _build_reason_summary(_extract_negative_reasons(reasons, limit=2)),
@@ -276,6 +292,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
 
     losses = []
     for item in items:
+        management = build_management_view(item)
         losses.append({
             'object_name': item['object_name'],
             'level': item['level'],
@@ -289,7 +306,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
             'top_drain_metric_label': METRIC_LABELS.get(item['top_drain_metric'], item['top_drain_metric']),
             'top_drain_effect': _round(item['top_drain_effect']),
             'is_negative_for_business': item['top_drain_is_negative_for_business'],
-            'management': build_management_view(item)['management'],
+            'management': management['management'],
             'flags': {
                 'business_flags': item.get('flags', {}),
                 'data_flags': _extract_data_flags(item.get('flags', {})),
@@ -315,7 +332,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
         'period': drilldown_payload['period'],
         'children_level': drilldown_payload['children_level'],
         'children_level_label': _level_label(drilldown_payload['children_level']),
-        'losses': losses[:10],
+        'losses': losses[:MAX_LOSSES_ITEMS],
         'action': {
             'suggested_action': 'выбрать объект с максимальными потерями и провалиться глубже',
             'next_step': drilldown_payload['children_level'],
@@ -438,7 +455,7 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'cause': {
-            'items': diagnosis_changes[:10],
+            'items': diagnosis_changes[:MAX_REASON_ITEMS],
             'main_driver_metric': main_change.get('metric'),
             'main_driver_label': main_change.get('label'),
             'main_driver_delta': main_change.get('delta_value'),
