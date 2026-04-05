@@ -194,6 +194,9 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     query = parsed['query']
     query_type = query.get('query_type')
 
+    # =========================
+    # BASE
+    # =========================
     if query_type == 'base':
         base_query = _build_base_query(query, session)
         if not base_query:
@@ -207,8 +210,29 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
         update_session(session_id, base_query)
         return response
 
+    # =========================
+    # DRILLDOWN (🔥 FIX)
+    # =========================
     if query_type == 'drill_down':
-        response = _call_drill_handler(session, query.get('target_level'))
+        target_level = query.get('target_level')
+
+        response = _call_drill_handler(session, target_level)
+
+        if response.get('error') or response.get('status') == 'error':
+            return response
+
+        # 🔥 ОБНОВЛЯЕМ СЕССИЮ
+        session_update = {
+            'level': target_level or session.get('level'),
+            'period': session.get('period'),
+        }
+
+        # если есть объект — фиксируем
+        if 'object_name' in response:
+            session_update['object_name'] = response.get('object_name')
+
+        update_session(session_id, session_update)
+
         return response
 
     return error_response('query type not recognized')
