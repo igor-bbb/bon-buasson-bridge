@@ -1,81 +1,27 @@
-from typing import Any, Dict
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.comparison import (
-    get_business_comparison,
-    get_category_comparison,
-    get_manager_comparison,
-    get_manager_top_comparison,
-    get_network_comparison,
-    get_sku_comparison,
-    get_tmc_group_comparison,
+from app.config import LOW_VOLUME_THRESHOLD
+from app.domain.filters import filter_rows, get_normalized_rows
+from app.domain.metrics import (
+    aggregate_metrics,
+    build_effects,
+    build_expected_metrics,
+    build_gaps,
+    compute_loss_share,
+    compute_margin_gap,
+    compute_median_gap,
+    compute_per_metric_effects,
+    compute_total_loss,
+    detect_kpi_zone,
+    detect_priority,
+    detect_status,
+    detect_suggested_action,
 )
-from app.domain.drilldown import (
-    get_business_categories_comparison,
-    get_business_manager_tops_comparison,
-    get_business_managers_comparison,
-    get_business_networks_comparison,
-    get_business_skus_comparison,
-    get_business_tmc_groups_comparison,
-    get_category_skus_comparison,
-    get_category_tmc_groups_comparison,
-    get_manager_categories_comparison,
-    get_manager_networks_comparison,
-    get_manager_top_managers_comparison,
-    get_network_categories_comparison,
-    get_network_skus_comparison,
-    get_network_tmc_groups_comparison,
-    get_tmc_group_skus_comparison,
-)
-from app.presentation.contracts import error_response, not_implemented_response, ok_response
-from app.presentation.views import (
-    build_comparison_management_view,
-    build_drilldown_management_view,
-    build_losses_view_from_children,
-    build_management_view,
-    build_reasons_view,
-)
-from app.query.parsing import parse_query_intent, normalize_user_message
+from app.domain.sorting import pick_top_drain
 
 
-SESSION_STORE: Dict[str, Dict[str, Any]] = {}
-
-
-def get_session(session_id: str) -> Dict[str, Any]:
-    return SESSION_STORE.get(session_id, {})
-
-
-def update_session(session_id: str, data: Dict[str, Any]) -> None:
-    current = SESSION_STORE.get(session_id, {})
-    current.update(data)
-    SESSION_STORE[session_id] = current
-
-
-SHORT_COMMAND_TARGETS = {
-    'топы': 'manager_top',
-    'топ менеджеры': 'manager_top',
-    'топ менеджер': 'manager_top',
-    'топ-менеджеры': 'manager_top',
-    'топ-менеджер': 'manager_top',
-    'менеджеры': 'manager',
-    'менеджер': 'manager',
-    'сети': 'network',
-    'сеть': 'network',
-    'категории': 'category',
-    'категория': 'category',
-    'группы': 'tmc_group',
-    'группа': 'tmc_group',
-    'группы тмц': 'tmc_group',
-    'группа тмц': 'tmc_group',
-    'товары': 'sku',
-    'товар': 'sku',
-    'sku': 'sku',
-    'скю': 'sku',
-    'причины': 'reasons',
-    'потери': 'losses',
-    'сигнал': 'summary',
-}
-
-DEFAULT_NEXT_LEVEL = {
+CHILD_LEVEL_BY_LEVEL = {
     'business': 'manager_top',
     'manager_top': 'manager',
     'manager': 'network',
@@ -84,245 +30,258 @@ DEFAULT_NEXT_LEVEL = {
     'tmc_group': 'sku',
 }
 
-SUMMARY_EXECUTORS = {
-    'business': lambda obj, p: get_business_comparison(period=p),
-    'manager_top': lambda obj, p: get_manager_top_comparison(manager_top=obj, period=p),
-    'manager': lambda obj, p: get_manager_comparison(manager=obj, period=p),
-    'network': lambda obj, p: get_network_comparison(network=obj, period=p),
-    'category': lambda obj, p: get_category_comparison(category=obj, period=p),
-    'tmc_group': lambda obj, p: get_tmc_group_comparison(tmc_group=obj, period=p),
-    'sku': lambda obj, p: get_sku_comparison(sku=obj, period=p),
-}
 
-
-def _normalize_message(message: str) -> str:
-    return normalize_user_message(message)
-
-
-def _is_short_command(message: str) -> bool:
-    return _normalize_message(message) in SHORT_COMMAND_TARGETS
-
-
-def _build_drill_from_scope(scope_level: str, scope_object_name: str, target_level: str, period: str) -> Dict[str, Any]:
-    if scope_level == 'business':
-        if target_level == 'manager_top':
-            return get_business_manager_tops_comparison(period=period)
-        if target_level == 'manager':
-            return get_business_managers_comparison(period=period)
-        if target_level == 'network':
-            return get_business_networks_comparison(period=period)
-        if target_level == 'category':
-            return get_business_categories_comparison(period=period)
-        if target_level == 'tmc_group':
-            return get_business_tmc_groups_comparison(period=period)
-        if target_level == 'sku':
-            return get_business_skus_comparison(period=period)
-
-    if scope_level == 'manager_top' and scope_object_name and target_level == 'manager':
-        return get_manager_top_managers_comparison(manager_top=scope_object_name, period=period)
-
-    if scope_level == 'manager' and scope_object_name:
-        if target_level == 'network':
-            return get_manager_networks_comparison(manager=scope_object_name, period=period)
-        if target_level == 'category':
-            return get_manager_categories_comparison(manager=scope_object_name, period=period)
-
-    if scope_level == 'network' and scope_object_name:
-        if target_level == 'category':
-            return get_network_categories_comparison(network=scope_object_name, period=period)
-        if target_level == 'tmc_group':
-            return get_network_tmc_groups_comparison(network=scope_object_name, period=period)
-        if target_level == 'sku':
-            return get_network_skus_comparison(network=scope_object_name, period=period)
-
-    if scope_level == 'category' and scope_object_name:
-        if target_level == 'tmc_group':
-            return get_category_tmc_groups_comparison(category=scope_object_name, period=period)
-        if target_level == 'sku':
-            return get_category_skus_comparison(category=scope_object_name, period=period)
-
-    if scope_level == 'tmc_group' and scope_object_name and target_level == 'sku':
-        return get_tmc_group_skus_comparison(tmc_group=scope_object_name, period=period)
-
-    return {'error': f'drilldown not supported: {scope_level} -> {target_level}'}
-
-
-def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = _normalize_message(message)
-
-    if normalized not in SHORT_COMMAND_TARGETS:
-        return {}
-
-    if not session_ctx or not session_ctx.get('scope_level') or not session_ctx.get('period_current'):
-        return {'status': 'error', 'reason': 'нет контекста'}
-
-    target = SHORT_COMMAND_TARGETS[normalized]
-
-    if target in {'summary', 'reasons', 'losses'}:
-        return {
-            'status': 'ok',
-            'query': {
-                'mode': session_ctx.get('mode', 'diagnosis'),
-                'level': session_ctx.get('scope_level'),
-                'object_name': session_ctx.get('scope_object_name'),
-                'period_current': session_ctx.get('period_current'),
-                'period_previous': session_ctx.get('period_previous'),
-                'query_type': target,
-                'period': session_ctx.get('period_current'),
-                'object': session_ctx.get('scope_object_name'),
-            }
-        }
-
+def build_flags(
+    object_metrics: Dict[str, float],
+    invalid_benchmark: bool,
+    negative_benchmark: bool,
+) -> Dict[str, bool]:
+    low_volume = object_metrics['revenue'] < LOW_VOLUME_THRESHOLD
     return {
-        'status': 'ok',
-        'query': {
-            'mode': session_ctx.get('mode', 'diagnosis'),
-            'level': session_ctx.get('scope_level'),
-            'object_name': session_ctx.get('scope_object_name'),
-            'period_current': session_ctx.get('period_current'),
-            'period_previous': session_ctx.get('period_previous'),
-            'query_type': 'drill_down',
-            'target_level': target,
-            'period': session_ctx.get('period_current'),
-            'object': session_ctx.get('scope_object_name'),
-        }
+        'low_volume': low_volume,
+        'invalid_benchmark': invalid_benchmark,
+        'negative_benchmark': negative_benchmark,
     }
 
 
-def _store_scope(session_id: str, level: str, object_name: str, period_current: str, period_previous: Any, mode: str) -> None:
-    update_session(session_id, {
-        'scope_level': level,
-        'scope_object_name': object_name,
-        'period_current': period_current,
-        'period_previous': period_previous,
-        'mode': mode,
-    })
+def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Dict[str, Any]]]:
+    if level == 'business':
+        return [rows]
+
+    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        name = row.get(level)
+        if not name:
+            continue
+        groups[name].append(row)
+
+    return list(groups.values())
 
 
-def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
-    level = query.get('level')
-    period = query.get('period_current')
-    object_name = query.get('object_name')
-    mode = query.get('mode', 'diagnosis')
-
-    if not level:
-        return error_response('level not recognized', query)
-
-    if not period:
-        return error_response('period not recognized', query)
-
-    if level != 'business' and not object_name:
-        return error_response('object not recognized', query)
-
-    executor = SUMMARY_EXECUTORS.get(level)
-    if executor is None:
-        return not_implemented_response(query, 'base query not supported')
-
-    current = executor(object_name, period)
-    if 'error' in current:
-        return error_response(current['error'], query)
-
-    if mode == 'comparison':
-        previous_period = query.get('period_previous')
-        if not previous_period:
-            return error_response('comparison period not recognized', query)
-
-        previous = executor(object_name, previous_period)
-        if 'error' in previous:
-            return error_response(previous['error'], query)
-
-        response = ok_response(query, build_comparison_management_view(query, current, previous))
-        if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, previous_period, mode)
-        return response
-
-    if query.get('query_type') == 'reasons':
-        response = ok_response(query, build_reasons_view(current))
-        if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
-        return response
-
-    if query.get('query_type') == 'losses':
-        target_level = DEFAULT_NEXT_LEVEL.get(level)
-        if not target_level:
-            return not_implemented_response(query, 'losses not supported for this level')
-
-        source = _build_drill_from_scope(level, object_name, target_level, period)
-        if 'error' in source:
-            return error_response(source['error'], query)
-
-        response = ok_response(query, build_losses_view_from_children(source))
-        if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
-        return response
-
-    response = ok_response(query, build_management_view(current))
-    if response.get('status') == 'ok':
-        _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
-    return response
+MEDIAN_CACHE: Dict[Tuple[str, str], Optional[float]] = {}
 
 
-def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], session_id: str) -> Dict[str, Any]:
-    scope_level = query.get('level') or session_ctx.get('scope_level')
-    scope_object_name = query.get('object_name') if query.get('level') != 'business' else query.get('object_name')
-    if not scope_object_name:
-        scope_object_name = session_ctx.get('scope_object_name')
+def compute_level_median_gap(level: str, period: str) -> Optional[float]:
+    cache_key = (level, period)
 
-    period = query.get('period_current') or session_ctx.get('period_current')
-    target_level = query.get('target_level')
+    if cache_key in MEDIAN_CACHE:
+        return MEDIAN_CACHE[cache_key]
 
-    if not scope_level or not period:
-        return {'status': 'error', 'reason': 'нет контекста'}
+    if level == 'business':
+        MEDIAN_CACHE[cache_key] = None
+        return None
 
-    if not target_level:
-        target_level = DEFAULT_NEXT_LEVEL.get(scope_level)
+    rows = get_normalized_rows()
+    rows, _ = filter_rows(rows, period=period)
 
-    if not target_level:
-        return error_response('next drilldown level not available', query)
+    if not rows:
+        MEDIAN_CACHE[cache_key] = None
+        return None
 
-    payload = _build_drill_from_scope(scope_level, scope_object_name, target_level, period)
-    if 'error' in payload:
-        return error_response(payload['error'], query)
+    grouped_rows = _group_rows_by_level(rows, level)
 
-    response = ok_response(query, build_drilldown_management_view(payload))
+    items = []
+    for chunk in grouped_rows:
+        items.append({'object_metrics': aggregate_metrics(chunk)})
 
-    if response.get('status') == 'ok':
-        next_scope_level = target_level
-        next_scope_object_name = scope_object_name
+    median = compute_median_gap(items)
+    MEDIAN_CACHE[cache_key] = median
 
-        items = payload.get('items', [])
-        if len(items) == 1:
-            next_scope_object_name = items[0].get('object_name', scope_object_name)
-
-        _store_scope(
-            session_id,
-            next_scope_level,
-            next_scope_object_name,
-            period,
-            query.get('period_previous'),
-            query.get('mode', 'diagnosis'),
-        )
-
-    return response
+    return median
 
 
-def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[str, Any]:
-    session_ctx = get_session(session_id)
-    normalized = _normalize_message(message)
+def _compute_gap_loss_money(margin_gap: float, revenue: float) -> float:
+    if margin_gap >= 0:
+        return 0.0
+    return round(abs(margin_gap) / 100.0 * revenue, 2)
 
-    if _is_short_command(normalized):
-        parsed = _build_query_from_short_command(normalized, session_ctx)
-        if parsed.get('status') != 'ok':
-            return parsed
-    else:
-        parsed = parse_query_intent(message)
-        if parsed.get('status') != 'ok':
-            return parsed
 
-    query = parsed['query']
-    query_type = query.get('query_type', 'summary')
+def build_comparison_payload(
+    level: str,
+    object_name: str,
+    object_metrics: Dict[str, float],
+    business_metrics: Dict[str, float],
+    period: str,
+) -> Dict[str, Any]:
 
-    if query_type == 'drill_down':
-        return _route_drill_query(query, session_ctx, session_id)
+    expected_metrics, invalid_benchmark, negative_benchmark = build_expected_metrics(
+        object_metrics=object_metrics,
+        business_metrics=business_metrics,
+    )
 
-    return _route_base_query(query, session_id)
+    gaps_by_metric = build_gaps(
+        object_metrics=object_metrics,
+        expected_metrics=expected_metrics,
+    )
+
+    effects_by_metric = build_effects(gaps_by_metric)
+
+    flags = build_flags(
+        object_metrics=object_metrics,
+        invalid_benchmark=invalid_benchmark,
+        negative_benchmark=negative_benchmark,
+    )
+
+    top_drain_metric, top_drain_effect, top_drain_is_negative_for_business = pick_top_drain(
+        effects_by_metric=effects_by_metric,
+        low_volume=flags['low_volume'],
+    )
+
+    median_gap = compute_level_median_gap(level=level, period=period)
+    kpi_zone = detect_kpi_zone(object_metrics['kpi_gap'], median_gap)
+
+    margin_gap = compute_margin_gap(object_metrics, business_metrics)
+    total_loss = compute_total_loss(effects_by_metric)
+    per_metric_effects = compute_per_metric_effects(effects_by_metric)
+    loss_share = compute_loss_share(total_loss, business_metrics)
+    gap_loss_money = _compute_gap_loss_money(margin_gap, object_metrics['revenue'])
+
+    status = detect_status(object_metrics['finrez_pre'], kpi_zone)
+    priority = detect_priority(status, total_loss, loss_share, object_metrics['kpi_gap'], margin_gap)
+
+    next_step = CHILD_LEVEL_BY_LEVEL.get(level)
+    suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
+
+    return {
+        'level': level,
+        'object_name': object_name,
+        'period': period,
+
+        'signal': {
+            'status': status,
+            'finrez_pre': object_metrics['finrez_pre'],
+            'margin_gap': margin_gap,
+            'kpi_gap': object_metrics['kpi_gap'],
+            'median_gap': median_gap,
+            'kpi_zone': kpi_zone,
+        },
+
+        'navigation': {
+            'kpi_gap': object_metrics['kpi_gap'],
+            'median_gap': median_gap,
+            'kpi_zone': kpi_zone,
+        },
+
+        'context': {
+            'margin_pre_object': object_metrics['margin_pre'],
+            'margin_pre_business': business_metrics['margin_pre'],
+            'margin_gap': margin_gap,
+        },
+
+        'metrics': {
+            'object_metrics': object_metrics,
+            'business_metrics': business_metrics,
+        },
+
+        'diagnosis': {
+            'expected_metrics': expected_metrics,
+            'gaps_by_metric': gaps_by_metric,
+            'effects_by_metric': effects_by_metric,
+            'top_drain_metric': top_drain_metric,
+            'top_drain_effect': top_drain_effect,
+            'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
+        },
+
+        'impact': {
+            'total_loss': total_loss,
+            'gap_loss_money': gap_loss_money,
+            'per_metric_effects': per_metric_effects,
+        },
+
+        'priority': {
+            'loss_share': loss_share,
+            'priority': priority,
+        },
+
+        'action': {
+            'suggested_action': suggested_action,
+            'next_step': next_step,
+        },
+
+        'flags': flags,
+
+        'top_drain_metric': top_drain_metric,
+        'top_drain_effect': top_drain_effect,
+        'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
+    }
+
+
+def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'error': 'no data after filtering',
+        'reason': meta.get('empty_reason'),
+        'trace': meta.get('trace'),
+    }
+
+
+def get_business_comparison(period: str) -> Dict[str, Any]:
+    rows = get_normalized_rows()
+    business_rows, meta = filter_rows(rows, period=period)
+
+    if not business_rows:
+        return _handle_empty_filter(meta)
+
+    business_metrics = aggregate_metrics(business_rows)
+
+    return build_comparison_payload(
+        level='business',
+        object_name='business',
+        object_metrics=business_metrics,
+        business_metrics=business_metrics,
+        period=period,
+    )
+
+
+def _single_object_comparison(
+    level: str,
+    object_name: str,
+    period: str,
+    **filters: Any
+) -> Dict[str, Any]:
+
+    rows = get_normalized_rows()
+
+    object_rows, object_meta = filter_rows(rows, period=period, **filters)
+    business_rows, business_meta = filter_rows(rows, period=period)
+
+    if not object_rows:
+        return _handle_empty_filter(object_meta)
+
+    if not business_rows:
+        return _handle_empty_filter(business_meta)
+
+    object_metrics = aggregate_metrics(object_rows)
+    business_metrics = aggregate_metrics(business_rows)
+
+    return build_comparison_payload(
+        level=level,
+        object_name=object_name,
+        object_metrics=object_metrics,
+        business_metrics=business_metrics,
+        period=period,
+    )
+
+
+def get_manager_top_comparison(manager_top: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('manager_top', manager_top, period, manager_top=manager_top)
+
+
+def get_manager_comparison(manager: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('manager', manager, period, manager=manager)
+
+
+def get_network_comparison(network: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('network', network, period, network=network)
+
+
+def get_category_comparison(category: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('category', category, period, category=category)
+
+
+def get_tmc_group_comparison(tmc_group: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('tmc_group', tmc_group, period, tmc_group=tmc_group)
+
+
+def get_sku_comparison(sku: str, period: str) -> Dict[str, Any]:
+    return _single_object_comparison('sku', sku, period, sku=sku)
