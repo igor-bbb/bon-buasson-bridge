@@ -6,6 +6,8 @@ from app.presentation.contracts import error_response
 from app.query.entity_resolution import detect_level_and_object_name
 
 
+SUPPORTED_QUERY_TYPES = ['summary', 'drill_down', 'reasons', 'losses']
+
 COMPARISON_MARKERS = [
     'сравни',
     'сравнить',
@@ -16,6 +18,11 @@ COMPARISON_MARKERS = [
     'по сравнению с',
     'относительно',
 ]
+
+MONTH_NAME_PATTERN = (
+    r'январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|'
+    r'август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]'
+)
 
 SHORT_DRILL_COMMANDS = {
     'топы': 'manager_top',
@@ -44,6 +51,63 @@ SPECIAL_QUERY_TYPES = {
 }
 
 
+def _normalize_year(year_str: str) -> str:
+    year = int(year_str)
+    if year < 100:
+        year += 2000
+    return f'{year:04d}'
+
+
+def _month_token_to_number(token: str) -> Optional[str]:
+    token = clean_text(token)
+    if token in MONTHS_RU:
+        return MONTHS_RU[token]
+    if re.fullmatch(r'0?[1-9]|1[0-2]', token):
+        return f'{int(token):02d}'
+    return None
+
+
+def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
+    found: List[Tuple[int, str]] = []
+
+    def append_unique(position: int, period: str) -> None:
+        if period not in [p for _, p in found]:
+            found.append((position, period))
+
+    # YYYY-MM
+    for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
+        period = f'{match.group(1)}-{match.group(2)}'
+        append_unique(match.start(), period)
+
+    # MM YYYY / MM.YYYY / MM/YYYY / MM-YYYY
+    for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
+        year = _normalize_year(match.group(2))
+        month = f'{int(match.group(1)):02d}'
+        period = f'{year}-{month}'
+        append_unique(match.start(), period)
+
+    # textual months
+    month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
+    for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
+        month = _month_token_to_number(match.group(1))
+        year_raw = match.group(2)
+        if month and year_raw:
+            year = _normalize_year(year_raw)
+            period = f'{year}-{month}'
+            append_unique(match.start(), period)
+
+    found.sort(key=lambda x: x[0])
+    return found
+
+
+def extract_periods_from_text(message: str) -> List[str]:
+    text = clean_text(message)
+    month_tokens = [period for _, period in _extract_month_year_tokens(text)]
+    if month_tokens:
+        return month_tokens[:2]
+    return []
+
+
 def detect_query_type(message: str) -> str:
     text = clean_text(message).strip()
 
@@ -56,60 +120,17 @@ def detect_query_type(message: str) -> str:
     return 'summary'
 
 
-def _normalize_year(year_str: str) -> str:
-    year = int(year_str)
-    if year < 100:
-        year += 2000
-    return f'{year:04d}'
-
-
-def _month_name_to_number(token: str) -> Optional[str]:
-    token = clean_text(token)
-    return MONTHS_RU.get(token)
-
-
-def _extract_period_tokens(text: str) -> List[str]:
-    periods: List[Tuple[int, str]] = []
-
-    def add_period(position: int, period: str) -> None:
-        if period not in [p for _, p in periods]:
-            periods.append((position, period))
-
-    # 2026-02
-    for m in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
-        add_period(m.start(), f'{m.group(1)}-{m.group(2)}')
-
-    # 02 2026 / 02.2026 / 02/2026
-    for m in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
-        month = f'{int(m.group(1)):02d}'
-        year = _normalize_year(m.group(2))
-        add_period(m.start(), f'{year}-{month}')
-
-    # февраль 2026 / февраля 2026
-    month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
-    for m in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
-        month = _month_name_to_number(m.group(1))
-        year_raw = m.group(2)
-        if month and year_raw:
-            year = _normalize_year(year_raw)
-            add_period(m.start(), f'{year}-{month}')
-
-    periods.sort(key=lambda x: x[0])
-    return [p for _, p in periods]
-
-
-def extract_periods_from_text(message: str) -> List[str]:
-    text = clean_text(message)
-    return _extract_period_tokens(text)
-
-
-def _has_comparison(message: str) -> bool:
-    text = clean_text(message)
-    return any(marker in text for marker in COMPARISON_MARKERS)
+def _has_comparison_connector(message: str) -> bool:
+    text = f' {clean_text(message)} '
+    if any(marker in text for marker in COMPARISON_MARKERS):
+        return True
+    if 'прошлым годом' in text or 'прошлого года' in text:
+        return True
+    return False
 
 
 def detect_mode(periods: List[str], message: str) -> str:
-    if _has_comparison(message) and len(periods) >= 2:
+    if _has_comparison_connector(message) and len(periods) >= 2:
         return 'comparison'
     return 'diagnosis'
 
@@ -120,7 +141,7 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not text:
         return error_response('empty message')
 
-    # короткие команды после установленного контекста
+    # short follow-up drill commands
     if text in SHORT_DRILL_COMMANDS:
         return {
             'status': 'ok',
@@ -137,6 +158,7 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
             },
         }
 
+    # short follow-up special commands
     if text in SPECIAL_QUERY_TYPES:
         return {
             'status': 'ok',
@@ -161,14 +183,14 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not period_current:
         return error_response('period not recognized')
 
+    query_type = detect_query_type(message)
+
     level, object_name = detect_level_and_object_name(message, period_current)
 
-    # если объект не найден, но есть период — считаем это запросом на бизнес
+    # if no entity resolved but period exists -> business by default
     if not level:
         level = 'business'
         object_name = 'business'
-
-    query_type = detect_query_type(message)
 
     query: Dict[str, Any] = {
         'mode': mode,
