@@ -144,66 +144,81 @@ def build_comparison_payload(
     suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
 
     return {
-        'level': level,
-        'object_name': object_name,
-        'period': period,
+    'level': level,
+    'object_name': object_name,
+    'period': period,
 
-        'signal': {
-            'status': status,
-            'finrez_pre': object_metrics['finrez_pre'],
-            'margin_gap': margin_gap,
-            'kpi_gap': object_metrics['kpi_gap'],
-            'median_gap': median_gap,
-            'kpi_zone': kpi_zone,
-        },
+    'signal': {
+        'status': status,
+        'finrez_pre': object_metrics.get('finrez_pre'),
+        'margin_gap': margin_gap,
+        'kpi_gap': object_metrics.get('kpi_gap'),
+        'median_gap': median_gap,
+        'kpi_zone': kpi_zone,
+    },
 
-        'navigation': {
-            'kpi_gap': object_metrics['kpi_gap'],
-            'median_gap': median_gap,
-            'kpi_zone': kpi_zone,
-        },
+    'navigation': {
+        'kpi_gap': object_metrics.get('kpi_gap'),
+        'median_gap': median_gap,
+        'kpi_zone': kpi_zone,
+    },
 
-        'context': {
-            'margin_pre_object': object_metrics['margin_pre'],
-            'margin_pre_business': business_metrics['margin_pre'],
-            'margin_gap': margin_gap,
-        },
+    # 🔥 ВАЖНО — ДОБАВИЛИ ЗАТРАТЫ
+    'context': {
+        'margin_pre_object': object_metrics.get('margin_pre'),
+        'margin_pre_business': business_metrics.get('margin_pre'),
+        'margin_gap': margin_gap,
 
-        'metrics': {
-            'object_metrics': object_metrics,
-            'business_metrics': business_metrics,
-        },
+        'costs': {
+            'retro_bonus': object_metrics.get('retro_bonus'),
+            'logistics_cost': object_metrics.get('logistics_cost'),
+            'personnel_cost': object_metrics.get('personnel_cost'),
+            'other_costs': object_metrics.get('other_costs'),
+        }
+    },
 
-        'diagnosis': {
-            'expected_metrics': expected_metrics,
-            'gaps_by_metric': gaps_by_metric,
-            'effects_by_metric': effects_by_metric,
-            'top_drain_metric': top_drain_metric,
-            'top_drain_effect': top_drain_effect,
-            'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
-        },
+    # 🔥 НЕ ТРОГАЕМ — уже правильно
+    'metrics': {
+        'object_metrics': object_metrics,
+        'business_metrics': business_metrics,
+       },
 
-        'impact': {
-            'total_loss': total_loss,
-            'gap_loss_money': gap_loss_money,
-            'per_metric_effects': per_metric_effects,
-        },
-
-        'priority': {
-            'loss_share': loss_share,
-            'priority': priority,
-        },
-
-        'action': {
-            'suggested_action': suggested_action,
-            'next_step': next_step,
-        },
-
-        'flags': flags,
-
+    'effects': {
+        'effects_by_metric': effects_by_metric,
         'top_drain_metric': top_drain_metric,
         'top_drain_effect': top_drain_effect,
         'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
+       },
+
+    'impact': {
+        'total_loss': total_loss,
+        'gap_loss_money': gap_loss_money,
+        'per_metric_effects': per_metric_effects,
+
+        # 🔥 ДОБАВИЛИ СТРУКТУРУ ЗАТРАТ
+        'cost_structure': {
+            'retro_bonus': object_metrics.get('retro_bonus'),
+            'logistics_cost': object_metrics.get('logistics_cost'),
+            'personnel_cost': object_metrics.get('personnel_cost'),
+            'other_costs': object_metrics.get('other_costs'),
+      }
+      },
+
+    'priority': {
+        'loss_share': loss_share,
+        'priority': priority,
+      },
+
+    'action': {
+        'suggested_action': suggested_action,
+        'next_step': next_step,
+     },
+
+    'flags': flags,
+
+    'top_drain_metric': top_drain_metric,
+    'top_drain_effect': top_drain_effect,
+    'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
     }
 
 
