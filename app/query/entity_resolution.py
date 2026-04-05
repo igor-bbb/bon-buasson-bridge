@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-# простая нормализация
+
 def _norm(text: str) -> str:
     return text.strip().lower()
 
@@ -13,32 +13,40 @@ def resolve_entity(message: str, dictionary: Dict) -> Dict:
         "entity_name": None,
     }
 
-    # --- NETWORK ---
-    for name in dictionary.get("networks", []):
-        if _norm(name) in msg:
-            result["entity_type"] = "network"
-            result["entity_name"] = name
-            return result
+    def match(entity_list, entity_type):
+        best = None
+        best_len = 0
 
-    # --- MANAGER ---
-    for name in dictionary.get("managers", []):
-        if _norm(name) in msg:
-            result["entity_type"] = "manager"
-            result["entity_name"] = name
-            return result
+        for name in entity_list:
+            name_norm = _norm(name)
 
-    # --- CATEGORY ---
-    for name in dictionary.get("categories", []):
-        if _norm(name) in msg:
-            result["entity_type"] = "category"
-            result["entity_name"] = name
-            return result
+            # 1. точное совпадение
+            if msg == name_norm:
+                return name
 
-    # --- SKU ---
-    for name in dictionary.get("skus", []):
-        if _norm(name) in msg:
-            result["entity_type"] = "sku"
-            result["entity_name"] = name
-            return result
+            # 2. contains (главное)
+            if name_norm in msg:
+                if len(name_norm) > best_len:
+                    best = name
+                    best_len = len(name_norm)
+
+        return best
+
+    # порядок важен (чтобы не ловить “вода” раньше SKU и т.д.)
+    priority = [
+        ("manager", dictionary.get("managers", [])),
+        ("network", dictionary.get("networks", [])),
+        ("category", dictionary.get("categories", [])),
+        ("sku", dictionary.get("skus", [])),
+    ]
+
+    for entity_type, entity_list in priority:
+        found = match(entity_list, entity_type)
+
+        if found:
+            return {
+                "entity_type": entity_type,
+                "entity_name": found,
+            }
 
     return result
