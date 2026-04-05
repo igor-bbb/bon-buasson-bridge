@@ -12,20 +12,20 @@ from app.domain.comparison import (
     get_tmc_group_comparison,
 )
 from app.domain.drilldown import (
-    get_business_categories_comparison,
     get_business_manager_tops_comparison,
     get_business_managers_comparison,
     get_business_networks_comparison,
-    get_business_skus_comparison,
+    get_business_categories_comparison,
     get_business_tmc_groups_comparison,
-    get_category_skus_comparison,
-    get_category_tmc_groups_comparison,
-    get_manager_categories_comparison,
-    get_manager_networks_comparison,
+    get_business_skus_comparison,
     get_manager_top_managers_comparison,
+    get_manager_networks_comparison,
+    get_manager_categories_comparison,
     get_network_categories_comparison,
-    get_network_skus_comparison,
     get_network_tmc_groups_comparison,
+    get_network_skus_comparison,
+    get_category_tmc_groups_comparison,
+    get_category_skus_comparison,
     get_tmc_group_skus_comparison,
 )
 from app.models.request_models import VectraQueryRequest
