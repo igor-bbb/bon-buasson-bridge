@@ -51,8 +51,11 @@ def _round(value: float) -> float:
 
 
 def _format_signal_message(payload: Dict[str, Any]) -> str:
-    margin_gap = _round(payload['context']['margin_gap'])
-    status = _status_label(payload['signal']['status'])
+    context = payload.get('context', {})
+    signal = payload.get('signal', {})
+
+    margin_gap = _round(context.get('margin_gap', 0.0))
+    status = _status_label(signal.get('status'))
 
     if margin_gap < 0:
         return f'маржа ниже бизнеса на {abs(margin_gap)} п.п. — {status}'
@@ -62,8 +65,11 @@ def _format_signal_message(payload: Dict[str, Any]) -> str:
 
 
 def _format_problem_message(payload: Dict[str, Any]) -> str:
-    margin_gap = _round(payload['context']['margin_gap'])
-    status = payload['signal']['status']
+    context = payload.get('context', {})
+    signal = payload.get('signal', {})
+
+    margin_gap = _round(context.get('margin_gap', 0.0))
+    status = signal.get('status')
 
     if margin_gap < 0:
         return f'теряет относительно бизнеса — {_status_label(status)}'
@@ -85,17 +91,21 @@ def sort_effect_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _extract_reasons_from_summary(comparison_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    effects_by_metric = comparison_payload['diagnosis']['effects_by_metric']
+    diagnosis = comparison_payload.get('diagnosis') or {}
+    effects_by_metric = diagnosis.get('effects_by_metric') or {}
+
+    if not effects_by_metric:
+        return []
 
     reasons = []
     for metric, payload in effects_by_metric.items():
         reasons.append({
             'metric': metric,
             'metric_label': METRIC_LABELS.get(metric, metric),
-            'effect_value': _round(payload['effect_value']),
-            'effect_direction': payload['effect_direction'],
-            'type': payload['type'],
-            'is_negative_for_business': payload['is_negative_for_business'],
+            'effect_value': _round(payload.get('effect_value', 0.0)),
+            'effect_direction': payload.get('effect_direction'),
+            'type': payload.get('type'),
+            'is_negative_for_business': payload.get('is_negative_for_business', False),
         })
 
     return sort_effect_entries(reasons)
@@ -130,7 +140,7 @@ def _build_reason_summary(negative_reasons: List[Dict[str, Any]]) -> List[str]:
 
 
 def _build_action_summary(comparison_payload: Dict[str, Any]) -> str:
-    metric = comparison_payload['top_drain_metric']
+    metric = comparison_payload.get('top_drain_metric')
 
     if metric == 'retro_bonus':
         return 'пересмотреть условия ретро'
@@ -141,64 +151,79 @@ def _build_action_summary(comparison_payload: Dict[str, Any]) -> str:
     if metric == 'other_costs':
         return 'проверить прочие расходы'
 
-    return comparison_payload['action']['suggested_action']
+    return comparison_payload.get('action', {}).get('suggested_action', 'уточнить действие')
 
 
 def _build_effect_summary(comparison_payload: Dict[str, Any]) -> str:
-    total_loss = _round(comparison_payload['impact']['total_loss'])
+    impact = comparison_payload.get('impact', {})
+    total_loss = _round(impact.get('total_loss', 0.0))
     if total_loss > 0:
         return f'потенциал: +{total_loss} грн'
     return 'потерь не выявлено'
 
 
 def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
-    object_metrics = comparison_payload['metrics']['object_metrics']
+    metrics = comparison_payload.get('metrics', {})
+    object_metrics = metrics.get('object_metrics', {})
+    navigation = comparison_payload.get('navigation', {})
+    context = comparison_payload.get('context', {})
+    signal = comparison_payload.get('signal', {})
+    impact = comparison_payload.get('impact', {})
+    flags = comparison_payload.get('flags', {})
+
     reasons = _extract_reasons_from_summary(comparison_payload)
     negative_reasons = _extract_negative_reasons(reasons, limit=2)
-    flags = _extract_data_flags(comparison_payload.get('flags', {}))
+    data_flags = _extract_data_flags(flags)
 
     return {
         'mode': 'management',
-        'level': comparison_payload['level'],
-        'level_label': _level_label(comparison_payload['level']),
-        'object_name': comparison_payload['object_name'],
-        'period': comparison_payload['period'],
+        'level': comparison_payload.get('level'),
+        'level_label': _level_label(comparison_payload.get('level')),
+        'object_name': comparison_payload.get('object_name'),
+        'period': comparison_payload.get('period'),
 
         'signal': {
-            'status': comparison_payload['signal']['status'],
-            'label': _status_label(comparison_payload['signal']['status']),
+            'status': signal.get('status'),
+            'label': _status_label(signal.get('status')),
             'message': _format_signal_message(comparison_payload),
-            'margin_gap': _round(comparison_payload['context']['margin_gap']),
-            'kpi_gap': _round(comparison_payload['navigation']['kpi_gap']),
-            'median_gap': comparison_payload['navigation']['median_gap'],
-            'kpi_zone': comparison_payload['navigation']['kpi_zone'],
+            'margin_gap': _round(context.get('margin_gap', 0.0)),
+            'kpi_gap': _round(navigation.get('kpi_gap', 0.0)),
+            'median_gap': navigation.get('median_gap'),
+            'kpi_zone': navigation.get('kpi_zone'),
         },
 
         'basis': {
-            'revenue': _round(object_metrics['revenue']),
-            'finrez_pre': _round(object_metrics['finrez_pre']),
-            'margin_pre_object': _round(comparison_payload['context']['margin_pre_object']),
-            'margin_pre_business': _round(comparison_payload['context']['margin_pre_business']),
-            'margin_gap': _round(comparison_payload['context']['margin_gap']),
-            'markup': _round(object_metrics['markup']),
+            'revenue': _round(object_metrics.get('revenue', 0.0)),
+            'finrez_pre': _round(object_metrics.get('finrez_pre', 0.0)),
+            'margin_pre_object': _round(context.get('margin_pre_object', 0.0)),
+            'margin_pre_business': _round(context.get('margin_pre_business', 0.0)),
+            'margin_gap': _round(context.get('margin_gap', 0.0)),
+            'markup': _round(object_metrics.get('markup', 0.0)),
+            'retro_bonus': _round(object_metrics.get('retro_bonus', 0.0)),
+            'logistics_cost': _round(object_metrics.get('logistics_cost', 0.0)),
+            'personnel_cost': _round(object_metrics.get('personnel_cost', 0.0)),
+            'other_costs': _round(object_metrics.get('other_costs', 0.0)),
         },
 
         'cause': {
-            'top_drain_metric': comparison_payload['top_drain_metric'],
-            'top_drain_metric_label': METRIC_LABELS.get(comparison_payload['top_drain_metric'], comparison_payload['top_drain_metric']),
-            'top_drain_effect': _round(comparison_payload['top_drain_effect']),
+            'top_drain_metric': comparison_payload.get('top_drain_metric'),
+            'top_drain_metric_label': METRIC_LABELS.get(
+                comparison_payload.get('top_drain_metric'),
+                comparison_payload.get('top_drain_metric')
+            ),
+            'top_drain_effect': _round(comparison_payload.get('top_drain_effect', 0.0)),
             'items': negative_reasons,
         },
 
         'money': {
-            'gap_loss_money': _round(comparison_payload['impact']['gap_loss_money']),
-            'article_loss_money': _round(comparison_payload['impact']['total_loss']),
-            'revenue_base': _round(object_metrics['revenue']),
+            'gap_loss_money': _round(impact.get('gap_loss_money', 0.0)),
+            'article_loss_money': _round(impact.get('total_loss', 0.0)),
+            'revenue_base': _round(object_metrics.get('revenue', 0.0)),
         },
 
         'action': {
             'suggested_action': _build_action_summary(comparison_payload),
-            'next_step': comparison_payload['action']['next_step'],
+            'next_step': comparison_payload.get('action', {}).get('next_step'),
         },
 
         'management': {
@@ -209,8 +234,8 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
         },
 
         'flags': {
-            'business_flags': comparison_payload.get('flags', {}),
-            'data_flags': flags,
+            'business_flags': flags,
+            'data_flags': data_flags,
         },
     }
 
@@ -218,28 +243,28 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
 def _build_compact_drill_item(item: Dict[str, Any]) -> Dict[str, Any]:
     management_item = build_management_view(item)
 
-    compact_cause_items = management_item['cause'].get('items', [])[:MAX_REASON_ITEMS_DRILLDOWN]
+    compact_cause_items = management_item.get('cause', {}).get('items', [])[:MAX_REASON_ITEMS_DRILLDOWN]
 
     return {
-        'level': management_item['level'],
-        'level_label': management_item['level_label'],
-        'object_name': management_item['object_name'],
-        'signal': management_item['signal'],
-        'basis': management_item['basis'],
+        'level': management_item.get('level'),
+        'level_label': management_item.get('level_label'),
+        'object_name': management_item.get('object_name'),
+        'signal': management_item.get('signal'),
+        'basis': management_item.get('basis'),
         'cause': {
-            'top_drain_metric': management_item['cause']['top_drain_metric'],
-            'top_drain_metric_label': management_item['cause']['top_drain_metric_label'],
-            'top_drain_effect': management_item['cause']['top_drain_effect'],
+            'top_drain_metric': management_item.get('cause', {}).get('top_drain_metric'),
+            'top_drain_metric_label': management_item.get('cause', {}).get('top_drain_metric_label'),
+            'top_drain_effect': management_item.get('cause', {}).get('top_drain_effect'),
             'items': compact_cause_items,
         },
-        'money': management_item['money'],
-        'action': management_item['action'],
-        'management': management_item['management'],
+        'money': management_item.get('money'),
+        'action': management_item.get('action'),
+        'management': management_item.get('management'),
     }
 
 
 def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
-    items = drilldown_payload['items']
+    items = drilldown_payload.get('items', [])
 
     prepared_items = []
     for item in items[:MAX_DRILLDOWN_ITEMS]:
@@ -247,17 +272,17 @@ def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[s
 
     return {
         'mode': 'drill_down',
-        'level': drilldown_payload['level'],
-        'level_label': _level_label(drilldown_payload['level']),
-        'object_name': drilldown_payload['object_name'],
-        'period': drilldown_payload['period'],
-        'children_level': drilldown_payload['children_level'],
-        'children_level_label': _level_label(drilldown_payload['children_level']),
+        'level': drilldown_payload.get('level'),
+        'level_label': _level_label(drilldown_payload.get('level')),
+        'object_name': drilldown_payload.get('object_name'),
+        'period': drilldown_payload.get('period'),
+        'children_level': drilldown_payload.get('children_level'),
+        'children_level_label': _level_label(drilldown_payload.get('children_level')),
         'items_count': len(prepared_items),
         'items': prepared_items,
         'action': {
             'suggested_action': 'провалиться в следующий уровень и найти главный источник потери',
-            'next_step': drilldown_payload['children_level'],
+            'next_step': drilldown_payload.get('children_level'),
         },
     }
 
@@ -266,13 +291,16 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
     reasons = _extract_reasons_from_summary(comparison_payload)
 
     return {
-        'level': comparison_payload['level'],
-        'level_label': _level_label(comparison_payload['level']),
-        'object_name': comparison_payload['object_name'],
-        'period': comparison_payload['period'],
-        'top_drain_metric': comparison_payload['top_drain_metric'],
-        'top_drain_metric_label': METRIC_LABELS.get(comparison_payload['top_drain_metric'], comparison_payload['top_drain_metric']),
-        'top_drain_effect': _round(comparison_payload['top_drain_effect']),
+        'level': comparison_payload.get('level'),
+        'level_label': _level_label(comparison_payload.get('level')),
+        'object_name': comparison_payload.get('object_name'),
+        'period': comparison_payload.get('period'),
+        'top_drain_metric': comparison_payload.get('top_drain_metric'),
+        'top_drain_metric_label': METRIC_LABELS.get(
+            comparison_payload.get('top_drain_metric'),
+            comparison_payload.get('top_drain_metric')
+        ),
+        'top_drain_effect': _round(comparison_payload.get('top_drain_effect', 0.0)),
         'reasons': reasons[:MAX_REASON_ITEMS],
         'management': {
             'problem': _format_problem_message(comparison_payload),
@@ -288,25 +316,25 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
-    items = drilldown_payload['items']
+    items = drilldown_payload.get('items', [])
 
     losses = []
     for item in items:
         management = build_management_view(item)
         losses.append({
-            'object_name': item['object_name'],
-            'level': item['level'],
-            'level_label': _level_label(item['level']),
+            'object_name': item.get('object_name'),
+            'level': item.get('level'),
+            'level_label': _level_label(item.get('level')),
             'signal_message': _format_signal_message(item),
-            'margin_gap': _round(item['context']['margin_gap']),
-            'revenue': _round(item['metrics']['object_metrics']['revenue']),
-            'gap_loss_money': _round(item['impact']['gap_loss_money']),
-            'article_loss_money': _round(item['impact']['total_loss']),
-            'top_drain_metric': item['top_drain_metric'],
-            'top_drain_metric_label': METRIC_LABELS.get(item['top_drain_metric'], item['top_drain_metric']),
-            'top_drain_effect': _round(item['top_drain_effect']),
-            'is_negative_for_business': item['top_drain_is_negative_for_business'],
-            'management': management['management'],
+            'margin_gap': _round(item.get('context', {}).get('margin_gap', 0.0)),
+            'revenue': _round(item.get('metrics', {}).get('object_metrics', {}).get('revenue', 0.0)),
+            'gap_loss_money': _round(item.get('impact', {}).get('gap_loss_money', 0.0)),
+            'article_loss_money': _round(item.get('impact', {}).get('total_loss', 0.0)),
+            'top_drain_metric': item.get('top_drain_metric'),
+            'top_drain_metric_label': METRIC_LABELS.get(item.get('top_drain_metric'), item.get('top_drain_metric')),
+            'top_drain_effect': _round(item.get('top_drain_effect', 0.0)),
+            'is_negative_for_business': item.get('top_drain_is_negative_for_business', False),
+            'management': management.get('management'),
             'flags': {
                 'business_flags': item.get('flags', {}),
                 'data_flags': _extract_data_flags(item.get('flags', {})),
@@ -326,16 +354,16 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
     losses.sort(key=sort_key)
 
     return {
-        'level': drilldown_payload['level'],
-        'level_label': _level_label(drilldown_payload['level']),
-        'object_name': drilldown_payload['object_name'],
-        'period': drilldown_payload['period'],
-        'children_level': drilldown_payload['children_level'],
-        'children_level_label': _level_label(drilldown_payload['children_level']),
+        'level': drilldown_payload.get('level'),
+        'level_label': _level_label(drilldown_payload.get('level')),
+        'object_name': drilldown_payload.get('object_name'),
+        'period': drilldown_payload.get('period'),
+        'children_level': drilldown_payload.get('children_level'),
+        'children_level_label': _level_label(drilldown_payload.get('children_level')),
         'losses': losses[:MAX_LOSSES_ITEMS],
         'action': {
             'suggested_action': 'выбрать объект с максимальными потерями и провалиться глубже',
-            'next_step': drilldown_payload['children_level'],
+            'next_step': drilldown_payload.get('children_level'),
         },
     }
 
@@ -397,14 +425,14 @@ def _build_comparison_action(main_change: Dict[str, Any], level: str, deteriorat
 
 
 def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, Any], previous: Dict[str, Any]) -> Dict[str, Any]:
-    current_obj = current['metrics']['object_metrics']
-    previous_obj = previous['metrics']['object_metrics']
+    current_obj = current.get('metrics', {}).get('object_metrics', {})
+    previous_obj = previous.get('metrics', {}).get('object_metrics', {})
 
-    delta_finrez = _round(current['signal']['finrez_pre'] - previous['signal']['finrez_pre'])
-    delta_kpi_gap = _round(current['navigation']['kpi_gap'] - previous['navigation']['kpi_gap'])
-    delta_margin_pre = _round(current['context']['margin_pre_object'] - previous['context']['margin_pre_object'])
-    delta_margin_gap = _round(current['context']['margin_gap'] - previous['context']['margin_gap'])
-    delta_gap_loss_money = _round(current['impact']['gap_loss_money'] - previous['impact']['gap_loss_money'])
+    delta_finrez = _round(current.get('signal', {}).get('finrez_pre', 0.0) - previous.get('signal', {}).get('finrez_pre', 0.0))
+    delta_kpi_gap = _round(current.get('navigation', {}).get('kpi_gap', 0.0) - previous.get('navigation', {}).get('kpi_gap', 0.0))
+    delta_margin_pre = _round(current.get('context', {}).get('margin_pre_object', 0.0) - previous.get('context', {}).get('margin_pre_object', 0.0))
+    delta_margin_gap = _round(current.get('context', {}).get('margin_gap', 0.0) - previous.get('context', {}).get('margin_gap', 0.0))
+    delta_gap_loss_money = _round(current.get('impact', {}).get('gap_loss_money', 0.0) - previous.get('impact', {}).get('gap_loss_money', 0.0))
 
     diagnosis_changes = []
     for metric in ['retro_bonus', 'logistics_cost', 'personnel_cost', 'other_costs']:
@@ -428,17 +456,20 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
     }
 
     deterioration = delta_finrez < 0 or delta_kpi_gap > 0 or delta_margin_gap < 0
-    status_change = _status_change_label(current['signal']['status'], previous['signal']['status'])
-    priority_change = _priority_change_label(current['priority']['priority'], previous['priority']['priority'])
-    action = _build_comparison_action(main_change, query['level'], deterioration, current['action']['next_step'])
+    status_change = _status_change_label(current.get('signal', {}).get('status'), previous.get('signal', {}).get('status'))
+    priority_change = _priority_change_label(
+        current.get('priority', {}).get('priority'),
+        previous.get('priority', {}).get('priority'),
+    )
+    action = _build_comparison_action(main_change, query.get('level'), deterioration, current.get('action', {}).get('next_step'))
 
     return {
         'mode': 'comparison',
-        'level': query['level'],
-        'level_label': _level_label(query['level']),
-        'object_name': query['object_name'],
-        'period_current': query['period_current'],
-        'period_previous': query['period_previous'],
+        'level': query.get('level'),
+        'level_label': _level_label(query.get('level')),
+        'object_name': query.get('object_name'),
+        'period_current': query.get('period_current'),
+        'period_previous': query.get('period_previous'),
 
         'signal': {
             'delta_finrez_pre': delta_finrez,
@@ -448,10 +479,10 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'basis': {
-            'current_margin_pre': _round(current['context']['margin_pre_object']),
-            'previous_margin_pre': _round(previous['context']['margin_pre_object']),
-            'current_margin_gap': _round(current['context']['margin_gap']),
-            'previous_margin_gap': _round(previous['context']['margin_gap']),
+            'current_margin_pre': _round(current.get('context', {}).get('margin_pre_object', 0.0)),
+            'previous_margin_pre': _round(previous.get('context', {}).get('margin_pre_object', 0.0)),
+            'current_margin_gap': _round(current.get('context', {}).get('margin_gap', 0.0)),
+            'previous_margin_gap': _round(previous.get('context', {}).get('margin_gap', 0.0)),
         },
 
         'cause': {
@@ -468,10 +499,10 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'priority_change': {
-            'status_current': current['signal']['status'],
-            'status_previous': previous['signal']['status'],
-            'priority_current': current['priority']['priority'],
-            'priority_previous': previous['priority']['priority'],
+            'status_current': current.get('signal', {}).get('status'),
+            'status_previous': previous.get('signal', {}).get('status'),
+            'priority_current': current.get('priority', {}).get('priority'),
+            'priority_previous': previous.get('priority', {}).get('priority'),
             'status_change': status_change,
             'priority_change': priority_change,
         },
