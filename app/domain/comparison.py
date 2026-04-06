@@ -5,6 +5,7 @@ from app.config import LOW_VOLUME_THRESHOLD
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.domain.metrics import (
     aggregate_metrics,
+    build_consistency,
     build_effects,
     build_expected_metrics,
     build_gaps,
@@ -28,6 +29,11 @@ CHILD_LEVEL_BY_LEVEL = {
     'network': 'category',
     'category': 'tmc_group',
     'tmc_group': 'sku',
+}
+
+CONSISTENCY_CHILD_FIELD_BY_LEVEL = {
+    'network': 'category',
+    'category': 'sku',
 }
 
 
@@ -97,12 +103,44 @@ def _compute_gap_loss_money(margin_gap: float, revenue: float) -> float:
     return round(abs(margin_gap) / 100.0 * revenue, 2)
 
 
+def _build_consistency_payload(level: str, object_rows: List[Dict[str, Any]], object_metrics: Dict[str, float]) -> Optional[Dict[str, Any]]:
+    child_field = CONSISTENCY_CHILD_FIELD_BY_LEVEL.get(level)
+
+    if not child_field:
+        return None
+
+    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for row in object_rows:
+        child_name = row.get(child_field)
+        if not child_name:
+            continue
+        groups[child_name].append(row)
+
+    if not groups:
+        return {
+            'checked': False,
+            'reason': 'no_child_data',
+        }
+
+    child_metrics_list = []
+    for child_rows in groups.values():
+        child_metrics_list.append(aggregate_metrics(child_rows))
+
+    return build_consistency(
+        parent_finrez_pre=object_metrics.get('finrez_pre', 0.0),
+        child_metrics_list=child_metrics_list,
+        child_level=child_field,
+    )
+
+
 def build_comparison_payload(
     level: str,
     object_name: str,
     object_metrics: Dict[str, float],
     business_metrics: Dict[str, float],
     period: str,
+    object_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     expected_metrics, invalid_benchmark, negative_benchmark = build_expected_metrics(
         object_metrics=object_metrics,
@@ -147,6 +185,7 @@ def build_comparison_payload(
 
     next_step = CHILD_LEVEL_BY_LEVEL.get(level)
     suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
+    consistency = _build_consistency_payload(level, object_rows or [], object_metrics)
 
     return {
         'level': level,
@@ -221,6 +260,8 @@ def build_comparison_payload(
         'top_drain_metric': top_drain_metric,
         'top_drain_effect': top_drain_effect,
         'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
+
+        'consistency': consistency,
     }
 
 
@@ -247,6 +288,7 @@ def get_business_comparison(period: str) -> Dict[str, Any]:
         object_metrics=business_metrics,
         business_metrics=business_metrics,
         period=period,
+        object_rows=business_rows,
     )
 
 
@@ -276,6 +318,7 @@ def _single_object_comparison(
         object_metrics=object_metrics,
         business_metrics=business_metrics,
         period=period,
+        object_rows=object_rows,
     )
 
 
