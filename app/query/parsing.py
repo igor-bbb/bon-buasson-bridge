@@ -67,7 +67,6 @@ SERVICE_PREFIXES = [
     'открой',
 ]
 
-
 MONTH_NAMES_PATTERN = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
 
 
@@ -94,19 +93,50 @@ def _normalize_year(year_str: str) -> str:
 
 def _month_token_to_number(token: str) -> Optional[str]:
     token = clean_text(token)
+    token = re.sub(r'(е|у|а|ом|ем|я|ю|и)$', '', token)
+
     if token in MONTHS_RU:
         return MONTHS_RU[token]
+
+    # отдельная подстраховка для косвенных падежей
+    month_fixes = {
+        'январ': '01',
+        'феврал': '02',
+        'март': '03',
+        'апрел': '04',
+        'ма': '05',
+        'июн': '06',
+        'июл': '07',
+        'август': '08',
+        'сентябр': '09',
+        'октябр': '10',
+        'ноябр': '11',
+        'декабр': '12',
+    }
+    if token in month_fixes:
+        return month_fixes[token]
+
     if re.fullmatch(r'0?[1-9]|1[0-2]', token):
         return f'{int(token):02d}'
+
     return None
+
+
+def _dedupe_periods(found: List[Tuple[int, str]]) -> List[Tuple[int, str]]:
+    unique: List[Tuple[int, str]] = []
+    seen = set()
+
+    for position, period in sorted(found, key=lambda x: x[0]):
+        if period in seen:
+            continue
+        seen.add(period)
+        unique.append((position, period))
+
+    return unique
 
 
 def _extract_month_range_tokens(text: str) -> List[Tuple[int, str]]:
     found: List[Tuple[int, str]] = []
-
-    def append_unique(position: int, period: str) -> None:
-        if period not in [p for _, p in found]:
-            found.append((position, period))
 
     textual_pattern = rf'\b({MONTH_NAMES_PATTERN})\s*-\s*({MONTH_NAMES_PATTERN})\s+(20\d{{2}}|\d{{2}})\b'
     for match in re.finditer(textual_pattern, text):
@@ -114,51 +144,93 @@ def _extract_month_range_tokens(text: str) -> List[Tuple[int, str]]:
         month_to = _month_token_to_number(match.group(2))
         year = _normalize_year(match.group(3))
         if month_from and month_to:
-            append_unique(match.start(), f'{year}-{month_from}:{year}-{month_to}')
+            found.append((match.start(), f'{year}-{month_from}:{year}-{month_to}'))
 
     numeric_pattern = r'\b(0?[1-9]|1[0-2])\s*-\s*(0?[1-9]|1[0-2])\s+(20\d{2}|\d{2})\b'
     for match in re.finditer(numeric_pattern, text):
         month_from = f'{int(match.group(1)):02d}'
         month_to = f'{int(match.group(2)):02d}'
         year = _normalize_year(match.group(3))
-        append_unique(match.start(), f'{year}-{month_from}:{year}-{month_to}')
+        found.append((match.start(), f'{year}-{month_from}:{year}-{month_to}'))
 
-    found.sort(key=lambda x: x[0])
-    return found
+    return _dedupe_periods(found)
+
+
+def _extract_named_month_year_tokens(text: str) -> List[Tuple[int, str]]:
+    found: List[Tuple[int, str]] = []
+
+    pattern = rf'\b({MONTH_NAMES_PATTERN})(?:\s+(20\d{{2}}|\d{{2}}))?\b'
+    matches = list(re.finditer(pattern, text))
+
+    for i, match in enumerate(matches):
+        month = _month_token_to_number(match.group(1))
+        year_raw = match.group(2)
+
+        if month is None:
+            continue
+
+        if year_raw:
+            year = _normalize_year(year_raw)
+            found.append((match.start(), f'{year}-{month}'))
+            continue
+
+        # если год не указан сразу после месяца, ищем ближайший год справа
+        right_slice = text[match.end():]
+        right_year = re.match(r'\s+(20\d{2}|\d{2})\b', right_slice)
+        if right_year:
+            year = _normalize_year(right_year.group(1))
+            found.append((match.start(), f'{year}-{month}'))
+            continue
+
+        # если справа нет, ищем ближайший год слева в пределах 12 символов
+        left_slice = text[max(0, match.start() - 12):match.start()]
+        left_years = list(re.finditer(r'\b(20\d{2}|\d{2})\b', left_slice))
+        if left_years:
+            year = _normalize_year(left_years[-1].group(1))
+            found.append((match.start(), f'{year}-{month}'))
+
+    return _dedupe_periods(found)
+
+
+def _extract_numeric_month_year_tokens(text: str) -> List[Tuple[int, str]]:
+    found: List[Tuple[int, str]] = []
+
+    # YYYY-MM
+    for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
+        found.append((match.start(), f'{match.group(1)}-{match.group(2)}'))
+
+    # MM/YYYY, MM.YYYY, MM-YYYY, MM YYYY
+    for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
+        year = _normalize_year(match.group(2))
+        month = f'{int(match.group(1)):02d}'
+        found.append((match.start(), f'{year}-{month}'))
+
+    return _dedupe_periods(found)
+
+
+def _extract_year_only_tokens(text: str) -> List[Tuple[int, str]]:
+    found: List[Tuple[int, str]] = []
+    for match in re.finditer(r'\b(20\d{2}|\d{2})\b', text):
+        year = _normalize_year(match.group(1))
+        found.append((match.start(), year))
+    return _dedupe_periods(found)
 
 
 def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
     found: List[Tuple[int, str]] = []
 
-    def append_unique(position: int, period: str) -> None:
-        if period not in [p for _, p in found]:
-            found.append((position, period))
+    found.extend(_extract_month_range_tokens(text))
+    found.extend(_extract_numeric_month_year_tokens(text))
+    found.extend(_extract_named_month_year_tokens(text))
 
-    for position, period in _extract_month_range_tokens(text):
-        append_unique(position, period)
+    found = _dedupe_periods(found)
 
-    for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
-        append_unique(match.start(), f'{match.group(1)}-{match.group(2)}')
+    # годовые токены добавляем только если месячных периодов меньше двух
+    month_like = [item for item in found if '-' in item[1] or ':' in item[1]]
+    if len(month_like) < 2:
+        found.extend(_extract_year_only_tokens(text))
+        found = _dedupe_periods(found)
 
-    for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
-        year = _normalize_year(match.group(2))
-        month = f'{int(match.group(1)):02d}'
-        append_unique(match.start(), f'{year}-{month}')
-
-    for match in re.finditer(rf'\b({MONTH_NAMES_PATTERN})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
-        month = _month_token_to_number(match.group(1))
-        year_raw = match.group(2)
-        if month and year_raw:
-            year = _normalize_year(year_raw)
-            append_unique(match.start(), f'{year}-{month}')
-
-    # year-only comparison support: "2026 к 2025"
-    if len(found) < 2:
-        for match in re.finditer(r'\b(20\d{2}|\d{2})\b', text):
-            year = _normalize_year(match.group(1))
-            append_unique(match.start(), year)
-
-    found.sort(key=lambda x: x[0])
     return found
 
 
@@ -193,7 +265,14 @@ def _derive_previous_period_from_last_year(text: str, periods: List[str]) -> Lis
 def extract_periods_from_text(message: str) -> List[str]:
     text = normalize_user_message(message)
     periods = [period for _, period in _extract_month_year_tokens(text)]
-    return _derive_previous_period_from_last_year(text, periods)
+    periods = _derive_previous_period_from_last_year(text, periods)
+
+    # если есть и месячные, и годовые токены, предпочитаем месячные/диапазоны
+    month_like = [p for p in periods if '-' in p or ':' in p]
+    if len(month_like) >= 2:
+        return month_like[:2]
+
+    return periods[:2]
 
 
 def _has_comparison_connector(message: str) -> bool:
