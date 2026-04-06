@@ -16,7 +16,6 @@ PRIORITY_RANK = {'low': 0, 'medium': 1, 'high': 2}
 
 STATUS_LABELS_RU = {
     'ok': 'норма',
-    'attention': 'внимание',
     'risk': 'риск',
     'critical': 'критично',
 }
@@ -52,11 +51,9 @@ def _round(value: float) -> float:
 
 
 def _format_signal_message(payload: Dict[str, Any]) -> str:
-    signal = payload.get('signal', {})
-    if signal.get('comment'):
-        return str(signal.get('comment'))
-
     context = payload.get('context', {})
+    signal = payload.get('signal', {})
+
     margin_gap = _round(context.get('margin_gap', 0.0))
     status = _status_label(signal.get('status'))
 
@@ -68,13 +65,11 @@ def _format_signal_message(payload: Dict[str, Any]) -> str:
 
 
 def _format_problem_message(payload: Dict[str, Any]) -> str:
-    signal = payload.get('signal', {})
-    if signal.get('comment'):
-        return f"{signal.get('label', _status_label(signal.get('status')))} — {signal.get('comment')}"
-
     context = payload.get('context', {})
-    status = signal.get('status')
+    signal = payload.get('signal', {})
+
     margin_gap = _round(context.get('margin_gap', 0.0))
+    status = signal.get('status')
 
     if margin_gap < 0:
         return f'теряет относительно бизнеса — {_status_label(status)}'
@@ -167,6 +162,19 @@ def _build_effect_summary(comparison_payload: Dict[str, Any]) -> str:
     return 'потерь не выявлено'
 
 
+
+
+def _build_consistency_view(payload: Dict[str, Any]) -> Dict[str, Any]:
+    consistency = payload.get('consistency') or {}
+    return {
+        'status': consistency.get('status', 'not_available'),
+        'gap': _round(consistency.get('gap', 0.0)) if consistency.get('gap') is not None else None,
+        'gap_percent': _round(consistency.get('gap_percent', 0.0)) if consistency.get('gap_percent') is not None else None,
+        'children_sum': _round(consistency.get('children_sum', 0.0)) if consistency.get('children_sum') is not None else None,
+        'child_level': consistency.get('child_level'),
+        'children_count': consistency.get('children_count'),
+    }
+
 def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
     metrics = comparison_payload.get('metrics', {})
     object_metrics = metrics.get('object_metrics', {})
@@ -189,14 +197,7 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
 
         'signal': {
             'status': signal.get('status'),
-            'label': signal.get('label', _status_label(signal.get('status'))),
-            'comment': signal.get('comment'),
-            'reason': signal.get('reason'),
-            'reason_value': _round(signal.get('reason_value', 0.0)),
-            'rank': signal.get('rank'),
-            'priority': signal.get('priority'),
-            'problem_money': _round(signal.get('problem_money', 0.0)),
-            'quartiles': signal.get('quartiles'),
+            'label': _status_label(signal.get('status')),
             'message': _format_signal_message(comparison_payload),
             'margin_gap': _round(context.get('margin_gap', 0.0)),
             'kpi_gap': _round(navigation.get('kpi_gap', 0.0)),
@@ -249,6 +250,8 @@ def build_management_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
             'business_flags': flags,
             'data_flags': data_flags,
         },
+
+        'consistency': _build_consistency_view(comparison_payload),
     }
 
 
@@ -270,6 +273,7 @@ def _build_compact_drill_item(item: Dict[str, Any]) -> Dict[str, Any]:
             'items': compact_cause_items,
         },
         'money': management_item.get('money'),
+        'consistency': management_item.get('consistency'),
         'action': management_item.get('action'),
         'management': management_item.get('management'),
     }
@@ -292,6 +296,7 @@ def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[s
         'children_level_label': _level_label(drilldown_payload.get('children_level')),
         'items_count': len(prepared_items),
         'items': prepared_items,
+        'consistency': _build_consistency_view(drilldown_payload),
         'action': {
             'suggested_action': 'провалиться в следующий уровень и найти главный источник потери',
             'next_step': drilldown_payload.get('children_level'),
@@ -324,6 +329,7 @@ def build_reasons_view(comparison_payload: Dict[str, Any]) -> Dict[str, Any]:
             'business_flags': comparison_payload.get('flags', {}),
             'data_flags': _extract_data_flags(comparison_payload.get('flags', {})),
         },
+        'consistency': _build_consistency_view(comparison_payload),
     }
 
 
@@ -484,11 +490,6 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         'period_previous': query.get('period_previous'),
 
         'signal': {
-            'status': 'ok' if delta_finrez >= 0 else 'risk',
-            'label': 'OK' if delta_finrez >= 0 else 'RISK',
-            'comment': 'результат улучшился период к периоду' if delta_finrez > 0 else ('результат ухудшился период к периоду' if delta_finrez < 0 else 'результат без изменений период к периоду'),
-            'reason': main_change.get('metric'),
-            'reason_value': _round(main_change.get('delta_value', 0.0)),
             'delta_finrez_pre': delta_finrez,
             'delta_status': _finrez_delta_status(delta_finrez),
             'delta_kpi_gap': delta_kpi_gap,
@@ -514,6 +515,9 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
             'delta_finrez_pre': delta_finrez,
             'delta_gap_loss_money': delta_gap_loss_money,
         },
+
+        'consistency_current': current.get('consistency'),
+        'consistency_previous': previous.get('consistency'),
 
         'priority_change': {
             'status_current': current.get('signal', {}).get('status'),
