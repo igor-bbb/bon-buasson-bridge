@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 from app.config import EMPTY_SKU_LABEL
 from app.domain.comparison import build_comparison_payload
+from app.domain.consistency import build_consistency_from_rows
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.domain.metrics import aggregate_metrics
 from app.domain.normalization import normalize_sku_name
@@ -40,6 +41,7 @@ def _build_items(grouped, level, business_metrics, period):
             object_metrics=aggregate_metrics(chunk),
             business_metrics=business_metrics,
             period=period,
+            object_rows=chunk,
         )
         items.append(item)
 
@@ -76,6 +78,12 @@ def _run_drilldown(
         grouped = _group(filtered_rows, group_field)
 
     items = _build_items(grouped, child_level, business_metrics, period)
+    parent_metrics = aggregate_metrics(filtered_rows)
+    parent_consistency = build_consistency_from_rows(
+        level=parent_level,
+        parent_finrez_pre=parent_metrics.get('finrez_pre', 0.0),
+        rows=filtered_rows,
+    )
 
     return {
         'level': parent_level,
@@ -83,6 +91,7 @@ def _run_drilldown(
         'period': period,
         'children_level': child_level,
         'items': items,
+        'consistency': parent_consistency,
     }
 
 
