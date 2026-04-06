@@ -130,12 +130,20 @@ def _build_consistency_view(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _build_items_meta_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     items_meta = payload.get('items_meta') or {}
+
+    hint = None
+
+    if items_meta.get('is_truncated'):
+        hint = f"Показаны первые {items_meta.get('returned_count')} из {items_meta.get('total_count')}. Уточни запрос для детализации."
+    elif items_meta.get('has_more'):
+        hint = f"ещё {items_meta.get('hidden_count', 0)} скрыто (введи 'покажи все')"
+
     return {
         'total_count': items_meta.get('total_count', 0),
         'returned_count': items_meta.get('returned_count', 0),
         'hidden_count': items_meta.get('hidden_count', 0),
         'has_more': items_meta.get('has_more', False),
-        'hint': f"ещё {items_meta.get('hidden_count', 0)} скрыто (введи 'покажи все')" if items_meta.get('has_more') else None,
+        'hint': hint,
     }
 
 
