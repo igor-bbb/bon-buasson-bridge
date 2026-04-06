@@ -1,113 +1,173 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
-def _round(value: Any) -> float:
+SIGNAL_LABELS_RU = {
+    'critical': 'критично',
+    'risk': 'риск',
+    'attention': 'внимание',
+    'ok': 'норма',
+}
+
+
+def _round(value: float) -> float:
     return round(float(value or 0.0), 2)
 
 
-def build_summary_signal(
-    *,
-    finrez_pre: float,
-    margin_pre: float,
-    margin_gap: float,
-    kpi_gap: float,
-    kpi_zone: Optional[str],
-    top_drain_metric: Optional[str],
-    top_drain_effect: float,
-) -> Dict[str, Any]:
-    finrez_pre = _round(finrez_pre)
-    margin_pre = _round(margin_pre)
-    margin_gap = _round(margin_gap)
-    kpi_gap = _round(kpi_gap)
-    top_drain_effect = _round(top_drain_effect)
+def _percentile(sorted_values: List[float], q: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
 
-    if finrez_pre < 0:
-        return {
-            'status': 'critical',
-            'label': 'CRITICAL',
-            'comment': 'финрез ниже нуля — объект убыточен',
-            'reason': top_drain_metric,
-            'reason_value': top_drain_effect,
-        }
+    position = (len(sorted_values) - 1) * q
+    lower = int(position)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    fraction = position - lower
 
-    if kpi_zone == 'критично' or margin_gap <= -5:
-        return {
-            'status': 'critical',
-            'label': 'CRITICAL',
-            'comment': 'сильное отставание от бизнеса — нужен немедленный разбор',
-            'reason': top_drain_metric,
-            'reason_value': top_drain_effect,
-        }
+    lower_value = float(sorted_values[lower])
+    upper_value = float(sorted_values[upper])
+    return lower_value + (upper_value - lower_value) * fraction
 
-    if kpi_zone == 'риск' or margin_gap < 0:
-        return {
-            'status': 'risk',
-            'label': 'RISK',
-            'comment': 'объект ухудшен относительно бизнеса — нужен drill-down',
-            'reason': top_drain_metric,
-            'reason_value': top_drain_effect,
-        }
 
-    if margin_pre < 5:
-        return {
-            'status': 'weak',
-            'label': 'WEAK',
-            'comment': 'прибыль есть, но зона слабая — нужен контроль',
-            'reason': top_drain_metric,
-            'reason_value': top_drain_effect,
-        }
-
+def _build_quartile_bounds(values: List[float]) -> Dict[str, float]:
+    sorted_values = sorted(float(v) for v in values)
     return {
-        'status': 'ok',
-        'label': 'OK',
-        'comment': 'критичных отклонений не выявлено',
-        'reason': top_drain_metric,
-        'reason_value': top_drain_effect,
+        'q1': _round(_percentile(sorted_values, 0.25)),
+        'q2': _round(_percentile(sorted_values, 0.50)),
+        'q3': _round(_percentile(sorted_values, 0.75)),
     }
 
 
-def build_comparison_signal(
+def _detect_status(finrez_pre: float, q1: float, q2: float, q3: float) -> str:
+    if finrez_pre <= q1:
+        return 'critical'
+    if finrez_pre <= q2:
+        return 'risk'
+    if finrez_pre <= q3:
+        return 'attention'
+    return 'ok'
+
+
+def _detect_rank(finrez_pre: float, q1: float, q2: float, q3: float) -> str:
+    if finrez_pre <= q1:
+        return 'Q1'
+    if finrez_pre <= q2:
+        return 'Q2'
+    if finrez_pre <= q3:
+        return 'Q3'
+    return 'Q4'
+
+
+def _comment_for_status(status: str) -> str:
+    mapping = {
+        'critical': 'объект в нижнем квартиле периода',
+        'risk': 'объект ниже медианной зоны периода',
+        'attention': 'объект в зоне внимания периода',
+        'ok': 'объект в верхнем квартиле периода',
+    }
+    return mapping.get(status, 'сигнал периода рассчитан')
+
+
+def _problem_money(finrez_pre: float, q2: float) -> float:
+    if finrez_pre < 0:
+        return abs(finrez_pre)
+    return max(q2 - finrez_pre, 0.0)
+
+
+def _assign_priorities(problem_items: List[Dict[str, Any]]) -> Dict[str, str]:
+    if not problem_items:
+        return {}
+
+    sorted_items = sorted(problem_items, key=lambda x: x['problem_money'], reverse=True)
+    total_problem_money = sum(item['problem_money'] for item in sorted_items)
+
+    if total_problem_money <= 0:
+        return {item['object_name']: 'low' for item in sorted_items}
+
+    cumulative_share = 0.0
+    priorities: Dict[str, str] = {}
+
+    for item in sorted_items:
+        cumulative_share += item['problem_money'] / total_problem_money
+
+        if cumulative_share <= 0.80:
+            priority = 'high'
+        elif cumulative_share <= 0.95:
+            priority = 'medium'
+        else:
+            priority = 'low'
+
+        priorities[item['object_name']] = priority
+
+    return priorities
+
+
+def build_period_signal(
     *,
-    delta_finrez_pre: float,
-    delta_margin_pre: float,
-    main_driver_metric: Optional[str],
-    main_driver_delta: float,
+    level: str,
+    object_name: str,
+    finrez_pre: float,
+    peer_items: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    delta_finrez_pre = _round(delta_finrez_pre)
-    delta_margin_pre = _round(delta_margin_pre)
-    main_driver_delta = _round(main_driver_delta)
-
-    if delta_finrez_pre < 0 and abs(delta_finrez_pre) >= 1000:
+    if level == 'business':
         return {
-            'status': 'critical',
-            'label': 'CRITICAL',
-            'comment': 'сильное падение финреза период к периоду',
-            'reason': main_driver_metric,
-            'reason_value': main_driver_delta,
+            'status': 'ok',
+            'label': SIGNAL_LABELS_RU['ok'],
+            'comment': 'базовый уровень периода',
+            'reason': 'finrez_pre',
+            'reason_value': _round(finrez_pre),
+            'rank': 'BASE',
+            'priority': 'high',
+            'quartiles': None,
+            'problem_money': _round(abs(finrez_pre)) if finrez_pre < 0 else 0.0,
         }
 
-    if delta_finrez_pre < 0 or delta_margin_pre < 0:
+    values = [float(item.get('finrez_pre', 0.0)) for item in peer_items]
+    if not values:
         return {
-            'status': 'risk',
-            'label': 'RISK',
-            'comment': 'результат ухудшился период к периоду',
-            'reason': main_driver_metric,
-            'reason_value': main_driver_delta,
+            'status': 'ok',
+            'label': SIGNAL_LABELS_RU['ok'],
+            'comment': 'нет базы для сигнала периода',
+            'reason': 'finrez_pre',
+            'reason_value': _round(finrez_pre),
+            'rank': 'BASE',
+            'priority': 'low',
+            'quartiles': None,
+            'problem_money': 0.0,
         }
 
-    if delta_finrez_pre == 0 and delta_margin_pre == 0:
-        return {
-            'status': 'weak',
-            'label': 'WEAK',
-            'comment': 'существенного движения нет',
-            'reason': main_driver_metric,
-            'reason_value': main_driver_delta,
-        }
+    quartiles = _build_quartile_bounds(values)
+    q1 = quartiles['q1']
+    q2 = quartiles['q2']
+    q3 = quartiles['q3']
+
+    status = _detect_status(finrez_pre, q1, q2, q3)
+    rank = _detect_rank(finrez_pre, q1, q2, q3)
+    comment = _comment_for_status(status)
+
+    problem_items: List[Dict[str, Any]] = []
+    for peer in peer_items:
+        peer_finrez = float(peer.get('finrez_pre', 0.0))
+        peer_status = _detect_status(peer_finrez, q1, q2, q3)
+        if peer_status not in {'critical', 'risk'}:
+            continue
+        problem_items.append({
+            'object_name': peer.get('object_name'),
+            'problem_money': _problem_money(peer_finrez, q2),
+        })
+
+    priorities = _assign_priorities(problem_items)
+    priority = priorities.get(object_name, 'low') if status in {'critical', 'risk'} else 'low'
+    problem_money = _problem_money(finrez_pre, q2) if status in {'critical', 'risk'} else 0.0
 
     return {
-        'status': 'ok',
-        'label': 'OK',
-        'comment': 'результат улучшился период к периоду',
-        'reason': main_driver_metric,
-        'reason_value': main_driver_delta,
+        'status': status,
+        'label': SIGNAL_LABELS_RU[status],
+        'comment': comment,
+        'reason': 'finrez_pre',
+        'reason_value': _round(finrez_pre),
+        'rank': rank,
+        'priority': priority,
+        'quartiles': quartiles,
+        'problem_money': _round(problem_money),
     }
