@@ -35,7 +35,7 @@ from app.presentation.views import (
     build_management_view,
     build_reasons_view,
 )
-from app.query.parsing import parse_query_intent, normalize_user_message
+from app.query.parsing import normalize_user_message, parse_query_intent
 
 
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
@@ -76,7 +76,6 @@ SHORT_COMMAND_TARGETS = {
     'сигнал': 'summary',
 }
 
-# Полная иерархия по CORE FINAL.
 DEFAULT_NEXT_LEVEL = {
     'business': 'manager_top',
     'manager_top': 'manager',
@@ -163,18 +162,21 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
         return {'status': 'error', 'reason': 'нет контекста'}
 
     target = SHORT_COMMAND_TARGETS[normalized]
+    active_period = session_ctx.get('period_current')
 
+    # После comparison short-команды должны работать от текущего периода,
+    # а не пытаться повторно идти в comparison-режим.
     if target in {'summary', 'reasons', 'losses'}:
         return {
             'status': 'ok',
             'query': {
-                'mode': session_ctx.get('mode', 'diagnosis'),
+                'mode': 'diagnosis',
                 'level': session_ctx.get('scope_level'),
                 'object_name': session_ctx.get('scope_object_name'),
-                'period_current': session_ctx.get('period_current'),
-                'period_previous': session_ctx.get('period_previous'),
+                'period_current': active_period,
+                'period_previous': None,
                 'query_type': target,
-                'period': session_ctx.get('period_current'),
+                'period': active_period,
                 'object': session_ctx.get('scope_object_name'),
             }
         }
@@ -182,14 +184,14 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
     return {
         'status': 'ok',
         'query': {
-            'mode': session_ctx.get('mode', 'diagnosis'),
+            'mode': 'diagnosis',
             'level': session_ctx.get('scope_level'),
             'object_name': session_ctx.get('scope_object_name'),
-            'period_current': session_ctx.get('period_current'),
-            'period_previous': session_ctx.get('period_previous'),
+            'period_current': active_period,
+            'period_previous': None,
             'query_type': 'drill_down',
             'target_level': target,
-            'period': session_ctx.get('period_current'),
+            'period': active_period,
             'object': session_ctx.get('scope_object_name'),
         }
     }
@@ -265,13 +267,20 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
 
         response = ok_response(query, build_comparison_management_view(query, current, previous))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, previous_period, mode)
+            update_session(session_id, {
+                'scope_level': level,
+                'scope_object_name': object_name,
+                'period_current': period,
+                'period_previous': previous_period,
+                'mode': 'diagnosis',
+                'last_comparison_period_previous': previous_period,
+            })
         return response
 
     if query.get('query_type') == 'reasons':
         response = ok_response(query, build_reasons_view(current))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
         return response
 
     if query.get('query_type') == 'losses':
@@ -285,12 +294,12 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
 
         response = ok_response(query, build_losses_view_from_children(source))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
         return response
 
     response = ok_response(query, build_management_view(current))
     if response.get('status') == 'ok':
-        _store_scope(session_id, level, object_name, period, query.get('period_previous'), mode)
+        _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
     return response
 
 
@@ -322,32 +331,19 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
 
     if response.get('status') == 'ok':
         items = payload.get('items', [])
-
-        # КЛЮЧЕВОЕ ПРАВИЛО:
-        # если список содержит больше одного объекта,
-        # основной scope НЕ меняем.
-        # Иначе причины/потери и следующий short-command пойдут в несуществующий child object.
         if len(items) == 1:
             only_item = items[0]
             next_scope_level = target_level
             next_scope_object_name = only_item.get('object_name', scope_object_name)
-
-            _store_scope(
-                session_id,
-                next_scope_level,
-                next_scope_object_name,
-                period,
-                period_previous,
-                mode,
-            )
+            _store_scope(session_id, next_scope_level, next_scope_object_name, period, None, 'diagnosis')
         else:
             _store_list_context(
                 session_id,
                 scope_level,
                 scope_object_name,
                 period,
-                period_previous,
-                mode,
+                None,
+                'diagnosis',
                 target_level,
             )
 
