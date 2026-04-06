@@ -36,7 +36,7 @@ def build_flags(
     invalid_benchmark: bool,
     negative_benchmark: bool,
 ) -> Dict[str, bool]:
-    low_volume = object_metrics['revenue'] < LOW_VOLUME_THRESHOLD
+    low_volume = object_metrics.get('revenue', 0.0) < LOW_VOLUME_THRESHOLD
     return {
         'low_volume': low_volume,
         'invalid_benchmark': invalid_benchmark,
@@ -104,7 +104,6 @@ def build_comparison_payload(
     business_metrics: Dict[str, float],
     period: str,
 ) -> Dict[str, Any]:
-
     expected_metrics, invalid_benchmark, negative_benchmark = build_expected_metrics(
         object_metrics=object_metrics,
         business_metrics=business_metrics,
@@ -129,96 +128,99 @@ def build_comparison_payload(
     )
 
     median_gap = compute_level_median_gap(level=level, period=period)
-    kpi_zone = detect_kpi_zone(object_metrics['kpi_gap'], median_gap)
+    kpi_zone = detect_kpi_zone(object_metrics.get('kpi_gap', 0.0), median_gap)
 
     margin_gap = compute_margin_gap(object_metrics, business_metrics)
     total_loss = compute_total_loss(effects_by_metric)
     per_metric_effects = compute_per_metric_effects(effects_by_metric)
     loss_share = compute_loss_share(total_loss, business_metrics)
-    gap_loss_money = _compute_gap_loss_money(margin_gap, object_metrics['revenue'])
+    gap_loss_money = _compute_gap_loss_money(margin_gap, object_metrics.get('revenue', 0.0))
 
-    status = detect_status(object_metrics['finrez_pre'], kpi_zone)
-    priority = detect_priority(status, total_loss, loss_share, object_metrics['kpi_gap'], margin_gap)
+    status = detect_status(object_metrics.get('finrez_pre', 0.0), kpi_zone)
+    priority = detect_priority(
+        status,
+        total_loss,
+        loss_share,
+        object_metrics.get('kpi_gap', 0.0),
+        margin_gap,
+    )
 
     next_step = CHILD_LEVEL_BY_LEVEL.get(level)
     suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
 
     return {
-    'level': level,
-    'object_name': object_name,
-    'period': period,
+        'level': level,
+        'object_name': object_name,
+        'period': period,
 
-    'signal': {
-        'status': status,
-        'finrez_pre': object_metrics.get('finrez_pre'),
-        'margin_gap': margin_gap,
-        'kpi_gap': object_metrics.get('kpi_gap'),
-        'median_gap': median_gap,
-        'kpi_zone': kpi_zone,
-    },
+        'signal': {
+            'status': status,
+            'finrez_pre': object_metrics.get('finrez_pre'),
+            'margin_gap': margin_gap,
+            'kpi_gap': object_metrics.get('kpi_gap'),
+            'median_gap': median_gap,
+            'kpi_zone': kpi_zone,
+        },
 
-    'navigation': {
-        'kpi_gap': object_metrics.get('kpi_gap'),
-        'median_gap': median_gap,
-        'kpi_zone': kpi_zone,
-    },
+        'navigation': {
+            'kpi_gap': object_metrics.get('kpi_gap'),
+            'median_gap': median_gap,
+            'kpi_zone': kpi_zone,
+        },
 
-    # 🔥 ВАЖНО — ДОБАВИЛИ ЗАТРАТЫ
-    'context': {
-        'margin_pre_object': object_metrics.get('margin_pre'),
-        'margin_pre_business': business_metrics.get('margin_pre'),
-        'margin_gap': margin_gap,
+        'context': {
+            'margin_pre_object': object_metrics.get('margin_pre'),
+            'margin_pre_business': business_metrics.get('margin_pre'),
+            'margin_gap': margin_gap,
+            'costs': {
+                'retro_bonus': object_metrics.get('retro_bonus'),
+                'logistics_cost': object_metrics.get('logistics_cost'),
+                'personnel_cost': object_metrics.get('personnel_cost'),
+                'other_costs': object_metrics.get('other_costs'),
+            },
+        },
 
-        'costs': {
-            'retro_bonus': object_metrics.get('retro_bonus'),
-            'logistics_cost': object_metrics.get('logistics_cost'),
-            'personnel_cost': object_metrics.get('personnel_cost'),
-            'other_costs': object_metrics.get('other_costs'),
-        }
-    },
+        'metrics': {
+            'object_metrics': object_metrics,
+            'business_metrics': business_metrics,
+        },
 
-    # 🔥 НЕ ТРОГАЕМ — уже правильно
-    'metrics': {
-        'object_metrics': object_metrics,
-        'business_metrics': business_metrics,
-       },
+        'diagnosis': {
+            'expected_metrics': expected_metrics,
+            'gaps_by_metric': gaps_by_metric,
+            'effects_by_metric': effects_by_metric,
+            'top_drain_metric': top_drain_metric,
+            'top_drain_effect': top_drain_effect,
+            'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
+        },
 
-    'effects': {
-        'effects_by_metric': effects_by_metric,
+        'impact': {
+            'total_loss': total_loss,
+            'gap_loss_money': gap_loss_money,
+            'per_metric_effects': per_metric_effects,
+            'cost_structure': {
+                'retro_bonus': object_metrics.get('retro_bonus'),
+                'logistics_cost': object_metrics.get('logistics_cost'),
+                'personnel_cost': object_metrics.get('personnel_cost'),
+                'other_costs': object_metrics.get('other_costs'),
+            },
+        },
+
+        'priority': {
+            'loss_share': loss_share,
+            'priority': priority,
+        },
+
+        'action': {
+            'suggested_action': suggested_action,
+            'next_step': next_step,
+        },
+
+        'flags': flags,
+
         'top_drain_metric': top_drain_metric,
         'top_drain_effect': top_drain_effect,
         'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
-       },
-
-    'impact': {
-        'total_loss': total_loss,
-        'gap_loss_money': gap_loss_money,
-        'per_metric_effects': per_metric_effects,
-
-        # 🔥 ДОБАВИЛИ СТРУКТУРУ ЗАТРАТ
-        'cost_structure': {
-            'retro_bonus': object_metrics.get('retro_bonus'),
-            'logistics_cost': object_metrics.get('logistics_cost'),
-            'personnel_cost': object_metrics.get('personnel_cost'),
-            'other_costs': object_metrics.get('other_costs'),
-      }
-      },
-
-    'priority': {
-        'loss_share': loss_share,
-        'priority': priority,
-      },
-
-    'action': {
-        'suggested_action': suggested_action,
-        'next_step': next_step,
-     },
-
-    'flags': flags,
-
-    'top_drain_metric': top_drain_metric,
-    'top_drain_effect': top_drain_effect,
-    'top_drain_is_negative_for_business': top_drain_is_negative_for_business,
     }
 
 
@@ -254,7 +256,6 @@ def _single_object_comparison(
     period: str,
     **filters: Any
 ) -> Dict[str, Any]:
-
     rows = get_normalized_rows()
 
     object_rows, object_meta = filter_rows(rows, period=period, **filters)
