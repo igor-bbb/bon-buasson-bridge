@@ -18,6 +18,7 @@ from app.domain.metrics import (
     detect_status,
     detect_suggested_action,
 )
+from app.domain.signals import build_period_signal
 from app.domain.sorting import pick_top_drain
 
 
@@ -60,6 +61,7 @@ def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Di
 
 
 MEDIAN_CACHE: Dict[Tuple[str, str], Optional[float]] = {}
+PEER_SIGNAL_CACHE: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 
 
 def compute_level_median_gap(level: str, period: str) -> Optional[float]:
@@ -89,6 +91,38 @@ def compute_level_median_gap(level: str, period: str) -> Optional[float]:
     MEDIAN_CACHE[cache_key] = median
 
     return median
+
+
+def compute_level_signal_peers(level: str, period: str) -> List[Dict[str, Any]]:
+    cache_key = (level, period)
+    if cache_key in PEER_SIGNAL_CACHE:
+        return PEER_SIGNAL_CACHE[cache_key]
+
+    rows = get_normalized_rows()
+    rows, _ = filter_rows(rows, period=period)
+    if not rows:
+        PEER_SIGNAL_CACHE[cache_key] = []
+        return []
+
+    if level == 'business':
+        metrics = aggregate_metrics(rows)
+        peers = [{'object_name': 'business', 'finrez_pre': metrics.get('finrez_pre', 0.0)}]
+        PEER_SIGNAL_CACHE[cache_key] = peers
+        return peers
+
+    grouped_rows = _group_rows_by_level(rows, level)
+    peers: List[Dict[str, Any]] = []
+    for chunk in grouped_rows:
+        first = chunk[0] if chunk else {}
+        object_name = first.get(level)
+        metrics = aggregate_metrics(chunk)
+        peers.append({
+            'object_name': object_name,
+            'finrez_pre': metrics.get('finrez_pre', 0.0),
+        })
+
+    PEER_SIGNAL_CACHE[cache_key] = peers
+    return peers
 
 
 def _compute_gap_loss_money(margin_gap: float, revenue: float) -> float:
@@ -136,9 +170,9 @@ def build_comparison_payload(
     loss_share = compute_loss_share(total_loss, business_metrics)
     gap_loss_money = _compute_gap_loss_money(margin_gap, object_metrics.get('revenue', 0.0))
 
-    status = detect_status(object_metrics.get('finrez_pre', 0.0), kpi_zone)
+    diagnostic_status = detect_status(object_metrics.get('finrez_pre', 0.0), kpi_zone)
     priority = detect_priority(
-        status,
+        diagnostic_status,
         total_loss,
         loss_share,
         object_metrics.get('kpi_gap', 0.0),
@@ -146,7 +180,13 @@ def build_comparison_payload(
     )
 
     next_step = CHILD_LEVEL_BY_LEVEL.get(level)
-    suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
+    suggested_action = detect_suggested_action(diagnostic_status, priority, top_drain_metric, level)
+    period_signal = build_period_signal(
+        level=level,
+        object_name=object_name,
+        finrez_pre=object_metrics.get('finrez_pre', 0.0),
+        peer_items=compute_level_signal_peers(level, period),
+    )
 
     return {
         'level': level,
@@ -154,12 +194,21 @@ def build_comparison_payload(
         'period': period,
 
         'signal': {
-            'status': status,
+            'status': period_signal.get('status'),
+            'label': period_signal.get('label'),
+            'comment': period_signal.get('comment'),
+            'reason': period_signal.get('reason'),
+            'reason_value': period_signal.get('reason_value'),
+            'rank': period_signal.get('rank'),
+            'priority': period_signal.get('priority'),
+            'problem_money': period_signal.get('problem_money'),
+            'quartiles': period_signal.get('quartiles'),
             'finrez_pre': object_metrics.get('finrez_pre'),
             'margin_gap': margin_gap,
             'kpi_gap': object_metrics.get('kpi_gap'),
             'median_gap': median_gap,
             'kpi_zone': kpi_zone,
+            'diagnostic_status': diagnostic_status,
         },
 
         'navigation': {
