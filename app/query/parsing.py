@@ -15,6 +15,7 @@ COMPARISON_MARKERS = [
     'против',
     'по сравнению с',
     'относительно',
+    'к ',
 ]
 
 SHORT_DRILL_COMMANDS = {
@@ -67,6 +68,9 @@ SERVICE_PREFIXES = [
 ]
 
 
+MONTH_NAMES_PATTERN = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
+
+
 def normalize_user_message(message: str) -> str:
     text = clean_text(message)
     text = text.replace('–', '-').replace('—', '-')
@@ -97,6 +101,32 @@ def _month_token_to_number(token: str) -> Optional[str]:
     return None
 
 
+def _extract_month_range_tokens(text: str) -> List[Tuple[int, str]]:
+    found: List[Tuple[int, str]] = []
+
+    def append_unique(position: int, period: str) -> None:
+        if period not in [p for _, p in found]:
+            found.append((position, period))
+
+    textual_pattern = rf'\b({MONTH_NAMES_PATTERN})\s*-\s*({MONTH_NAMES_PATTERN})\s+(20\d{{2}}|\d{{2}})\b'
+    for match in re.finditer(textual_pattern, text):
+        month_from = _month_token_to_number(match.group(1))
+        month_to = _month_token_to_number(match.group(2))
+        year = _normalize_year(match.group(3))
+        if month_from and month_to:
+            append_unique(match.start(), f'{year}-{month_from}:{year}-{month_to}')
+
+    numeric_pattern = r'\b(0?[1-9]|1[0-2])\s*-\s*(0?[1-9]|1[0-2])\s+(20\d{2}|\d{2})\b'
+    for match in re.finditer(numeric_pattern, text):
+        month_from = f'{int(match.group(1)):02d}'
+        month_to = f'{int(match.group(2)):02d}'
+        year = _normalize_year(match.group(3))
+        append_unique(match.start(), f'{year}-{month_from}:{year}-{month_to}')
+
+    found.sort(key=lambda x: x[0])
+    return found
+
+
 def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
     found: List[Tuple[int, str]] = []
 
@@ -104,32 +134,66 @@ def _extract_month_year_tokens(text: str) -> List[Tuple[int, str]]:
         if period not in [p for _, p in found]:
             found.append((position, period))
 
-    # YYYY-MM
+    for position, period in _extract_month_range_tokens(text):
+        append_unique(position, period)
+
     for match in re.finditer(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', text):
         append_unique(match.start(), f'{match.group(1)}-{match.group(2)}')
 
-    # MM YYYY / MM.YYYY / MM/YYYY / MM-YYYY
     for match in re.finditer(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', text):
         year = _normalize_year(match.group(2))
         month = f'{int(match.group(1)):02d}'
         append_unique(match.start(), f'{year}-{month}')
 
-    # textual month + year
-    month_names_pattern = '|'.join(sorted(MONTHS_RU.keys(), key=len, reverse=True))
-    for match in re.finditer(rf'\b({month_names_pattern})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
+    for match in re.finditer(rf'\b({MONTH_NAMES_PATTERN})\b(?:\s+(20\d{{2}}|\d{{2}}))?', text):
         month = _month_token_to_number(match.group(1))
         year_raw = match.group(2)
         if month and year_raw:
             year = _normalize_year(year_raw)
             append_unique(match.start(), f'{year}-{month}')
 
+    # year-only comparison support: "2026 к 2025"
+    if len(found) < 2:
+        for match in re.finditer(r'\b(20\d{2}|\d{2})\b', text):
+            year = _normalize_year(match.group(1))
+            append_unique(match.start(), year)
+
     found.sort(key=lambda x: x[0])
     return found
 
 
+def _derive_previous_period_from_last_year(text: str, periods: List[str]) -> List[str]:
+    if len(periods) != 1:
+        return periods
+
+    padded = f' {text} '
+    if ' прошлым годом ' not in padded and ' прошлого года ' not in padded:
+        return periods
+
+    current = periods[0]
+    if ':' in current:
+        left, right = current.split(':', 1)
+        if len(left) >= 4 and len(right) >= 4:
+            try:
+                left_year = int(left[:4]) - 1
+                right_year = int(right[:4]) - 1
+                previous = f'{left_year:04d}{left[4:]}:{right_year:04d}{right[4:]}'
+                return [current, previous]
+            except Exception:
+                return periods
+
+    if len(current) >= 4 and current[:4].isdigit():
+        previous_year = int(current[:4]) - 1
+        previous = f'{previous_year:04d}{current[4:]}'
+        return [current, previous]
+
+    return periods
+
+
 def extract_periods_from_text(message: str) -> List[str]:
     text = normalize_user_message(message)
-    return [period for _, period in _extract_month_year_tokens(text)]
+    periods = [period for _, period in _extract_month_year_tokens(text)]
+    return _derive_previous_period_from_last_year(text, periods)
 
 
 def _has_comparison_connector(message: str) -> bool:
@@ -164,6 +228,26 @@ def _strip_level_hints(text: str) -> str:
         for alias in sorted(aliases, key=len, reverse=True):
             cleaned = cleaned.replace(f' {alias} ', ' ')
     return re.sub(r'\s+', ' ', cleaned).strip()
+
+
+def _strip_period_tokens(text: str) -> str:
+    cleaned = f' {text} '
+
+    cleaned = re.sub(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', ' ', cleaned)
+    cleaned = re.sub(r'\b(0?[1-9]|1[0-2])[\/\.\-\s](20\d{2}|\d{2})\b', ' ', cleaned)
+    cleaned = re.sub(rf'\b({MONTH_NAMES_PATTERN})\s*-\s*({MONTH_NAMES_PATTERN})\s+(20\d{{2}}|\d{{2}})\b', ' ', cleaned)
+    cleaned = re.sub(rf'\b({MONTH_NAMES_PATTERN})\b(?:\s+(20\d{{2}}|\d{{2}}))?', ' ', cleaned)
+    cleaned = re.sub(r'\b(20\d{2}|\d{2})\b', ' ', cleaned)
+
+    comparison_words = [
+        'сравни', 'сравнить', 'сравнение', 'vs', 'versus', 'против',
+        'по сравнению с', 'относительно', 'прошлым годом', 'прошлого года', 'к'
+    ]
+    for word in sorted(comparison_words, key=len, reverse=True):
+        cleaned = cleaned.replace(f' {word} ', ' ')
+
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
 
 
 def _resolve_scope_entity(text: str, period: str) -> Tuple[Optional[str], Optional[str]]:
@@ -243,7 +327,6 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
     if not text:
         return error_response('empty message')
 
-    # short follow-up commands via context
     if text in SHORT_DRILL_COMMANDS:
         return {
             'status': 'ok',
@@ -286,10 +369,11 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
 
     target_level = _detect_target_level(text)
     stripped_text = _strip_level_hints(text) if target_level else text
+    entity_text = _strip_period_tokens(stripped_text)
 
-    scope_level, scope_object_name = _resolve_scope_entity(stripped_text, period_current)
+    lookup_period = period_current.split(':', 1)[0] if ':' in period_current else period_current
+    scope_level, scope_object_name = _resolve_scope_entity(entity_text, lookup_period)
 
-    # explicit target level over object / business
     if target_level:
         base_level = _resolve_base_level_for_target(target_level, scope_level)
 
@@ -320,7 +404,6 @@ def parse_query_intent(message: str) -> Dict[str, Any]:
             },
         }
 
-    # direct object / business
     if not scope_level:
         scope_level = 'business'
         scope_object_name = 'business'
