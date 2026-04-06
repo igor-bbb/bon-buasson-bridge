@@ -428,10 +428,17 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
     current_obj = current.get('metrics', {}).get('object_metrics', {})
     previous_obj = previous.get('metrics', {}).get('object_metrics', {})
 
-    delta_finrez = _round(current.get('signal', {}).get('finrez_pre', 0.0) - previous.get('signal', {}).get('finrez_pre', 0.0))
+    current_finrez = _round(current.get('signal', {}).get('finrez_pre', 0.0))
+    previous_finrez = _round(previous.get('signal', {}).get('finrez_pre', 0.0))
+    current_margin_pre = _round(current.get('context', {}).get('margin_pre_object', 0.0))
+    previous_margin_pre = _round(previous.get('context', {}).get('margin_pre_object', 0.0))
+    current_margin_gap = _round(current.get('context', {}).get('margin_gap', 0.0))
+    previous_margin_gap = _round(previous.get('context', {}).get('margin_gap', 0.0))
+
+    delta_finrez = _round(current_finrez - previous_finrez)
     delta_kpi_gap = _round(current.get('navigation', {}).get('kpi_gap', 0.0) - previous.get('navigation', {}).get('kpi_gap', 0.0))
-    delta_margin_pre = _round(current.get('context', {}).get('margin_pre_object', 0.0) - previous.get('context', {}).get('margin_pre_object', 0.0))
-    delta_margin_gap = _round(current.get('context', {}).get('margin_gap', 0.0) - previous.get('context', {}).get('margin_gap', 0.0))
+    delta_margin_pre = _round(current_margin_pre - previous_margin_pre)
+    delta_margin_gap = _round(current_margin_gap - previous_margin_gap)
     delta_gap_loss_money = _round(current.get('impact', {}).get('gap_loss_money', 0.0) - previous.get('impact', {}).get('gap_loss_money', 0.0))
 
     diagnosis_changes = []
@@ -463,6 +470,23 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
     )
     action = _build_comparison_action(main_change, query.get('level'), deterioration, current.get('action', {}).get('next_step'))
 
+    if delta_finrez > 0:
+        management_problem = 'прибыль выросла'
+    elif delta_finrez < 0:
+        management_problem = 'прибыль снизилась'
+    else:
+        management_problem = 'прибыль без изменений'
+
+    management_reason = []
+    if main_change.get('label'):
+        direction = 'давление выросло' if main_change.get('delta_value', 0.0) > 0 else ('давление снизилось' if main_change.get('delta_value', 0.0) < 0 else 'без изменений')
+        management_reason.append(f"{main_change.get('label')}: {direction} на {abs(_round(main_change.get('delta_value', 0.0)))} грн")
+    if delta_margin_pre != 0:
+        sign = '+' if delta_margin_pre > 0 else '-'
+        management_reason.append(f"маржа до распределения: {sign}{abs(delta_margin_pre)} п.п.")
+
+    effect_text = f"финрез: {previous_finrez} → {current_finrez} грн"
+
     return {
         'mode': 'comparison',
         'level': query.get('level'),
@@ -479,10 +503,12 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'basis': {
-            'current_margin_pre': _round(current.get('context', {}).get('margin_pre_object', 0.0)),
-            'previous_margin_pre': _round(previous.get('context', {}).get('margin_pre_object', 0.0)),
-            'current_margin_gap': _round(current.get('context', {}).get('margin_gap', 0.0)),
-            'previous_margin_gap': _round(previous.get('context', {}).get('margin_gap', 0.0)),
+            'current_finrez_pre': current_finrez,
+            'previous_finrez_pre': previous_finrez,
+            'current_margin_pre': current_margin_pre,
+            'previous_margin_pre': previous_margin_pre,
+            'current_margin_gap': current_margin_gap,
+            'previous_margin_gap': previous_margin_gap,
         },
 
         'cause': {
@@ -493,7 +519,23 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
             'main_driver_direction': main_change.get('direction'),
         },
 
+        'diagnosis_change': {
+            'items': diagnosis_changes[:MAX_REASON_ITEMS],
+            'main_driver_metric': main_change.get('metric'),
+            'main_driver_label': main_change.get('label'),
+            'main_driver_delta': main_change.get('delta_value'),
+            'main_driver_direction': main_change.get('direction'),
+        },
+
         'money': {
+            'delta_finrez_pre': delta_finrez,
+            'delta_gap_loss_money': delta_gap_loss_money,
+        },
+
+        'impact': {
+            'main_driver_metric': main_change.get('metric'),
+            'main_driver_label': main_change.get('label'),
+            'main_driver_delta': main_change.get('delta_value'),
             'delta_finrez_pre': delta_finrez,
             'delta_gap_loss_money': delta_gap_loss_money,
         },
@@ -508,6 +550,26 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         },
 
         'action': action,
+
+        'management': {
+            'problem': management_problem,
+            'reason': management_reason,
+            'action': action.get('suggested_action'),
+            'effect': effect_text,
+        },
+
+        'comparison': {
+            'finrez_pre': {
+                'previous': previous_finrez,
+                'current': current_finrez,
+                'delta': delta_finrez,
+            },
+            'margin_pre': {
+                'previous': previous_margin_pre,
+                'current': current_margin_pre,
+                'delta': delta_margin_pre,
+            },
+        },
 
         'current': build_management_view(current),
         'previous': build_management_view(previous),
