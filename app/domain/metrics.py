@@ -67,6 +67,41 @@ def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     }
 
 
+def build_consistency(parent_finrez_pre: float, child_metrics_list: List[Dict[str, Any]], child_level: str) -> Dict[str, Any]:
+    if not child_metrics_list:
+        return {
+            'checked': False,
+            'reason': 'no_child_data',
+        }
+
+    child_sum = round_money(sum(item.get('finrez_pre', 0.0) for item in child_metrics_list))
+    delta = round_money(parent_finrez_pre - child_sum)
+
+    if parent_finrez_pre == 0:
+        delta_pct = 0.0 if delta == 0 else None
+    else:
+        delta_pct = round_percent((abs(delta) / abs(parent_finrez_pre)) * 100.0)
+
+    if delta_pct is None:
+        status = 'warning'
+    elif delta_pct < 1:
+        status = 'ok'
+    elif delta_pct <= 5:
+        status = 'warning'
+    else:
+        status = 'critical'
+
+    return {
+        'checked': True,
+        'child_level': child_level,
+        'parent_finrez_pre': round_money(parent_finrez_pre),
+        'child_sum_finrez_pre': child_sum,
+        'delta': delta,
+        'delta_pct': delta_pct,
+        'status': status,
+    }
+
+
 def build_expected_metrics(
     object_metrics: Dict[str, float],
     business_metrics: Dict[str, float],
