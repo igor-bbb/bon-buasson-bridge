@@ -43,7 +43,11 @@ def _build_items(grouped, level, business_metrics, period):
     return items
 
 
-def _apply_safe_full_view(items: List[Dict[str, Any]], items_meta: Dict[str, Any], full_view: bool):
+def _apply_safe_full_view(
+    items: List[Dict[str, Any]],
+    items_meta: Dict[str, Any],
+    full_view: bool,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
     if not full_view:
         return items, items_meta
 
@@ -56,12 +60,13 @@ def _apply_safe_full_view(items: List[Dict[str, Any]], items_meta: Dict[str, Any
         limited_items = items
         truncated = False
 
-    items_meta.update({
+    items_meta = {
+        **items_meta,
         'returned_count': len(limited_items),
         'hidden_count': total_count - len(limited_items),
         'has_more': total_count > len(limited_items),
         'is_truncated': truncated,
-    })
+    }
 
     return limited_items, items_meta
 
@@ -96,14 +101,14 @@ def _run_drilldown(
 
     all_items = _build_items(grouped, child_level, business_metrics, period)
 
-    # текущая логика (limit + pareto)
+    # текущая логика показа (top / pareto / hidden meta)
     visible_items, items_meta = select_visible_items(all_items, full_view=full_view)
 
-    # 🔴 ВСТАВКА SAFE FULL VIEW (главный фикс)
+    # технический предохранитель для full_view
     visible_items, items_meta = _apply_safe_full_view(
         visible_items,
         items_meta,
-        full_view
+        full_view,
     )
 
     parent_metrics = aggregate_metrics(filtered_rows)
@@ -125,27 +130,198 @@ def _run_drilldown(
     }
 
 
-# дальше без изменений
-
 def get_business_manager_tops_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='manager_top', child_level='manager_top', parent_level='business', parent_object='business', period=period, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='manager_top',
+        child_level='manager_top',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        full_view=full_view,
+    )
 
 
 def get_business_managers_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='manager', child_level='manager', parent_level='business', parent_object='business', period=period, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='manager',
+        child_level='manager',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        full_view=full_view,
+    )
 
 
 def get_business_networks_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='network', child_level='network', parent_level='business', parent_object='business', period=period, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='network',
+        child_level='network',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        full_view=full_view,
+    )
 
 
 def get_business_categories_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='category', child_level='category', parent_level='business', parent_object='business', period=period, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='category',
+        child_level='category',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        full_view=full_view,
+    )
 
 
 def get_business_tmc_groups_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='tmc_group', child_level='tmc_group', parent_level='business', parent_object='business', period=period, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        full_view=full_view,
+    )
 
 
 def get_business_skus_comparison(period: str, full_view: bool = False) -> Dict[str, Any]:
-    return _run_drilldown(filter_kwargs={}, group_field='sku', child_level='sku', parent_level='business', parent_object='business', period=period, transform_sku=True, full_view=full_view)
+    return _run_drilldown(
+        filter_kwargs={},
+        group_field='sku',
+        child_level='sku',
+        parent_level='business',
+        parent_object='business',
+        period=period,
+        transform_sku=True,
+        full_view=full_view,
+    )
+
+
+def get_manager_top_managers_comparison(manager_top: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager_top': manager_top},
+        group_field='manager',
+        child_level='manager',
+        parent_level='manager_top',
+        parent_object=manager_top,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_manager_networks_comparison(manager: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='network',
+        child_level='network',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_manager_categories_comparison(manager: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='category',
+        child_level='category',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_manager_skus_comparison(manager: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'manager': manager},
+        group_field='sku',
+        child_level='sku',
+        parent_level='manager',
+        parent_object=manager,
+        period=period,
+        transform_sku=True,
+        full_view=full_view,
+    )
+
+
+def get_network_categories_comparison(network: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='category',
+        child_level='category',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_network_tmc_groups_comparison(network: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_network_skus_comparison(network: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'network': network},
+        group_field='sku',
+        child_level='sku',
+        parent_level='network',
+        parent_object=network,
+        period=period,
+        transform_sku=True,
+        full_view=full_view,
+    )
+
+
+def get_category_tmc_groups_comparison(category: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'category': category},
+        group_field='tmc_group',
+        child_level='tmc_group',
+        parent_level='category',
+        parent_object=category,
+        period=period,
+        full_view=full_view,
+    )
+
+
+def get_category_skus_comparison(category: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'category': category},
+        group_field='sku',
+        child_level='sku',
+        parent_level='category',
+        parent_object=category,
+        period=period,
+        transform_sku=True,
+        full_view=full_view,
+    )
+
+
+def get_tmc_group_skus_comparison(tmc_group: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+    return _run_drilldown(
+        filter_kwargs={'tmc_group': tmc_group},
+        group_field='sku',
+        child_level='sku',
+        parent_level='tmc_group',
+        parent_object=tmc_group,
+        period=period,
+        transform_sku=True,
+        full_view=full_view,
+    )
