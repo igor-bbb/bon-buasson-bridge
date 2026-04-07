@@ -111,7 +111,13 @@ def _is_full_view_command(message: str) -> bool:
     return _normalize_message(message) in FULL_VIEW_COMMANDS
 
 
-def _build_drill_from_scope(scope_level: str, scope_object_name: Optional[str], target_level: str, period: str, full_view: bool = False) -> Dict[str, Any]:
+def _build_drill_from_scope(
+    scope_level: str,
+    scope_object_name: Optional[str],
+    target_level: str,
+    period: str,
+    full_view: bool = False,
+) -> Dict[str, Any]:
     if scope_level == 'business':
         if target_level == 'manager_top':
             return get_business_manager_tops_comparison(period=period, full_view=full_view)
@@ -169,7 +175,16 @@ def _store_scope(session_id: str, level: str, object_name: str, period_current: 
     })
 
 
-def _store_list_context(session_id: str, parent_level: str, parent_object_name: str, period_current: str, period_previous: Any, mode: str, list_level: str, response_type: str = 'drill_down') -> None:
+def _store_list_context(
+    session_id: str,
+    parent_level: str,
+    parent_object_name: str,
+    period_current: str,
+    period_previous: Any,
+    mode: str,
+    list_level: str,
+    response_type: str = 'drill_down',
+) -> None:
     update_session(session_id, {
         'scope_level': parent_level,
         'scope_object_name': parent_object_name,
@@ -196,7 +211,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
         return {
             'status': 'ok',
             'query': {
-                'mode': session_ctx.get('mode', 'diagnosis'),
+                'mode': 'diagnosis',
                 'level': session_ctx.get('scope_level'),
                 'object_name': session_ctx.get('scope_object_name'),
                 'period_current': session_ctx.get('period_current'),
@@ -207,7 +222,6 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
             },
         }
 
-    # short structure commands use current scope
     return {
         'status': 'ok',
         'query': {
@@ -234,7 +248,7 @@ def _build_query_from_full_view(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'status': 'ok',
         'query': {
-            'mode': session_ctx.get('mode', 'diagnosis'),
+            'mode': 'diagnosis',
             'level': session_ctx.get('scope_level'),
             'object_name': session_ctx.get('scope_object_name'),
             'period_current': session_ctx.get('period_current'),
@@ -250,7 +264,6 @@ def _build_query_from_full_view(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract_period_token(normalized: str) -> Optional[str]:
-    import re
     m = re.search(r'\b(20\d{2})-(0[1-9]|1[0-2])\b', normalized)
     return f'{m.group(1)}-{m.group(2)}' if m else None
 
@@ -273,18 +286,25 @@ def _fallback_parse_direct_object(message: str, session_ctx: Dict[str, Any]) -> 
     priority = ['manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']
 
     best = None
+    object_tokens = set(object_text_norm.split())
+
     for level in priority:
         level_index = dictionary.get(level, {}).get('index', {})
         for alias, canonical in level_index.items():
             alias_norm = normalize_entity_text(alias)
             if not alias_norm:
                 continue
+
+            alias_tokens = set(alias_norm.split())
             exact = 1 if object_text_norm == alias_norm else 0
             whole = 1 if f' {alias_norm} ' in f' {object_text_norm} ' else 0
             partial = 1 if alias_norm in object_text_norm else 0
-            if not (exact or whole or partial):
+            overlap = len(object_tokens & alias_tokens)
+
+            if not (exact or whole or partial or overlap):
                 continue
-            candidate = (exact, whole, len(alias_norm), level, canonical)
+
+            candidate = (exact, whole, overlap, len(alias_norm), level, canonical)
             if best is None or candidate > best:
                 best = candidate
 
@@ -295,13 +315,13 @@ def _fallback_parse_direct_object(message: str, session_ctx: Dict[str, Any]) -> 
         'status': 'ok',
         'query': {
             'mode': 'diagnosis',
-            'level': best[3],
-            'object_name': best[4],
+            'level': best[4],
+            'object_name': best[5],
             'period_current': period,
             'period_previous': None,
             'query_type': 'summary',
             'period': period,
-            'object': best[4],
+            'object': best[5],
         },
     }
 
@@ -311,29 +331,28 @@ def _route_signal_flow(query: Dict[str, Any], current: Dict[str, Any], session_i
     object_name = query.get('object_name')
     period = query.get('period_current')
     period_previous = query.get('period_previous')
-    mode = query.get('mode', 'diagnosis')
     full_view = query.get('full_view', False)
 
     target_level = query.get('target_level') or DEFAULT_NEXT_LEVEL.get(level)
     if not target_level:
         response = ok_response(query, build_management_view(current))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, period_previous, mode)
-            update_session(session_id, {'last_response_type': 'management', 'last_list_level': None})
+            _store_scope(session_id, level, object_name, period, period_previous, 'diagnosis')
+            update_session(session_id, {'last_response_type': 'management', 'last_list_level': None, 'full_view': False})
         return response
 
     source = _build_drill_from_scope(level, object_name, target_level, period, full_view=full_view)
     if 'error' in source:
         response = ok_response(query, build_management_view(current))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, period_previous, mode)
-            update_session(session_id, {'last_response_type': 'management', 'last_list_level': None})
+            _store_scope(session_id, level, object_name, period, period_previous, 'diagnosis')
+            update_session(session_id, {'last_response_type': 'management', 'last_list_level': None, 'full_view': False})
         return response
 
     response = ok_response(query, build_signal_flow_view(current, source))
     if response.get('status') == 'ok':
-        _store_scope(session_id, level, object_name, period, period_previous, mode)
-        _store_list_context(session_id, level, object_name, period, period_previous, mode, target_level, response_type='signal_flow')
+        _store_scope(session_id, level, object_name, period, period_previous, 'diagnosis')
+        _store_list_context(session_id, level, object_name, period, period_previous, 'diagnosis', target_level, response_type='signal_flow')
         update_session(session_id, {'full_view': full_view})
     return response
 
@@ -363,33 +382,38 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
         previous_period = query.get('period_previous')
         if not previous_period:
             return error_response('comparison period not recognized', query)
+
         previous = executor(object_name, previous_period)
         if 'error' in previous:
             return error_response(previous['error'], query)
+
         response = ok_response(query, build_comparison_management_view(query, current, previous))
         if response.get('status') == 'ok':
             _store_scope(session_id, level, object_name, period, previous_period, mode)
-            update_session(session_id, {'last_response_type': 'comparison', 'last_list_level': None})
+            update_session(session_id, {'last_response_type': 'comparison', 'last_list_level': None, 'full_view': False})
         return response
 
     if query.get('query_type') == 'reasons':
         response = ok_response(query, build_reasons_view(current))
         if response.get('status') == 'ok':
             _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
-            update_session(session_id, {'last_response_type': 'reasons'})
+            update_session(session_id, {'last_response_type': 'reasons', 'full_view': False})
         return response
 
     if query.get('query_type') == 'losses':
         target_level = DEFAULT_NEXT_LEVEL.get(level)
         if not target_level:
             return not_implemented_response(query, 'losses not supported for this level')
-        source = _build_drill_from_scope(level, object_name, target_level, period)
+
+        source = _build_drill_from_scope(level, object_name, target_level, period, full_view=False)
         if 'error' in source:
             return error_response(source['error'], query)
+
         response = ok_response(query, build_losses_view_from_children(source))
         if response.get('status') == 'ok':
             _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
             _store_list_context(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis', target_level, response_type='losses')
+            update_session(session_id, {'full_view': False})
         return response
 
     return _route_signal_flow(query, current, session_id)
@@ -400,7 +424,6 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
     scope_object_name = query.get('object_name') or session_ctx.get('scope_object_name')
     period = query.get('period_current') or session_ctx.get('period_current')
     target_level = query.get('target_level') or DEFAULT_NEXT_LEVEL.get(scope_level)
-    mode = 'diagnosis'
     period_previous = query.get('period_previous') or session_ctx.get('period_previous')
     full_view = query.get('full_view', False)
 
@@ -415,8 +438,8 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
 
     response = ok_response(query, build_drilldown_management_view(payload))
     if response.get('status') == 'ok':
-        _store_scope(session_id, scope_level, scope_object_name, period, period_previous, mode)
-        _store_list_context(session_id, scope_level, scope_object_name, period, period_previous, mode, target_level, response_type='drill_down')
+        _store_scope(session_id, scope_level, scope_object_name, period, period_previous, 'diagnosis')
+        _store_list_context(session_id, scope_level, scope_object_name, period, period_previous, 'diagnosis', target_level, response_type='drill_down')
         update_session(session_id, {'full_view': full_view})
     return response
 
@@ -436,7 +459,6 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     else:
         parsed = parse_query_intent(message)
         if parsed.get('status') != 'ok':
-            # fallback for direct object queries like "сененко роман 2026-02"
             parsed = _fallback_parse_direct_object(message, session_ctx)
             if parsed.get('status') != 'ok':
                 return parsed
