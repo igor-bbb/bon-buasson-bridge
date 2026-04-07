@@ -130,22 +130,12 @@ def _build_consistency_view(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _build_items_meta_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     items_meta = payload.get('items_meta') or {}
-
-    hint = None
-    if items_meta.get('is_truncated'):
-        hint = (
-            f"Показаны первые {items_meta.get('returned_count', 0)} "
-            f"из {items_meta.get('total_count', 0)}. Уточни запрос для детализации."
-        )
-    elif items_meta.get('has_more'):
-        hint = f"ещё {items_meta.get('hidden_count', 0)} скрыто (введи 'покажи все')"
-
     return {
         'total_count': items_meta.get('total_count', 0),
         'returned_count': items_meta.get('returned_count', 0),
         'hidden_count': items_meta.get('hidden_count', 0),
         'has_more': items_meta.get('has_more', False),
-        'hint': hint,
+        'hint': f"ещё {items_meta.get('hidden_count', 0)} скрыто (введи 'покажи все')" if items_meta.get('has_more') else None,
     }
 
 
@@ -404,34 +394,23 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
     delta_margin_pre = _round(current_margin_pre - previous_margin_pre)
     delta_margin_gap = _round(current_margin_gap - previous_margin_gap)
     delta_gap_loss_money = _round(current.get('impact', {}).get('gap_loss_money', 0.0) - previous.get('impact', {}).get('gap_loss_money', 0.0))
-
     diagnosis_changes = []
     for metric in ['retro_bonus', 'logistics_cost', 'personnel_cost', 'other_costs']:
         delta_value = _round(current_obj.get(metric, 0.0) - previous_obj.get(metric, 0.0))
-        diagnosis_changes.append({
-            'metric': metric,
-            'label': METRIC_LABELS.get(metric, metric),
-            'delta_value': delta_value,
-            'direction': 'ухудшение' if delta_value > 0 else ('улучшение' if delta_value < 0 else 'без изменений'),
-            'is_negative_for_business': delta_value > 0,
-        })
-
+        diagnosis_changes.append({'metric': metric, 'label': METRIC_LABELS.get(metric, metric), 'delta_value': delta_value, 'direction': 'ухудшение' if delta_value > 0 else ('улучшение' if delta_value < 0 else 'без изменений'), 'is_negative_for_business': delta_value > 0})
     negative = [c for c in diagnosis_changes if c['is_negative_for_business']]
     source = negative if negative else diagnosis_changes
     main_change = max(source, key=lambda x: abs(x['delta_value'])) if source else {'metric': None, 'label': None, 'delta_value': 0.0, 'direction': 'без изменений'}
-
     deterioration = delta_finrez < 0 or delta_kpi_gap > 0 or delta_margin_gap < 0
     status_change = _status_change_label(current.get('signal', {}).get('status'), previous.get('signal', {}).get('status'))
     priority_change = _priority_change_label(current.get('priority', {}).get('priority'), previous.get('priority', {}).get('priority'))
     action = _build_comparison_action(main_change, query.get('level'), deterioration, current.get('action', {}).get('next_step'))
-
     management_reason = []
     if main_change.get('label'):
         direction = 'давление выросло' if main_change.get('delta_value', 0.0) > 0 else ('давление снизилось' if main_change.get('delta_value', 0.0) < 0 else 'без изменений')
         management_reason.append(f"{main_change.get('label')}: {direction} на {abs(_round(main_change.get('delta_value', 0.0)))} грн")
     if delta_margin_pre != 0:
         management_reason.append(f"маржа до распределения: {'+' if delta_margin_pre > 0 else '-'}{abs(delta_margin_pre)} п.п.")
-
     return {
         'mode': 'comparison',
         'level': query.get('level'),
@@ -439,58 +418,45 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         'object_name': query.get('object_name'),
         'period_current': query.get('period_current'),
         'period_previous': query.get('period_previous'),
-        'focus': {
-            'problem': 'прибыль выросла' if delta_finrez > 0 else ('прибыль снизилась' if delta_finrez < 0 else 'прибыль без изменений'),
-            'signal_label': current.get('signal', {}).get('label', 'OK'),
-            'priority': current.get('signal', {}).get('priority'),
-            'problem_money': _round(abs(delta_finrez)) if delta_finrez < 0 else 0.0,
-            'focus_metric': main_change.get('label'),
-            'focus_action': action.get('suggested_action'),
-        },
-        'signal': {
-            'status': 'ok' if delta_finrez >= 0 else 'risk',
-            'label': 'OK' if delta_finrez >= 0 else 'RISK',
-            'comment': 'результат улучшился период к периоду' if delta_finrez > 0 else ('результат ухудшился период к периоду' if delta_finrez < 0 else 'результат без изменений'),
-            'reason': main_change.get('metric'),
-            'reason_value': _round(abs(main_change.get('delta_value', 0.0))),
-        },
-        'comparison': {
-            'finrez_pre': {'previous': previous_finrez, 'current': current_finrez, 'delta': delta_finrez},
-            'margin_pre': {'previous': previous_margin_pre, 'current': current_margin_pre, 'delta': delta_margin_pre},
-        },
-        'cause': {
-            'items': diagnosis_changes[:MAX_REASON_ITEMS],
-            'main_driver_metric': main_change.get('metric'),
-            'main_driver_label': main_change.get('label'),
-            'main_driver_delta': main_change.get('delta_value'),
-            'main_driver_direction': main_change.get('direction'),
-        },
-        'money': {
-            'delta_finrez_pre': delta_finrez,
-            'delta_gap_loss_money': delta_gap_loss_money,
-        },
-        'priority_change': {
-            'status_current': current.get('signal', {}).get('status'),
-            'status_previous': previous.get('signal', {}).get('status'),
-            'priority_current': current.get('priority', {}).get('priority'),
-            'priority_previous': previous.get('priority', {}).get('priority'),
-            'status_change': status_change,
-            'priority_change': priority_change,
-        },
+        'focus': {'problem': 'прибыль выросла' if delta_finrez > 0 else ('прибыль снизилась' if delta_finrez < 0 else 'прибыль без изменений'), 'signal_label': current.get('signal', {}).get('label', 'OK'), 'priority': current.get('signal', {}).get('priority'), 'problem_money': _round(abs(delta_finrez)) if delta_finrez < 0 else 0.0, 'focus_metric': main_change.get('label'), 'focus_action': action.get('suggested_action')},
+        'signal': {'status': 'ok' if delta_finrez >= 0 else 'risk', 'label': 'OK' if delta_finrez >= 0 else 'RISK', 'comment': 'результат улучшился период к периоду' if delta_finrez > 0 else ('результат ухудшился период к периоду' if delta_finrez < 0 else 'результат без изменений'), 'reason': main_change.get('metric'), 'reason_value': _round(abs(main_change.get('delta_value', 0.0)))},
+        'comparison': {'finrez_pre': {'previous': previous_finrez, 'current': current_finrez, 'delta': delta_finrez}, 'margin_pre': {'previous': previous_margin_pre, 'current': current_margin_pre, 'delta': delta_margin_pre}},
+        'cause': {'items': diagnosis_changes[:MAX_REASON_ITEMS], 'main_driver_metric': main_change.get('metric'), 'main_driver_label': main_change.get('label'), 'main_driver_delta': main_change.get('delta_value'), 'main_driver_direction': main_change.get('direction')},
+        'money': {'delta_finrez_pre': delta_finrez, 'delta_gap_loss_money': delta_gap_loss_money},
+        'priority_change': {'status_current': current.get('signal', {}).get('status'), 'status_previous': previous.get('signal', {}).get('status'), 'priority_current': current.get('priority', {}).get('priority'), 'priority_previous': previous.get('priority', {}).get('priority'), 'status_change': status_change, 'priority_change': priority_change},
         'action': action,
-        'management': {
-            'problem': 'прибыль выросла' if delta_finrez > 0 else ('прибыль снизилась' if delta_finrez < 0 else 'прибыль без изменений'),
-            'reason': management_reason,
-            'action': action.get('suggested_action'),
-            'effect': f'финрез: {previous_finrez} → {current_finrez} грн',
-        },
+        'management': {'problem': 'прибыль выросла' if delta_finrez > 0 else ('прибыль снизилась' if delta_finrez < 0 else 'прибыль без изменений'), 'reason': management_reason, 'action': action.get('suggested_action'), 'effect': f'финрез: {previous_finrez} → {current_finrez} грн'},
         'current': build_management_view(current),
         'previous': build_management_view(previous),
-        'delta': {
-            'finrez_pre': delta_finrez,
-            'kpi_gap': delta_kpi_gap,
-            'margin_pre': delta_margin_pre,
-            'margin_gap': delta_margin_gap,
-            'gap_loss_money': delta_gap_loss_money,
+        'delta': {'finrez_pre': delta_finrez, 'kpi_gap': delta_kpi_gap, 'margin_pre': delta_margin_pre, 'margin_gap': delta_margin_gap, 'gap_loss_money': delta_gap_loss_money},
+    }
+
+
+def build_signal_flow_view(summary_payload: Dict[str, Any], drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
+    summary_view = build_management_view(summary_payload)
+    drilldown_view = build_drilldown_management_view(drilldown_payload)
+
+    next_level = drilldown_payload.get('children_level')
+
+    return {
+        'mode': 'signal',
+        'level': summary_view.get('level'),
+        'level_label': summary_view.get('level_label'),
+        'object_name': summary_view.get('object_name'),
+        'period': summary_view.get('period'),
+        'summary': summary_view,
+        'focus': summary_view.get('focus'),
+        'signal': summary_view.get('signal'),
+        'consistency': summary_view.get('consistency'),
+        'next_level': next_level,
+        'next_level_label': _level_label(next_level) if next_level else None,
+        'items_count': drilldown_view.get('items_count', 0),
+        'items': drilldown_view.get('items', []),
+        'items_meta': drilldown_view.get('items_meta'),
+        'full_view': drilldown_view.get('full_view', False),
+        'allowed_next': ['drilldown', 'reasons', 'losses', 'compare'],
+        'action': {
+            'suggested_action': f"выбрать объект уровня {_level_label(next_level)} и провалиться глубже" if next_level else summary_view.get('action', {}).get('suggested_action'),
+            'next_step': next_level,
         },
     }
