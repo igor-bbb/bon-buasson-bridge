@@ -6,8 +6,7 @@ from app.domain.filters import filter_rows, get_normalized_rows
 from app.domain.metrics import aggregate_metrics
 from app.domain.normalization import normalize_sku_name
 
-
-SAFE_DEFAULT_LIMIT = 20
+SAFE_DEFAULT_LIMIT = 3
 SAFE_FULL_LIMIT = 500
 
 FILTER_DIMENSIONS = [
@@ -91,23 +90,14 @@ def _group_previous_rows(rows: List[Dict[str, Any]], group_field: str, transform
 
 
 def _item_sort_key(item: Dict[str, Any]) -> tuple:
-    signal = item.get('signal') or {}
     impact = item.get('impact') or {}
     metrics = (item.get('metrics') or {}).get('object_metrics') or {}
-
-    status_order = {
-        'critical': 0,
-        'risk': 1,
-        'attention': 2,
-        'ok': 3,
-        'no_data': 4,
-    }
-    status = str(signal.get('status') or 'ok')
     gap_money = float(impact.get('gap_loss_money') or 0.0)
+    margin_gap = float(impact.get('gap_percent') or 0.0)
     finrez = float(metrics.get('finrez_pre') or 0.0)
     return (
-        status_order.get(status, 9),
         -gap_money,
+        margin_gap,
         finrez,
         str(item.get('object_name') or ''),
     )
@@ -130,10 +120,29 @@ def _build_items(grouped: Dict[str, List[Dict[str, Any]]], level: str, business_
     return items
 
 
+def _filter_visible_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    visible: List[Dict[str, Any]] = []
+    for item in items:
+        object_name = str(item.get('object_name') or '').strip()
+        gap_money = float((item.get('impact') or {}).get('gap_loss_money') or 0.0)
+
+        if object_name == '':
+            continue
+
+        # "Без менеджера" не удаляем — это управленческий сигнал
+        if gap_money == 0.0:
+            continue
+
+        visible.append(item)
+
+    return visible
+
+
 def _slice_visible_items(items: List[Dict[str, Any]], full_view: bool) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    total_count = len(items)
+    filtered = _filter_visible_items(items)
+    total_count = len(filtered)
     limit = SAFE_FULL_LIMIT if full_view else SAFE_DEFAULT_LIMIT
-    visible_items = items[:limit]
+    visible_items = filtered[:limit]
     return visible_items, {
         'total_count': total_count,
         'returned_count': len(visible_items),
@@ -192,7 +201,7 @@ def _run_drilldown(
         'period': period,
         'children_level': child_level,
         'items': visible_items,
-        'all_items': all_items,
+        'all_items': visible_items if full_view else visible_items,
         'items_meta': items_meta,
         'full_view': full_view,
         'consistency': parent_consistency,

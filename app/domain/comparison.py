@@ -23,7 +23,6 @@ from app.domain.metrics import (
 )
 from app.domain.signals import build_period_signal
 
-
 FILTER_DIMENSIONS = [
     'business',
     'manager_top',
@@ -314,6 +313,7 @@ def build_comparison_payload(
         },
         'impact': {
             'gap_loss_money': gap_loss_money,
+            'gap_percent': margin_gap,
             'total_loss': total_loss,
             'per_metric_effects': per_metric_effects,
             'cost_structure': {

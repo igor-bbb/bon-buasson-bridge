@@ -70,7 +70,10 @@ def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     )
 
     margin_pre = _safe_percent(finrez_pre, revenue)
-    markup = _safe_percent(gross_profit, cost)
+
+    # ?? Наценка считается агрегированно по объекту в периоде
+    markup = _safe_percent(revenue - cost, cost)
+
     kpi_gap = round_percent(markup - margin_pre)
 
     return {
@@ -188,7 +191,7 @@ def compute_gap_money(object_metrics: Dict[str, float], business_metrics: Dict[s
     object_margin = _to_float(object_metrics.get('margin_pre'))
     business_margin = _to_float(business_metrics.get('margin_pre'))
     gap_pp = business_margin - object_margin
-    if gap_pp <= 0 or revenue <= 0:
+    if revenue <= 0 or abs(gap_pp) < 1e-9:
         return 0.0
     return round_money((gap_pp / 100.0) * revenue)
 
@@ -233,24 +236,24 @@ def compute_median_gap(items: List[Dict[str, Any]]) -> Optional[float]:
 def detect_kpi_zone(kpi_gap: float, median_gap: Optional[float]) -> str:
     if median_gap is None:
         if kpi_gap >= 20:
-            return 'РєСЂРёС‚РёС‡РЅРѕ'
+            return 'критично'
         if kpi_gap >= 10:
-            return 'СЂРёСЃРє'
-        return 'РЅРѕСЂРјР°'
+            return 'риск'
+        return 'норма'
 
     if kpi_gap >= median_gap + 10:
-        return 'РєСЂРёС‚РёС‡РЅРѕ'
+        return 'критично'
     if kpi_gap >= median_gap:
-        return 'СЂРёСЃРє'
-    return 'РЅРѕСЂРјР°'
+        return 'риск'
+    return 'норма'
 
 
 def detect_status(finrez_pre: float, kpi_zone: Optional[str]) -> str:
     if finrez_pre < 0:
         return 'critical'
-    if kpi_zone == 'РєСЂРёС‚РёС‡РЅРѕ':
+    if kpi_zone == 'критично':
         return 'critical'
-    if kpi_zone == 'СЂРёСЃРє':
+    if kpi_zone == 'риск':
         return 'risk'
     return 'ok'
 
@@ -275,24 +278,29 @@ def detect_priority(
 
 def detect_next_step(level: str) -> str:
     chain = {
-        'business': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ С‚РѕРї-РјРµРЅРµРґР¶РµСЂРѕРІ',
-        'manager_top': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ РјРµРЅРµРґР¶РµСЂРѕРІ',
-        'manager': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ СЃРµС‚РµР№',
-        'network': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ SKU',
-        'category': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ SKU',
-        'tmc_group': 'СЃРїСѓСЃС‚РёС‚СЊСЃСЏ РґРѕ SKU',
-        'sku': 'РїСЂРёРЅСЏС‚СЊ СЂРµС€РµРЅРёРµ РїРѕ SKU',
+        'business': 'спуститься до дивизиональных менеджеров',
+        'manager_top': 'спуститься до менеджеров',
+        'manager': 'спуститься до сетей',
+        'network': 'спуститься до SKU',
+        'category': 'спуститься до SKU',
+        'tmc_group': 'спуститься до SKU',
+        'sku': 'принять решение по SKU',
     }
-    return chain.get(level, 'СѓС‚РѕС‡РЅРёС‚СЊ РѕР±СЉРµРєС‚')
+    return chain.get(level, 'уточнить объект')
 
 
 def detect_suggested_action(status: str, priority: str, top_drain_metric: Optional[str], level: str) -> str:
+    action_map = {
+        'retro_bonus': 'проверить ретробонус',
+        'logistics_cost': 'снизить логистику',
+        'personnel_cost': 'сократить персонал',
+        'other_costs': 'снизить прочие затраты',
+    }
+
     if status == 'critical' and level == 'sku':
-        return 'РїСЂРѕРІРµСЂРёС‚СЊ С†РµРЅСѓ, РєРѕРЅС‚СЂР°РєС‚ Рё СЌРєРѕРЅРѕРјРёРєСѓ SKU'
+        return 'проверить цену, контракт и экономику SKU'
+    if top_drain_metric and top_drain_metric in action_map:
+        return action_map[top_drain_metric]
     if status == 'critical':
-        return 'СЃСЂР°Р·Сѓ РїСЂРѕРІР°Р»РёС‚СЊСЃСЏ РіР»СѓР±Р¶Рµ Рё РїСЂРѕРІРµСЂРёС‚СЊ РіР»Р°РІРЅС‹Р№ РґСЂРµРЅР°Р¶'
-    if priority == 'high' and top_drain_metric:
-        return f'СЂР°Р·РѕР±СЂР°С‚СЊ РѕС‚РєР»РѕРЅРµРЅРёРµ РїРѕ {top_drain_metric}'
-    if top_drain_metric:
-        return f'РїСЂРѕРІРµСЂРёС‚СЊ {top_drain_metric}'
-    return 'РєРѕРЅС‚СЂРѕР»СЊ Р±РµР· СЌСЃРєР°Р»Р°С†РёРё'
+        return 'провалиться глубже по дренажу'
+    return 'контроль без эскалации'
