@@ -1,435 +1,306 @@
-from collections import defaultdict
+from statistics import median
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.consistency import build_consistency_from_rows
-from app.domain.filters import filter_rows, get_normalized_rows
-from app.domain.metrics import (
-    aggregate_margin_pre_from_rows,
-    aggregate_metrics,
-    build_effects,
-    build_expected_metrics,
-    build_gaps,
-    compute_gap_money,
-    compute_loss_share,
-    compute_margin_gap,
-    compute_median_gap,
-    compute_per_metric_effects,
-    compute_total_loss,
-    detect_kpi_zone,
-    detect_next_step,
-    detect_priority,
-    detect_status,
-    detect_suggested_action,
-)
-from app.domain.signals import build_period_signal
+from app.domain.normalization import round_money, round_percent
 
-FILTER_DIMENSIONS = [
-    'business',
-    'manager_top',
-    'manager',
-    'network',
-    'category',
-    'tmc_group',
-    'sku',
+MONEY_METRICS = [
+    'revenue',
+    'cost',
+    'gross_profit',
+    'retro_bonus',
+    'logistics_cost',
+    'personnel_cost',
+    'other_costs',
+    'finrez_pre',
 ]
 
-CHILD_LEVEL_BY_LEVEL = {
-    'business': 'manager_top',
-    'manager_top': 'manager',
-    'manager': 'network',
-    'network': 'sku',
-    'category': 'sku',
-    'tmc_group': 'sku',
+EFFECT_METRICS = [
+    'retro_bonus',
+    'logistics_cost',
+    'personnel_cost',
+    'other_costs',
+]
+
+NEGATIVE_EFFECT_METRICS = {
+    'retro_bonus',
+    'logistics_cost',
+    'personnel_cost',
+    'other_costs',
 }
 
+MIN_MEDIAN_SAMPLE = 3
 
-def _safe_get_rows() -> List[Dict[str, Any]]:
+
+def _to_float(value: Any) -> float:
     try:
-        return get_normalized_rows()
+        return float(value or 0.0)
     except Exception:
-        return []
+        return 0.0
 
 
-def _run_filter(rows: List[Dict[str, Any]], period: str, **kwargs: Any):
-    try:
-        result = filter_rows(rows, period=period, **kwargs)
-    except TypeError:
-        result = filter_rows(period=period, **kwargs)
-
-    if isinstance(result, tuple) and len(result) == 2:
-        return result
-
-    return result, {}
+def _safe_percent(numerator: float, denominator: float) -> float:
+    if abs(denominator) < 1e-9:
+        return 0.0
+    return round_percent((numerator / denominator) * 100.0)
 
 
-def _normalize_filter_payload(filter_payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    payload = dict(filter_payload or {})
-    return {
-        k: v
-        for k, v in payload.items()
-        if k in FILTER_DIMENSIONS and v not in (None, '')
-    }
-
-
-def _merge_filters(filter_payload: Optional[Dict[str, Any]], **filters: Any) -> Dict[str, Any]:
-    merged = _normalize_filter_payload(filter_payload)
-    for key, value in filters.items():
-        if key in FILTER_DIMENSIONS and value not in (None, ''):
-            merged[key] = value
-    merged.pop('business', None)
-    return merged
-
-
-def _validate_required_parent(level: str, merged_filters: Dict[str, Any]) -> Optional[str]:
-    required_parent = {
-        'sku': ['network'],
-    }.get(level, [])
-
-    for key in required_parent:
-        if not merged_filters.get(key):
-            return f'{level} requires parent filter: {key}'
-    return None
-
-
-def _group_rows_by_level(rows: List[Dict[str, Any]], level: str) -> List[List[Dict[str, Any]]]:
-    if level == 'business':
-        return [rows]
-
-    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        name = row.get(level)
-        if not name:
-            continue
-        grouped[name].append(row)
-    return list(grouped.values())
-
-
-MEDIAN_CACHE: Dict[Tuple[str, str], Optional[float]] = {}
-
-
-def compute_level_median_gap(level: str, period: str) -> Optional[float]:
-    cache_key = (level, period)
-    if cache_key in MEDIAN_CACHE:
-        return MEDIAN_CACHE[cache_key]
-
-    if level == 'business':
-        MEDIAN_CACHE[cache_key] = None
-        return None
-
-    rows = _safe_get_rows()
-    rows, _ = _run_filter(rows, period=period)
+def aggregate_margin_pre_from_rows(rows: List[Dict[str, Any]]) -> Optional[float]:
     if not rows:
-        MEDIAN_CACHE[cache_key] = None
         return None
-
-    grouped_rows = _group_rows_by_level(rows, level)
-    items = [{'object_metrics': aggregate_metrics(chunk)} for chunk in grouped_rows]
-    value = compute_median_gap(items)
-    MEDIAN_CACHE[cache_key] = value
-    return value
+    revenue = round_money(sum(_to_float(r.get('revenue')) for r in rows))
+    finrez_pre = round_money(sum(_to_float(r.get('finrez_pre')) for r in rows))
+    return _safe_percent(finrez_pre, revenue)
 
 
-def _build_level_signal(
-    level: str,
-    period: str,
-    object_name: str,
-    object_metrics: Dict[str, float],
-    object_rows: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    current_margin_pre = None
-    if object_rows:
-        current_margin_pre = aggregate_margin_pre_from_rows(object_rows)
-    elif level == 'business':
-        current_margin_pre = float(object_metrics.get('margin_pre', 0.0) or 0.0)
-
-    if level == 'business':
-        return build_period_signal(
-            level=level,
-            object_name=object_name,
-            margin_pre=current_margin_pre,
-            peer_items=[],
-        )
-
-    rows = _safe_get_rows()
-    rows, _ = _run_filter(rows, period=period)
-    if not rows:
-        return build_period_signal(
-            level=level,
-            object_name=object_name,
-            margin_pre=current_margin_pre,
-            peer_items=[],
-        )
-
-    grouped_rows = _group_rows_by_level(rows, level)
-    peer_items = []
-    for chunk in grouped_rows:
-        signal_margin_pre = aggregate_margin_pre_from_rows(chunk)
-        if signal_margin_pre is None:
-            continue
-        peer_items.append({
-            'object_name': chunk[0].get(level),
-            'margin_pre': signal_margin_pre,
-        })
-
-    return build_period_signal(
-        level=level,
-        object_name=object_name,
-        margin_pre=current_margin_pre,
-        peer_items=peer_items,
+def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    revenue = round_money(sum(_to_float(r.get('revenue')) for r in rows))
+    cost = round_money(sum(_to_float(r.get('cost')) for r in rows))
+    gross_profit = round_money(sum(_to_float(r.get('gross_profit')) for r in rows))
+    retro_bonus = round_money(sum(_to_float(r.get('retro_bonus')) for r in rows))
+    logistics_cost = round_money(sum(_to_float(r.get('logistics_cost')) for r in rows))
+    personnel_cost = round_money(sum(_to_float(r.get('personnel_cost')) for r in rows))
+    other_costs = round_money(sum(_to_float(r.get('other_costs')) for r in rows))
+    finrez_pre = round_money(sum(_to_float(r.get('finrez_pre')) for r in rows))
+    finrez_final = round_money(
+        finrez_pre
+        - retro_bonus
+        - logistics_cost
+        - personnel_cost
+        - other_costs
     )
 
+    margin_pre = _safe_percent(finrez_pre, revenue)
 
-def build_flags(
-    object_metrics: Dict[str, float],
-    invalid_benchmark: bool,
-    negative_benchmark: bool,
-) -> Dict[str, bool]:
-    revenue = float(object_metrics.get('revenue', 0.0) or 0.0)
+    # 🔴 Наценка считается агрегированно по объекту в периоде
+    markup = _safe_percent(revenue - cost, cost)
+
+    kpi_gap = round_percent(markup - margin_pre)
+
     return {
-        'low_volume': revenue < 1000,
-        'invalid_benchmark': invalid_benchmark,
-        'negative_benchmark': negative_benchmark,
+        'revenue': revenue,
+        'cost': cost,
+        'gross_profit': gross_profit,
+        'retro_bonus': retro_bonus,
+        'logistics_cost': logistics_cost,
+        'personnel_cost': personnel_cost,
+        'other_costs': other_costs,
+        'finrez_pre': finrez_pre,
+        'finrez_final': finrez_final,
+        'margin_pre': margin_pre,
+        'markup': markup,
+        'kpi_gap': kpi_gap,
     }
 
 
-def _select_top_driver(per_metric_effects: Dict[str, float]) -> Tuple[Optional[str], float]:
-    if not per_metric_effects:
-        return None, 0.0
+def build_consistency(
+    parent_finrez_pre: float,
+    child_metrics_list: List[Dict[str, Any]],
+    child_level: str,
+) -> Dict[str, Any]:
+    if not child_metrics_list:
+        return {
+            'checked': False,
+            'reason': 'no_child_data',
+        }
 
-    filtered = {
-        k: float(v or 0.0)
-        for k, v in per_metric_effects.items()
-        if k in {'retro_bonus', 'logistics_cost', 'personnel_cost', 'other_costs'}
+    child_sum = round_money(sum(_to_float(item.get('finrez_pre')) for item in child_metrics_list))
+    delta = round_money(_to_float(parent_finrez_pre) - child_sum)
+
+    if abs(parent_finrez_pre) < 1e-9:
+        delta_pct = 0.0 if abs(delta) < 1e-9 else None
+    else:
+        delta_pct = round_percent((abs(delta) / abs(parent_finrez_pre)) * 100.0)
+
+    if delta_pct is None:
+        status = 'warning'
+    elif delta_pct < 1:
+        status = 'ok'
+    elif delta_pct <= 5:
+        status = 'warning'
+    else:
+        status = 'critical'
+
+    return {
+        'checked': True,
+        'child_level': child_level,
+        'parent_finrez_pre': round_money(parent_finrez_pre),
+        'child_sum_finrez_pre': child_sum,
+        'delta': delta,
+        'delta_pct': delta_pct,
+        'status': status,
     }
-    if not filtered:
-        return None, 0.0
-
-    metric = max(filtered, key=lambda key: abs(filtered[key]))
-    return metric, filtered[metric]
 
 
-def build_comparison_payload(
-    level: str,
-    object_name: str,
+def build_expected_metrics(
     object_metrics: Dict[str, float],
     business_metrics: Dict[str, float],
-    period: str,
-    object_rows: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    expected_metrics, invalid_benchmark, negative_benchmark = build_expected_metrics(
-        object_metrics=object_metrics,
-        business_metrics=business_metrics,
-    )
-    gaps_by_metric = build_gaps(
-        object_metrics=object_metrics,
-        expected_metrics=expected_metrics,
-    )
-    effects_by_metric = build_effects(gaps_by_metric)
+) -> Tuple[Dict[str, float], bool, bool]:
+    business_revenue = _to_float(business_metrics.get('revenue'))
+    object_revenue = _to_float(object_metrics.get('revenue'))
 
-    flags = build_flags(
-        object_metrics=object_metrics,
-        invalid_benchmark=invalid_benchmark,
-        negative_benchmark=negative_benchmark,
-    )
+    invalid_benchmark = abs(business_revenue) < 1e-9
+    negative_benchmark = False
+    expected: Dict[str, float] = {}
 
-    median_gap = compute_level_median_gap(level=level, period=period)
-    kpi_zone = detect_kpi_zone(object_metrics.get('kpi_gap', 0.0), median_gap)
+    for metric in EFFECT_METRICS:
+        if invalid_benchmark:
+            expected_value = 0.0
+        else:
+            ratio = _to_float(business_metrics.get(metric)) / business_revenue
+            expected_value = ratio * object_revenue
 
-    signal_payload = _build_level_signal(level, period, object_name, object_metrics, object_rows=object_rows)
+        expected_value = round_money(expected_value)
+        if expected_value < 0:
+            negative_benchmark = True
+        expected[metric] = expected_value
 
-    margin_gap = compute_margin_gap(object_metrics, business_metrics)
-    gap_loss_money = compute_gap_money(object_metrics, business_metrics)
-    total_loss = compute_total_loss(effects_by_metric)
-    per_metric_effects = compute_per_metric_effects(effects_by_metric)
-    loss_share = compute_loss_share(total_loss, business_metrics)
+    return expected, invalid_benchmark, negative_benchmark
 
-    top_drain_metric, top_drain_effect = _select_top_driver(per_metric_effects)
 
-    status = signal_payload.get('status') or detect_status(
-        object_metrics.get('finrez_pre', 0.0),
-        kpi_zone,
-    )
-    priority = detect_priority(
-        status,
-        total_loss,
-        loss_share,
-        object_metrics.get('kpi_gap', 0.0),
-        margin_gap,
-    )
-    next_level = CHILD_LEVEL_BY_LEVEL.get(level)
-    next_step = detect_next_step(level)
-    suggested_action = detect_suggested_action(status, priority, top_drain_metric, level)
+def build_gaps(
+    object_metrics: Dict[str, float],
+    expected_metrics: Dict[str, float],
+) -> Dict[str, float]:
+    gaps: Dict[str, float] = {}
+    for metric in EFFECT_METRICS:
+        gaps[metric] = round_money(_to_float(object_metrics.get(metric)) - _to_float(expected_metrics.get(metric)))
+    return gaps
 
-    consistency = build_consistency_from_rows(
-        level=level,
-        parent_finrez_pre=object_metrics.get('finrez_pre', 0.0),
-        rows=object_rows,
-    )
 
+def interpret_effect(metric: str, effect_value: float) -> Dict[str, Any]:
+    is_negative_for_business = metric in NEGATIVE_EFFECT_METRICS and effect_value > 0
+    effect_direction = 'loss' if is_negative_for_business else 'gain'
     return {
-        'level': level,
-        'object_name': object_name,
-        'period': period,
-        'signal': {
-            'status': status,
-            'label': signal_payload.get('label'),
-            'comment': signal_payload.get('comment'),
-            'reason': signal_payload.get('reason'),
-            'reason_value': signal_payload.get('reason_value'),
-            'rank': signal_payload.get('rank'),
-            'quartiles': signal_payload.get('quartiles'),
-            'margin_gap': margin_gap,
-            'kpi_gap': object_metrics.get('kpi_gap'),
-            'median_gap': median_gap,
-            'kpi_zone': kpi_zone,
-        },
-        'navigation': {
-            'kpi_gap': object_metrics.get('kpi_gap'),
-            'median_gap': median_gap,
-            'kpi_zone': kpi_zone,
-        },
-        'context': {
-            'margin_pre_object': object_metrics.get('margin_pre'),
-            'margin_pre_business': business_metrics.get('margin_pre'),
-            'margin_gap': margin_gap,
-            'costs': {
-                'retro_bonus': object_metrics.get('retro_bonus'),
-                'logistics_cost': object_metrics.get('logistics_cost'),
-                'personnel_cost': object_metrics.get('personnel_cost'),
-                'other_costs': object_metrics.get('other_costs'),
-            },
-        },
-        'metrics': {
-            'object_metrics': object_metrics,
-            'business_metrics': business_metrics,
-        },
-        'diagnosis': {
-            'expected_metrics': expected_metrics,
-            'gaps_by_metric': gaps_by_metric,
-            'effects_by_metric': effects_by_metric,
-            'top_drain_metric': top_drain_metric,
-            'top_drain_effect': top_drain_effect,
-            'top_drain_is_negative_for_business': bool(top_drain_effect > 0),
-        },
-        'impact': {
-            'gap_loss_money': gap_loss_money,
-            'gap_percent': margin_gap,
-            'total_loss': total_loss,
-            'per_metric_effects': per_metric_effects,
-            'cost_structure': {
-                'retro_bonus': object_metrics.get('retro_bonus'),
-                'logistics_cost': object_metrics.get('logistics_cost'),
-                'personnel_cost': object_metrics.get('personnel_cost'),
-                'other_costs': object_metrics.get('other_costs'),
-            },
-        },
-        'priority': {
-            'loss_share': loss_share,
-            'priority': priority,
-        },
-        'action': {
-            'suggested_action': suggested_action,
-            'next_step': next_step,
-            'next_level': next_level,
-        },
-        'flags': flags,
-        'consistency': consistency,
-        'top_drain_metric': top_drain_metric,
-        'top_drain_effect': top_drain_effect,
-        'top_drain_is_negative_for_business': bool(top_drain_effect > 0),
+        'effect_value': round_money(effect_value),
+        'effect_direction': effect_direction,
+        'type': 'cost',
+        'is_negative_for_business': is_negative_for_business,
     }
 
 
-def _handle_empty_filter(meta: Dict[str, Any]) -> Dict[str, Any]:
+def build_effects(gaps_by_metric: Dict[str, float]) -> Dict[str, Dict[str, Any]]:
+    return {metric: interpret_effect(metric, value) for metric, value in gaps_by_metric.items()}
+
+
+def compute_margin_gap(object_metrics: Dict[str, float], business_metrics: Dict[str, float]) -> float:
+    return round_percent(_to_float(object_metrics.get('margin_pre')) - _to_float(business_metrics.get('margin_pre')))
+
+
+def compute_gap_money(object_metrics: Dict[str, float], business_metrics: Dict[str, float]) -> float:
+    revenue = _to_float(object_metrics.get('revenue'))
+    object_margin = _to_float(object_metrics.get('margin_pre'))
+    business_margin = _to_float(business_metrics.get('margin_pre'))
+    gap_pp = business_margin - object_margin
+    if revenue <= 0 or abs(gap_pp) < 1e-9:
+        return 0.0
+    return round_money((gap_pp / 100.0) * revenue)
+
+
+def compute_total_loss(effects_by_metric: Dict[str, Dict[str, Any]]) -> float:
+    total = 0.0
+    for payload in effects_by_metric.values():
+        if payload.get('is_negative_for_business'):
+            total += abs(_to_float(payload.get('effect_value')))
+    return round_money(total)
+
+
+def compute_per_metric_effects(effects_by_metric: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
     return {
-        'error': 'no data after filtering',
-        'reason': meta.get('empty_reason'),
-        'trace': meta.get('trace'),
+        metric: round_money(_to_float(payload.get('effect_value')))
+        for metric, payload in effects_by_metric.items()
     }
 
 
-def get_business_comparison(period: str) -> Dict[str, Any]:
-    rows = _safe_get_rows()
-    business_rows, meta = _run_filter(rows, period=period)
-    if not business_rows:
-        return _handle_empty_filter(meta)
-
-    business_metrics = aggregate_metrics(business_rows)
-    payload = build_comparison_payload(
-        level='business',
-        object_name='business',
-        object_metrics=business_metrics,
-        business_metrics=business_metrics,
-        period=period,
-        object_rows=business_rows,
-    )
-    payload['filter'] = {}
-    return payload
+def compute_loss_share(total_loss: float, business_metrics: Dict[str, float]) -> float:
+    business_finrez_abs = abs(_to_float(business_metrics.get('finrez_pre')))
+    if business_finrez_abs <= 0:
+        return 0.0
+    return round_percent((total_loss / business_finrez_abs) * 100.0)
 
 
-def _single_object_comparison(
-    level: str,
-    object_name: str,
-    period: str,
-    filter_payload: Optional[Dict[str, Any]] = None,
-    **filters: Any,
-) -> Dict[str, Any]:
-    rows = _safe_get_rows()
-    merged_filters = _merge_filters(filter_payload, **filters)
+def compute_median_gap(items: List[Dict[str, Any]]) -> Optional[float]:
+    values: List[float] = []
+    for item in items:
+        metrics = item.get('object_metrics') or item.get('metrics') or {}
+        value = metrics.get('kpi_gap')
+        if value is None:
+            continue
+        values.append(_to_float(value))
 
-    parent_error = _validate_required_parent(level, merged_filters)
-    if parent_error:
-        return {'error': parent_error, 'reason': 'sku requires parent filter'}
+    if len(values) < MIN_MEDIAN_SAMPLE:
+        return None
 
-    object_rows, object_meta = _run_filter(rows, period=period, **merged_filters)
-    business_rows, business_meta = _run_filter(rows, period=period)
+    return round_percent(float(median(values)))
 
-    if not object_rows:
-        return _handle_empty_filter(object_meta)
-    if not business_rows:
-        return _handle_empty_filter(business_meta)
 
-    object_metrics = aggregate_metrics(object_rows)
-    business_metrics = aggregate_metrics(business_rows)
+def detect_kpi_zone(kpi_gap: float, median_gap: Optional[float]) -> str:
+    if median_gap is None:
+        if kpi_gap >= 20:
+            return 'критично'
+        if kpi_gap >= 10:
+            return 'риск'
+        return 'норма'
 
-    payload = build_comparison_payload(
-        level=level,
-        object_name=object_name,
-        object_metrics=object_metrics,
-        business_metrics=business_metrics,
-        period=period,
-        object_rows=object_rows,
-    )
-    payload['filter'] = merged_filters
-    payload['debug'] = {
-        'level': level,
-        'object_name': object_name,
-        'filters': dict(merged_filters, period=period),
-        'rows_count_before': len(rows),
-        'rows_count_after': len(object_rows),
+    if kpi_gap >= median_gap + 10:
+        return 'критично'
+    if kpi_gap >= median_gap:
+        return 'риск'
+    return 'норма'
+
+
+def detect_status(finrez_pre: float, kpi_zone: Optional[str]) -> str:
+    if finrez_pre < 0:
+        return 'critical'
+    if kpi_zone == 'критично':
+        return 'critical'
+    if kpi_zone == 'риск':
+        return 'risk'
+    return 'ok'
+
+
+def detect_priority(
+    status: str,
+    total_loss: float,
+    loss_share: float,
+    kpi_gap: float,
+    margin_gap: float,
+) -> str:
+    if status == 'critical' and (total_loss >= 1000 or loss_share >= 20 or kpi_gap >= 20 or margin_gap <= -5):
+        return 'high'
+    if status == 'critical':
+        return 'medium'
+    if total_loss >= 1000 or loss_share >= 20 or kpi_gap >= 20 or margin_gap <= -5:
+        return 'high'
+    if total_loss >= 200 or loss_share >= 5 or kpi_gap >= 10 or margin_gap < 0:
+        return 'medium'
+    return 'low'
+
+
+def detect_next_step(level: str) -> str:
+    chain = {
+        'business': 'спуститься до дивизиональных менеджеров',
+        'manager_top': 'спуститься до менеджеров',
+        'manager': 'спуститься до сетей',
+        'network': 'спуститься до SKU',
+        'category': 'спуститься до SKU',
+        'tmc_group': 'спуститься до SKU',
+        'sku': 'принять решение по SKU',
     }
-    return payload
+    return chain.get(level, 'уточнить объект')
 
 
-def get_manager_top_comparison(manager_top: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('manager_top', manager_top, period, filter_payload=filter_payload, manager_top=manager_top)
+def detect_suggested_action(status: str, priority: str, top_drain_metric: Optional[str], level: str) -> str:
+    action_map = {
+        'retro_bonus': 'проверить ретробонус',
+        'logistics_cost': 'снизить логистику',
+        'personnel_cost': 'сократить персонал',
+        'other_costs': 'снизить прочие затраты',
+    }
 
-
-def get_manager_comparison(manager: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('manager', manager, period, filter_payload=filter_payload, manager=manager)
-
-
-def get_network_comparison(network: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('network', network, period, filter_payload=filter_payload, network=network)
-
-
-def get_category_comparison(category: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('category', category, period, filter_payload=filter_payload, category=category)
-
-
-def get_tmc_group_comparison(tmc_group: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('tmc_group', tmc_group, period, filter_payload=filter_payload, tmc_group=tmc_group)
-
-
-def get_sku_comparison(sku: str, period: str, filter_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _single_object_comparison('sku', sku, period, filter_payload=filter_payload, sku=sku)
+    if status == 'critical' and level == 'sku':
+        return 'проверить цену, контракт и экономику SKU'
+    if top_drain_metric and top_drain_metric in action_map:
+        return action_map[top_drain_metric]
+    if status == 'critical':
+        return 'провалиться глубже по дренажу'
+    return 'контроль без эскалации'
