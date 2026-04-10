@@ -1,5 +1,0 @@
-import os
-
-SHEET_URL = os.getenv("VECTRA_GOOGLE_SHEET_URL")
-LOW_VOLUME_THRESHOLD = float(os.getenv("VECTRA_LOW_VOLUME_THRESHOLD", "1"))
-EMPTY_SKU_LABEL = os.getenv("VECTRA_EMPTY_SKU_LABEL", "Без SKU")
