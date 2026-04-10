@@ -71,7 +71,7 @@ def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
 
     margin_pre = _safe_percent(finrez_pre, revenue)
 
-    # ?? Наценка считается агрегированно по объекту в периоде
+    # 🔴 Наценка считается агрегированно по объекту в периоде
     markup = _safe_percent(revenue - cost, cost)
 
     kpi_gap = round_percent(markup - margin_pre)
