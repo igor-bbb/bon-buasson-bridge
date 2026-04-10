@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from app.domain.comparison import (
@@ -37,7 +38,7 @@ from app.presentation.views import (
     build_reasons_view,
 )
 from app.query.entity_dictionary import normalize_entity_text
-from app.query.parsing import normalize_user_message, parse_query_intent, resolve_period_from_message
+from app.query.parsing import normalize_user_message, parse_query_intent
 
 
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
@@ -53,50 +54,95 @@ DEFAULT_NEXT_LEVEL = {
 FULL_VIEW_NEXT_LEVEL = dict(DEFAULT_NEXT_LEVEL)
 
 SHORT_COMMAND_TARGETS = {
-    '—Ç–æ–ø—ã': 'manager_top',
-    '—Ç–æ–ø –º–µ–Ω–µ–¥–∂–µ—Ä—ã': 'manager_top',
-    '—Ç–æ–ø –º–µ–Ω–µ–¥–∂–µ—Ä': 'manager_top',
-    '—Ç–æ–ø-–º–µ–Ω–µ–¥–∂–µ—Ä—ã': 'manager_top',
-    '—Ç–æ–ø-–º–µ–Ω–µ–¥–∂–µ—Ä': 'manager_top',
-    '–º–µ–Ω–µ–¥–∂–µ—Ä—ã': 'manager',
-    '–º–µ–Ω–µ–¥–∂–µ—Ä': 'manager',
-    '—Å–µ—Ç–∏': 'network',
-    '—Å–µ—Ç—å': 'network',
-    '–∫–∞—Ç–µ–≥–æ—Ä–∏–∏': 'category',
-    '–∫–∞—Ç–µ–≥–æ—Ä–∏—è': 'category',
-    '–≥—Ä—É–ø–ø—ã': 'tmc_group',
-    '–≥—Ä—É–ø–ø–∞': 'tmc_group',
-    '–≥—Ä—É–ø–ø—ã —Ç–º—Ü': 'tmc_group',
-    '–≥—Ä—É–ø–ø–∞ —Ç–º—Ü': 'tmc_group',
-    '—Ç–æ–≤–∞—Ä—ã': 'sku',
-    '—Ç–æ–≤–∞—Ä': 'sku',
+    'ÚÓÔ˚': 'manager_top',
+    '‰Ë‚ËÁËÓÌ‡Î¸Ì˚Â ÏÂÌÂ‰ÊÂ˚': 'manager_top',
+    '‰Ë‚ËÁËÓÌ‡Î¸Ì˚È ÏÂÌÂ‰ÊÂ': 'manager_top',
+    'ÏÂÌÂ‰ÊÂ˚': 'manager',
+    'ÏÂÌÂ‰ÊÂ': 'manager',
+    'ÒÂÚË': 'network',
+    'ÒÂÚ¸': 'network',
+    'Í‡ÚÂ„ÓËË': 'category',
+    'Í‡ÚÂ„ÓËˇ': 'category',
+    '„ÛÔÔ˚': 'tmc_group',
+    '„ÛÔÔ‡': 'tmc_group',
+    '„ÛÔÔ˚ ÚÏˆ': 'tmc_group',
+    '„ÛÔÔ‡ ÚÏˆ': 'tmc_group',
+    'ÚÓ‚‡˚': 'sku',
+    'ÚÓ‚‡': 'sku',
     'sku': 'sku',
-    '—Å–∫—é': 'sku',
-    '–ø—Ä–∏—á–∏–Ω—ã': 'reasons',
-    '–≤—Å–µ –ø—Ä–∏—á–∏–Ω—ã': 'reasons',
-    '–≤—Å–µ –ø—Ä–∏—á–∏–Ω–∞': 'reasons',
-    '–ø—Ä–∏—á–∏–Ω—ã –≤—Å–µ': 'reasons',
-    '—Ä–∞–∑–±–æ—Ä': 'reasons',
-    '–ø–æ—á–µ–º—É': 'reasons',
-    '–ø–æ—Ç–µ—Ä–∏': 'losses',
-    '—Å–∏–≥–Ω–∞–ª': 'summary',
+    'ÒÍ˛': 'sku',
+    'ÔË˜ËÌ˚': 'reasons',
+    'ÔÓÚÂË': 'losses',
 }
 
-FULL_VIEW_COMMANDS = {'–ø–æ–∫–∞–∂–∏ –≤—Å–µ', '–≤—Å–µ', 'full'}
+FULL_VIEW_COMMANDS = {'ÔÓÍ‡ÊË ‚ÒÂ', '‚ÒÂ', 'ÔÓÎÌ˚È ÒÔËÒÓÍ'}
+BACK_COMMANDS = {'Ì‡Á‡‰'}
+
+
+def _blank_state() -> Dict[str, Any]:
+    return {
+        'scope_level': None,
+        'scope_object_name': None,
+        'period_current': None,
+        'period_previous': None,
+        'mode': 'management',
+        'view_mode': 'drain',
+        'filter': {},
+        'last_list_level': None,
+        'last_response_type': None,
+        'last_list_items': [],
+        'full_view': False,
+        'last_payload': None,
+        'stack': [],
+    }
 
 
 def get_session(session_id: str) -> Dict[str, Any]:
-    return dict(SESSION_STORE.get(session_id, {}))
+    current = dict(_blank_state())
+    current.update(SESSION_STORE.get(session_id, {}))
+    return current
 
 
 def update_session(session_id: str, data: Dict[str, Any]) -> None:
-    current = dict(SESSION_STORE.get(session_id, {}))
+    current = get_session(session_id)
     current.update(data)
     SESSION_STORE[session_id] = current
 
 
 def clear_full_view_flag(session_id: str) -> None:
     update_session(session_id, {'full_view': False})
+
+
+def push_state(session_id: str) -> None:
+    current = get_session(session_id)
+    stack = list(current.get('stack') or [])
+    snapshot = {
+        'scope_level': current.get('scope_level'),
+        'scope_object_name': current.get('scope_object_name'),
+        'period_current': current.get('period_current'),
+        'period_previous': current.get('period_previous'),
+        'mode': current.get('mode'),
+        'view_mode': current.get('view_mode'),
+        'filter': deepcopy(current.get('filter') or {}),
+        'last_list_level': current.get('last_list_level'),
+        'last_response_type': current.get('last_response_type'),
+        'last_list_items': deepcopy(current.get('last_list_items') or []),
+        'full_view': bool(current.get('full_view', False)),
+        'last_payload': deepcopy(current.get('last_payload')),
+    }
+    stack.append(snapshot)
+    update_session(session_id, {'stack': stack})
+
+
+def pop_state(session_id: str) -> Optional[Dict[str, Any]]:
+    current = get_session(session_id)
+    stack = list(current.get('stack') or [])
+    if not stack:
+        return None
+    previous = stack.pop()
+    previous['stack'] = stack
+    SESSION_STORE[session_id] = previous
+    return previous
 
 
 def get_session_state(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
@@ -113,6 +159,7 @@ def get_session_state(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
         'full_view': bool(session_ctx.get('full_view', False)),
         'last_list_items': session_ctx.get('last_list_items') or [],
         'last_payload': session_ctx.get('last_payload'),
+        'stack': session_ctx.get('stack') or [],
     }
 
 
@@ -170,19 +217,48 @@ def _get_latest_available_period() -> Optional[str]:
         return None
 
 
-def _merge_filter_payload(existing_filter: Optional[Dict[str, Any]], level: Optional[str], object_name: Optional[str], period_current: str) -> Dict[str, Any]:
+def _build_filter_from_scope(level: str, object_name: Optional[str], period_current: str, existing_filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = dict(existing_filter or {})
     payload['period'] = period_current
-    if level and object_name and level != 'business':
-        payload[level] = object_name
-    if level == 'business':
-        for key in ['manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']:
+
+    for key in ['manager_top', 'manager', 'network', 'category', 'tmc_group', 'sku']:
+        if level == 'business':
             payload.pop(key, None)
+
+    if level == 'manager_top':
+        payload['manager_top'] = object_name
+        payload.pop('manager', None)
+        payload.pop('network', None)
+        payload.pop('category', None)
+        payload.pop('tmc_group', None)
+        payload.pop('sku', None)
+
+    if level == 'manager':
+        payload['manager'] = object_name
+        payload.pop('network', None)
+        payload.pop('category', None)
+        payload.pop('tmc_group', None)
+        payload.pop('sku', None)
+
+    if level == 'network':
+        payload['network'] = object_name
+        payload.pop('category', None)
+        payload.pop('tmc_group', None)
+        payload.pop('sku', None)
+
+    if level == 'category':
+        payload['category'] = object_name
+        payload.pop('tmc_group', None)
+        payload.pop('sku', None)
+
+    if level == 'tmc_group':
+        payload['tmc_group'] = object_name
+        payload.pop('sku', None)
+
+    if level == 'sku':
+        payload['sku'] = object_name
+
     return payload
-
-
-def _build_filter_from_scope(level: str, object_name: Optional[str], period_current: str, existing_filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return _merge_filter_payload(existing_filter, level, object_name, period_current)
 
 
 def _build_last_list_items(items: List[Dict[str, Any]], level: Optional[str]) -> List[Dict[str, Any]]:
@@ -212,7 +288,11 @@ def _store_scope(
     period_previous: Any,
     mode: str,
     existing_filter: Optional[Dict[str, Any]] = None,
+    push_to_stack: bool = False,
 ) -> None:
+    if push_to_stack:
+        push_state(session_id)
+
     filter_payload = _build_filter_from_scope(level, object_name, period_current, existing_filter=existing_filter)
     save_session_state(
         session_id,
@@ -238,7 +318,11 @@ def _store_list_context(
     list_items: Optional[List[Dict[str, Any]]] = None,
     full_view: bool = False,
     existing_filter: Optional[Dict[str, Any]] = None,
+    push_to_stack: bool = False,
 ) -> None:
+    if push_to_stack:
+        push_state(session_id)
+
     filter_payload = _build_filter_from_scope(parent_level, parent_object_name, period_current, existing_filter=existing_filter)
     save_session_state(
         session_id,
@@ -325,7 +409,7 @@ def _execute_summary(
     filter_payload = dict((session_ctx or {}).get('filter') or {})
     if explicit_filter:
         filter_payload.update({k: v for k, v in explicit_filter.items() if v is not None})
-    filter_payload = _merge_filter_payload(filter_payload, level, object_name, period)
+    filter_payload = _build_filter_from_scope(level, object_name, period, existing_filter=filter_payload)
     return executor(object_name, period, filter_payload)
 
 
@@ -415,6 +499,10 @@ def _is_full_view_command(message: str) -> bool:
     return _normalize_message(message) in FULL_VIEW_COMMANDS
 
 
+def _is_back_command(message: str) -> bool:
+    return _normalize_message(message) in BACK_COMMANDS
+
+
 def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -> Dict[str, Any]:
     normalized = _normalize_message(message)
     if normalized not in SHORT_COMMAND_TARGETS:
@@ -423,9 +511,9 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
     state = get_session_state(session_ctx)
     target = SHORT_COMMAND_TARGETS[normalized]
 
-    if target in {'summary', 'reasons', 'losses'}:
+    if target in {'reasons', 'losses'}:
         if not state.get('level') or not state.get('object_name') or not state.get('period'):
-            return {'status': 'error', 'reason': '–ù–µ—Ç –∞–∫—Ç–∏–≤–Ω–æ–≥–æ –æ–±—ä–µ–∫—Ç–∞ –¥–ª—è –≤—ã–ø–æ–ª–Ω–µ–Ω–∏—è –∫–æ–º–∞–Ω–¥—ã.'}
+            return {'status': 'error', 'reason': 'ÕÂÚ ‡ÍÚË‚ÌÓ„Ó Ó·˙ÂÍÚ‡ ‰Îˇ ‚˚ÔÓÎÌÂÌËˇ ÍÓÏ‡Ì‰˚.'}
         return {
             'status': 'ok',
             'query': {
@@ -437,6 +525,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
                 'query_type': target,
                 'period': state.get('period'),
                 'object': state.get('object_name'),
+                'filter_payload': state.get('filter') or {},
             },
         }
 
@@ -455,6 +544,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
                 'period': period,
                 'object': 'business',
                 'list_mode': True,
+                'filter_payload': {'period': period},
             },
         }
 
@@ -471,6 +561,7 @@ def _build_query_from_short_command(message: str, session_ctx: Dict[str, Any]) -
             'period': state.get('period'),
             'object': state.get('object_name'),
             'list_mode': True,
+            'filter_payload': state.get('filter') or {},
         },
     }
 
@@ -482,11 +573,11 @@ def _build_query_from_full_view(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
     period = state.get('period')
 
     if not level or not object_name or not period:
-        return {'status': 'error', 'reason': '–ù–µ—Ç –¥–∞–Ω–Ω—ã—Ö –¥–ª—è –æ—Ç–æ–±—Ä–∞–∂–µ–Ω–∏—è.'}
+        return {'status': 'error', 'reason': 'ÕÂÚ ‰‡ÌÌ˚ı ‰Îˇ ÓÚÓ·‡ÊÂÌËˇ.'}
 
     target_level = FULL_VIEW_NEXT_LEVEL.get(level)
     if not target_level:
-        return {'status': 'error', 'reason': '–ù–µ—Ç –¥–∞–Ω–Ω—ã—Ö –¥–ª—è –æ—Ç–æ–±—Ä–∞–∂–µ–Ω–∏—è.'}
+        return {'status': 'error', 'reason': 'ÕÂÚ ‰‡ÌÌ˚ı ‰Îˇ ÓÚÓ·‡ÊÂÌËˇ.'}
 
     return {
         'status': 'ok',
@@ -502,6 +593,7 @@ def _build_query_from_full_view(session_ctx: Dict[str, Any]) -> Dict[str, Any]:
             'object': object_name,
             'full_view': True,
             'list_mode': True,
+            'filter_payload': state.get('filter') or {},
         },
     }
 
@@ -525,15 +617,27 @@ def _build_query_from_numeric_selection(message: str, session_ctx: Dict[str, Any
                 'query_type': 'summary',
                 'period': state.get('period'),
                 'object': selected.get('object_name'),
-                'filter_payload': _merge_filter_payload(
-                    state.get('filter') or {},
+                'filter_payload': _build_filter_from_scope(
                     selected.get('level'),
                     selected.get('object_name'),
                     state.get('period'),
+                    existing_filter=state.get('filter') or {},
                 ),
             },
         }
-    return {'status': 'error', 'reason': '–ù–µ—Ç –∞–∫—Ç–∏–≤–Ω–æ–≥–æ —Å–ø–∏—Å–∫–∞ –¥–ª—è –≤—ã–±–æ—Ä–∞.'}
+    return {'status': 'error', 'reason': 'ÕÂÚ ‡ÍÚË‚ÌÓ„Ó ÒÔËÒÍ‡ ‰Îˇ ‚˚·Ó‡.'}
+
+
+def _handle_back(session_id: str) -> Dict[str, Any]:
+    restored = pop_state(session_id)
+    if not restored:
+        return {'status': 'error', 'reason': 'Õ‡Á‡‰ ÌÂ‰ÓÒÚÛÔÌÓ.'}
+
+    last_payload = restored.get('last_payload')
+    if not last_payload:
+        return {'status': 'error', 'reason': 'Õ‡Á‡‰ ÌÂ‰ÓÒÚÛÔÌÓ.'}
+
+    return enforce_contract(last_payload)
 
 
 def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], session_id: str) -> Dict[str, Any]:
@@ -547,7 +651,7 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
     full_view = bool(query.get('full_view', False))
 
     if not scope_level or not period:
-        return {'status': 'error', 'reason': '–ù–µ—Ç –∞–∫—Ç–∏–≤–Ω–æ–≥–æ –æ–±—ä–µ–∫—Ç–∞ –¥–ª—è –∞–Ω–∞–ª–∏–∑–∞.'}
+        return {'status': 'error', 'reason': 'ÕÂÚ ‡ÍÚË‚ÌÓ„Ó Ó·˙ÂÍÚ‡ ‰Îˇ ‡Ì‡ÎËÁ‡.'}
     if not target_level:
         return error_response('next drilldown level not available', query)
 
@@ -574,7 +678,7 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
 
     response = ok_response(query, build_list_view(sanitize_payload(current), sanitize_payload(source)))
     if response.get('status') == 'ok':
-        list_items = _build_last_list_items(source.get('all_items', []) or source.get('items', []), target_level)
+        list_items = _build_last_list_items(source.get('items', []), target_level)
         _store_list_context(
             session_id,
             scope_level,
@@ -587,6 +691,7 @@ def _route_drill_query(query: Dict[str, Any], session_ctx: Dict[str, Any], sessi
             list_items=list_items,
             full_view=full_view,
             existing_filter=(current.get('filter') or query.get('filter_payload') or state.get('filter') or {}),
+            push_to_stack=True,
         )
         save_last_payload(session_id, response)
 
@@ -642,21 +747,16 @@ def _route_signal_flow(query: Dict[str, Any], current: Dict[str, Any], session_i
             period_previous,
             'diagnosis',
             existing_filter=(current.get('filter') or query.get('filter_payload')),
+            push_to_stack=True,
         )
         if drain_payload is not None:
-            list_items = _build_last_list_items(drain_payload.get('all_items', []) or drain_payload.get('items', []), target_level)
-            _store_list_context(
+            list_items = _build_last_list_items(drain_payload.get('items', []), target_level)
+            save_session_state(
                 session_id,
-                level,
-                object_name,
-                period,
-                period_previous,
-                'diagnosis',
-                target_level,
-                response_type='object',
-                list_items=list_items,
-                full_view=full_view,
-                existing_filter=(current.get('filter') or query.get('filter_payload')),
+                last_response_type='object',
+                last_list_level=target_level,
+                last_list_items=list_items,
+                full_view=False,
             )
         else:
             save_session_state(
@@ -697,7 +797,7 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
 
     if level == 'business':
         current = dict(current)
-        current['object_name'] = '–ë–∏–∑–Ω–µ—Å'
+        current['object_name'] = '¡ËÁÌÂÒ'
         current['level'] = 'business'
 
     previous_same_period = None
@@ -724,7 +824,7 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
 
         response = ok_response(query, build_comparison_management_view(query, sanitize_payload(current), sanitize_payload(previous)))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, previous_period, mode, existing_filter=(current.get('filter') or query.get('filter_payload')))
+            _store_scope(session_id, level, object_name, period, previous_period, mode, existing_filter=(current.get('filter') or query.get('filter_payload')), push_to_stack=True)
             save_session_state(session_id, last_response_type='comparison', last_list_level=None, last_list_items=[], full_view=False)
             save_last_payload(session_id, response)
         return response
@@ -732,7 +832,7 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
     if query.get('query_type') == 'reasons':
         response = ok_response(query, build_reasons_view(sanitize_payload(current)))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis', existing_filter=(current.get('filter') or query.get('filter_payload')))
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis', existing_filter=(current.get('filter') or query.get('filter_payload')), push_to_stack=True)
             save_session_state(session_id, last_response_type='reasons', full_view=False)
             save_last_payload(session_id, response)
         return response
@@ -748,18 +848,13 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
 
         response = ok_response(query, build_losses_view_from_children(sanitize_payload(source)))
         if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis')
-            list_items = _build_last_list_items(source.get('all_items', []) or source.get('items', []), target_level)
-            _store_list_context(
+            _store_scope(session_id, level, object_name, period, query.get('period_previous'), 'diagnosis', push_to_stack=True)
+            list_items = _build_last_list_items(source.get('items', []), target_level)
+            save_session_state(
                 session_id,
-                level,
-                object_name,
-                period,
-                query.get('period_previous'),
-                'diagnosis',
-                target_level,
-                response_type='losses',
-                list_items=list_items,
+                last_list_level=target_level,
+                last_response_type='losses',
+                last_list_items=list_items,
                 full_view=False,
             )
             save_last_payload(session_id, response)
@@ -772,11 +867,10 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
     session_ctx = get_session(session_id)
     normalized = _normalize_message(message)
 
-    if normalized in {'–≤—Å–µ –ø—Ä–∏—á–∏–Ω—ã', '–≤—Å–µ –ø—Ä–∏—á–∏–Ω–∞', '–ø—Ä–∏—á–∏–Ω—ã –≤—Å–µ'}:
-        parsed = _build_query_from_short_command('–ø—Ä–∏—á–∏–Ω—ã', session_ctx)
-        if parsed.get('status') != 'ok':
-            return parsed
-    elif normalized.isdigit():
+    if _is_back_command(normalized):
+        return _handle_back(session_id)
+
+    if normalized.isdigit():
         parsed = _build_query_from_numeric_selection(normalized, session_ctx)
         if parsed.get('status') != 'ok':
             return parsed
