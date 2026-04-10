@@ -2,10 +2,10 @@ from typing import Any, Dict, List, Optional
 
 
 ACTION_MAP = {
-    'retro_bonus': 'Ð¡Ð½Ð¸Ð·Ð¸Ñ‚ÑŒ Ñ€ÐµÑ‚Ñ€Ð¾Ð±Ð¾Ð½ÑƒÑ',
-    'logistics_cost': 'Ð¡Ð¾ÐºÑ€Ð°Ñ‚Ð¸Ñ‚ÑŒ Ð»Ð¾Ð³Ð¸ÑÑ‚Ð¸Ñ‡ÐµÑÐºÐ¾Ðµ Ð¿Ð»ÐµÑ‡Ð¾',
-    'personnel_cost': 'ÐžÐ¿Ñ‚Ð¸Ð¼Ð¸Ð·Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð½Ð°Ð³Ñ€ÑƒÐ·ÐºÑƒ Ð¿ÐµÑ€ÑÐ¾Ð½Ð°Ð»Ð°',
-    'other_costs': 'ÐžÐ¿Ñ‚Ð¸Ð¼Ð¸Ð·Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð¿Ñ€Ð¾Ñ‡Ð¸Ðµ Ð·Ð°Ñ‚Ñ€Ð°Ñ‚Ñ‹',
+    'retro_bonus': 'Ïðîâåðèòü ðåòðîáîíóñ',
+    'logistics_cost': 'Ñíèçèòü ëîãèñòèêó',
+    'personnel_cost': 'Ñîêðàòèòü ïåðñîíàë',
+    'other_costs': 'Ñíèçèòü ïðî÷èå çàòðàòû',
 }
 
 BUSINESS_COMPARE_FIELDS = [
@@ -30,28 +30,28 @@ OBJECT_COMPARE_FIELDS = [
 PP_FIELDS = {'margin_pre', 'markup'}
 
 LEVEL_COMMANDS = {
-    'sku': ['Ð¿Ñ€Ð¸Ñ‡Ð¸Ð½Ñ‹'],
+    'sku': ['ïðè÷èíû', 'íàçàä'],
 }
 
-DEFAULT_COMMANDS = ['Ð¿Ñ€Ð¸Ñ‡Ð¸Ð½Ñ‹', 'Ð²ÑÐµ', '1', '2', '3']
+DEFAULT_COMMANDS = ['ïðè÷èíû', 'âñå', '1', '2', '3', 'íàçàä']
 
 METRIC_LABELS = {
-    'retro_bonus': 'Ð ÐµÑ‚Ñ€Ð¾Ð±Ð¾Ð½ÑƒÑ',
-    'logistics_cost': 'Ð›Ð¾Ð³Ð¸ÑÑ‚Ð¸ÐºÐ°',
-    'personnel_cost': 'ÐŸÐµÑ€ÑÐ¾Ð½Ð°Ð»',
-    'other_costs': 'ÐŸÑ€Ð¾Ñ‡ÐµÐµ',
+    'retro_bonus': 'Ðåòðîáîíóñ',
+    'logistics_cost': 'Ëîãèñòèêà',
+    'personnel_cost': 'Ïåðñîíàë',
+    'other_costs': 'Ïðî÷åå',
 }
 
 METRIC_DISPLAY_ORDER = {
     'business': [
         'revenue',
+        'margin_pre',
+        'markup',
+        'finrez_pre',
         'retro_bonus',
         'logistics_cost',
         'personnel_cost',
         'other_costs',
-        'margin_pre',
-        'markup',
-        'finrez_pre',
         'finrez_final',
     ],
     'default': [
@@ -63,23 +63,23 @@ METRIC_DISPLAY_ORDER = {
 }
 
 METRIC_TITLES = {
-    'revenue': 'ÐžÐ±Ð¾Ñ€Ð¾Ñ‚',
-    'retro_bonus': 'Ð ÐµÑ‚Ñ€Ð¾Ð±Ð¾Ð½ÑƒÑ',
-    'logistics_cost': 'Ð›Ð¾Ð³Ð¸ÑÑ‚Ð¸ÐºÐ°',
-    'personnel_cost': 'ÐŸÐµÑ€ÑÐ¾Ð½Ð°Ð»',
-    'other_costs': 'ÐŸÑ€Ð¾Ñ‡ÐµÐµ',
-    'margin_pre': 'ÐœÐ°Ñ€Ð¶Ð° Ð´Ð¾',
-    'markup': 'ÐÐ°Ñ†ÐµÐ½ÐºÐ°',
-    'finrez_pre': 'Ð¤Ð¸Ð½Ñ€ÐµÐ· Ð´Ð¾',
-    'finrez_final': 'Ð¤Ð¸Ð½Ñ€ÐµÐ· Ð¸Ñ‚Ð¾Ð³',
+    'revenue': 'Îáîðîò',
+    'retro_bonus': 'Ðåòðîáîíóñ',
+    'logistics_cost': 'Ëîãèñòèêà',
+    'personnel_cost': 'Ïåðñîíàë',
+    'other_costs': 'Ïðî÷åå',
+    'margin_pre': 'Ìàðæà',
+    'markup': 'Íàöåíêà',
+    'finrez_pre': 'Ôèíðåç äî',
+    'finrez_final': 'Ôèíðåç èòîã',
 }
 
 SIGNAL_LABELS = {
-    'critical': 'ÐºÑ€Ð¸Ñ‚Ð¸Ñ‡Ð½Ð¾',
-    'risk': 'Ñ€Ð¸ÑÐº',
-    'attention': 'Ð²Ð½Ð¸Ð¼Ð°Ð½Ð¸Ðµ',
-    'ok': 'Ð½Ð¾Ñ€Ð¼Ð°',
-    'no_data': 'Ð½ÐµÑ‚ Ð´Ð°Ð½Ð½Ñ‹Ñ…',
+    'critical': 'Êðèòè÷íî',
+    'risk': 'Ðèñê',
+    'attention': 'Âíèìàíèå',
+    'ok': 'Íîðìà',
+    'no_data': 'Íåò äàííûõ',
 }
 
 MIN_DRAIN_ITEMS = 3
@@ -147,33 +147,43 @@ def _top_driver(payload: Dict[str, Any]) -> Optional[str]:
 def _format_money(value: Any) -> str:
     rounded = _round(value)
     if rounded is None:
-        return 'â€”'
-    return f"{int(round(rounded)):,}".replace(',', ' ')
+        return '—'
+    sign = '?' if rounded < 0 else ''
+    return f"{sign}{int(round(abs(rounded))):,}".replace(',', ' ')
 
 
 def _format_percent(value: Any) -> str:
     rounded = _round(value)
     if rounded is None:
-        return 'â€”'
+        return '—'
+    sign = '+' if rounded > 0 else ('?' if rounded < 0 else '')
+    return f"{sign}{abs(rounded):.2f}%"
+
+
+def _format_plain_percent(value: Any) -> str:
+    rounded = _round(value)
+    if rounded is None:
+        return '—'
     return f"{rounded:.2f}%"
 
 
 def _format_pp(value: Any) -> str:
     rounded = _round(value)
     if rounded is None:
-        return 'â€”'
-    return f"{rounded:+.2f} Ð¿.Ð¿."
+        return '—'
+    sign = '+' if rounded > 0 else ('?' if rounded < 0 else '')
+    return f"{sign}{abs(rounded):.2f} ï.ï."
 
 
 def _format_delta(field: str, value: Any) -> str:
     if value is None:
-        return 'â€”'
+        return '—'
     return _format_pp(value) if field in PP_FIELDS else _format_percent(value)
 
 
 def _format_metric_value(field: str, value: Any) -> str:
     if field in PP_FIELDS:
-        return _format_percent(value)
+        return _format_plain_percent(value)
     return _format_money(value)
 
 
@@ -211,11 +221,10 @@ def _build_vs_business(level: str, payload: Dict[str, Any]) -> Optional[Dict[str
         return None
     business_metrics = _safe_business_metrics(payload)
     return {
-        'business_margin_pre': _round(business_metrics.get('margin_pre')),
+        'business_margin': _round(business_metrics.get('margin_pre')),
         'business_markup': _round(business_metrics.get('markup')),
         'business_finrez_pre': _round(business_metrics.get('finrez_pre')),
         'gap_to_business_pp': _gap_margin_pp(payload),
-        'gap_margin_pp': _gap_margin_pp(payload),
         'lost_profit_value': _gap_value(payload),
     }
 
@@ -223,15 +232,20 @@ def _build_vs_business(level: str, payload: Dict[str, Any]) -> Optional[Dict[str
 def _build_metric_rows(level: str, metrics: Dict[str, Any], comparisons: Dict[str, Any]) -> List[Dict[str, Any]]:
     order = METRIC_DISPLAY_ORDER['business'] if level == 'business' else METRIC_DISPLAY_ORDER['default']
     rows: List[Dict[str, Any]] = []
+
     for field in order:
+        label = METRIC_TITLES.get(field, field)
+        value = metrics.get(field)
+        yoy = comparisons.get(field)
+
         rows.append({
             'field': field,
-            'label': METRIC_TITLES.get(field, field),
-            'value': metrics.get(field),
-            'value_display': _format_metric_value(field, metrics.get(field)),
-            'yoy': comparisons.get(field),
-            'yoy_display': _format_delta(field, comparisons.get(field)),
-            'line': f"{METRIC_TITLES.get(field, field)} {_format_metric_value(field, metrics.get(field))} {_format_delta(field, comparisons.get(field))}",
+            'label': label,
+            'value': value,
+            'value_display': _format_metric_value(field, value),
+            'yoy': yoy,
+            'yoy_display': _format_delta(field, yoy),
+            'line': f"{label} {_format_metric_value(field, value)} ({_format_delta(field, yoy)} ê ïðîøëîìó ãîäó)",
         })
     return rows
 
@@ -252,37 +266,35 @@ def _compact_item_yoy(item: Dict[str, Any]) -> Optional[str]:
     current_metrics = (item.get('metrics') or {}).get('object_metrics') or {}
     previous_metrics = item.get('previous_object_metrics') or {}
     yoy = _percent_change(current_metrics.get('finrez_pre'), previous_metrics.get('finrez_pre'))
-    return _format_percent(yoy) if yoy is not None else 'â€”'
+    return _format_percent(yoy) if yoy is not None else '—'
 
 
-def _drain_priority_bucket(item: Dict[str, Any]) -> tuple[int, float, float]:
-    signal = item.get('signal') or {}
-    impact = item.get('impact') or {}
-    metrics = (item.get('metrics') or {}).get('object_metrics') or {}
-    status = str(signal.get('status') or 'ok')
-    gap_money = float(impact.get('gap_loss_money') or 0.0)
-    finrez = float(metrics.get('finrez_pre') or 0.0)
-
-    if status == 'critical':
-        return (0, -gap_money, finrez)
-    if status == 'risk':
-        return (1, -gap_money, finrez)
-    if gap_money > 0:
-        return (2, -gap_money, finrez)
-    return (3, -gap_money, finrez)
+def _build_slice(payload: Dict[str, Any]) -> Dict[str, Any]:
+    filter_payload = payload.get('filter') or {}
+    return {
+        'Áèçíåñ': filter_payload.get('business') or 'Âåñü áèçíåñ',
+        'Äèâèçèîíàëüíûé ìåíåäæåð': filter_payload.get('manager_top'),
+        'Ìåíåäæåð': filter_payload.get('manager'),
+        'Ñåòü': filter_payload.get('network'),
+        'SKU': filter_payload.get('sku'),
+        'Ïåðèîä': payload.get('period'),
+    }
 
 
-def _build_drain_rows(payload: Dict[str, Any], include_positive: bool = False, max_items: int = 5) -> List[Dict[str, Any]]:
+def _build_drain_rows(payload: Dict[str, Any], max_items: int = 5) -> List[Dict[str, Any]]:
     raw_items = payload.get('all_items') or payload.get('items') or []
     items = [item for item in raw_items if isinstance(item, dict)]
-    prepared: List[Dict[str, Any]] = []
 
+    prepared: List[Dict[str, Any]] = []
     for item in items:
         metrics = (item.get('metrics') or {}).get('object_metrics') or {}
         impact = item.get('impact') or {}
         signal = item.get('signal') or {}
 
         gap_money = float(impact.get('gap_loss_money') or 0.0)
+        if gap_money == 0.0:
+            continue
+
         finrez = _round(metrics.get('finrez_pre'))
         margin = _round(metrics.get('margin_pre'))
         status = str(signal.get('status') or 'ok')
@@ -291,84 +303,72 @@ def _build_drain_rows(payload: Dict[str, Any], include_positive: bool = False, m
             'object_name': item.get('object_name'),
             'gap_loss_money': _round(gap_money),
             'gap_loss_money_display': _format_money(gap_money),
+            'gap_percent': _round(impact.get('gap_percent')),
+            'gap_percent_display': _format_pp(impact.get('gap_percent')),
             'finrez_pre': finrez,
             'finrez_pre_display': _format_money(finrez),
-            'margin_pre': margin,
-            'margin_pre_display': _format_percent(margin),
+            'margin': margin,
+            'margin_display': _format_plain_percent(margin),
             'signal_status': status,
             'signal_label': SIGNAL_LABELS.get(status, status),
-            'gap_to_business_pp': _gap_margin_pp(item),
-            'gap_to_business_pp_display': _format_pp(_gap_margin_pp(item)),
-            '_bucket': _drain_priority_bucket(item),
+            'yoy_display': _compact_item_yoy(item),
         })
 
-    prepared.sort(key=lambda row: row['_bucket'])
-
-    selected: List[Dict[str, Any]]
-    if include_positive:
-        selected = prepared[:max_items]
-    else:
-        selected = [row for row in prepared if float(row.get('gap_loss_money') or 0.0) > 0][:max_items]
-        if len(selected) < MIN_DRAIN_ITEMS:
-            for row in prepared:
-                if row in selected:
-                    continue
-                selected.append(row)
-                if len(selected) >= min(max_items, MIN_DRAIN_ITEMS):
-                    break
-
-    total_gap = sum(float(row.get('gap_loss_money') or 0.0) for row in selected if float(row.get('gap_loss_money') or 0.0) > 0)
+    prepared.sort(key=lambda row: float(row.get('gap_loss_money') or 0.0), reverse=True)
+    total_gap = sum(float(row.get('gap_loss_money') or 0.0) for row in prepared)
 
     out: List[Dict[str, Any]] = []
-    for row in selected[:max_items]:
+    for row in prepared[:max_items]:
         gap = float(row.get('gap_loss_money') or 0.0)
-        share = (gap / total_gap * 100.0) if total_gap > 0 and gap > 0 else 0.0
-        clean = {k: v for k, v in row.items() if not k.startswith('_')}
-        clean.update({
-            'impact_share': _round(share),
-            'impact_share_display': _format_percent(share) if gap > 0 and total_gap > 0 else 'â€”',
-            'line': f"{row.get('object_name')} {_format_money(gap)} {_format_percent(share) if gap > 0 and total_gap > 0 else 'â€”'} {_format_pp(row.get('gap_to_business_pp'))}",
-        })
+        share = (gap / total_gap * 100.0) if total_gap > 0 else 0.0
+        clean = dict(row)
+        clean['impact_share'] = _round(share)
+        clean['impact_share_display'] = _format_percent(share)
+        clean['line'] = (
+            f"{row['object_name']} "
+            f"{row['gap_loss_money_display']} "
+            f"({row['gap_percent_display']}) "
+            f"{row['signal_label']}"
+        )
         out.append(clean)
     return out
 
 
-def _build_list_items(list_payload: Dict[str, Any], max_items: int = 100) -> List[Dict[str, Any]]:
+def _build_list_items(list_payload: Dict[str, Any], max_items: int = 500) -> List[Dict[str, Any]]:
     raw_items = list_payload.get('all_items') or list_payload.get('items') or []
     items = [item for item in raw_items if isinstance(item, dict)]
-
-    def sort_key(it: Dict[str, Any]) -> tuple:
-        impact = it.get('impact') or {}
-        metrics = (it.get('metrics') or {}).get('object_metrics') or {}
-        signal = it.get('signal') or {}
-        status_order = {'critical': 0, 'risk': 1, 'attention': 2, 'ok': 3, 'no_data': 4}
-        return (
-            status_order.get(str(signal.get('status') or 'ok'), 9),
-            -float(impact.get('gap_loss_money') or 0.0),
-            float(metrics.get('finrez_pre') or 0.0),
-        )
-
-    items.sort(key=sort_key)
 
     out: List[Dict[str, Any]] = []
     for item in items[:max_items]:
         metrics = (item.get('metrics') or {}).get('object_metrics') or {}
         impact = item.get('impact') or {}
         signal = item.get('signal') or {}
+
+        gap_money = float(impact.get('gap_loss_money') or 0.0)
+        if gap_money == 0.0:
+            continue
+
         row = {
             'object_name': item.get('object_name'),
-            'finrez_pre': _round(metrics.get('finrez_pre')),
-            'finrez_pre_display': _format_money(metrics.get('finrez_pre')),
-            'margin_pre': _round(metrics.get('margin_pre')),
-            'margin_pre_display': _format_percent(metrics.get('margin_pre')),
-            'gap_loss_money': _round(impact.get('gap_loss_money')),
-            'gap_loss_money_display': _format_money(impact.get('gap_loss_money')),
+            'gap_loss_money': _round(gap_money),
+            'gap_loss_money_display': _format_money(gap_money),
+            'gap_percent': _round(impact.get('gap_percent')),
+            'gap_percent_display': _format_pp(impact.get('gap_percent')),
+            'margin': _round(metrics.get('margin_pre')),
+            'margin_display': _format_plain_percent(metrics.get('margin_pre')),
             'signal_status': signal.get('status'),
             'signal_label': SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok')),
             'yoy_display': _compact_item_yoy(item),
         }
-        row['line'] = f"{row['object_name']} {row['gap_loss_money_display']} {row['margin_pre_display']} {row['yoy_display']}"
+        row['line'] = (
+            f"{row['object_name']} | "
+            f"{row['gap_loss_money_display']} ({row['gap_percent_display']}) | "
+            f"{row['margin_display']} | "
+            f"{row['signal_label']}"
+        )
         out.append(row)
+
+    out.sort(key=lambda row: float(row.get('gap_loss_money') or 0.0), reverse=True)
     return out
 
 
@@ -386,29 +386,32 @@ def build_object_view(payload: Dict[str, Any], drain_payload: Optional[Dict[str,
     action = payload.get('action') or {}
     diagnosis = payload.get('diagnosis') or {}
 
-    drain_items = [] if level == 'sku' else _build_drain_rows(source, include_positive=False)
+    drain_items = [] if level == 'sku' else _build_drain_rows(source, max_items=5)
+
     focus_rows: List[Dict[str, Any]] = []
     if level != 'business':
         focus_rows.append({
             'field': 'gap_loss_money',
-            'label': 'ÐÐµÐ´Ð¾Ð·Ð°Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð½Ð¾',
+            'label': 'Íåäîçàðàáîòàíî',
             'value': _round(impact.get('gap_loss_money')),
             'value_display': _format_money(impact.get('gap_loss_money')),
-            'line': f"ÐÐµÐ´Ð¾Ð·Ð°Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð½Ð¾ {_format_money(impact.get('gap_loss_money'))}",
+            'secondary_value': _round(impact.get('gap_percent')),
+            'secondary_display': _format_pp(impact.get('gap_percent')),
+            'line': f"Íåäîçàðàáîòàíî {_format_money(impact.get('gap_loss_money'))} ({_format_pp(impact.get('gap_percent'))})",
         })
         focus_rows.append({
             'field': 'signal',
-            'label': 'Ð¡Ð¸Ð³Ð½Ð°Ð»',
+            'label': 'Ñèãíàë',
             'value': signal.get('status'),
             'value_display': SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok')),
-            'line': f"Ð¡Ð¸Ð³Ð½Ð°Ð» {SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok'))}",
+            'line': f"Ñèãíàë {SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok'))}",
         })
         focus_rows.append({
             'field': 'top_driver',
-            'label': 'Ð“Ð»Ð°Ð²Ð½Ð°Ñ Ð¿Ñ€Ð¸Ñ‡Ð¸Ð½Ð°',
+            'label': 'Ãëàâíàÿ ïðè÷èíà',
             'value': diagnosis.get('top_drain_metric'),
-            'value_display': diagnosis.get('top_drain_metric') or 'â€”',
-            'line': f"Ð“Ð»Ð°Ð²Ð½Ð°Ñ Ð¿Ñ€Ð¸Ñ‡Ð¸Ð½Ð° {diagnosis.get('top_drain_metric') or 'â€”'}",
+            'value_display': METRIC_LABELS.get(diagnosis.get('top_drain_metric'), diagnosis.get('top_drain_metric') or '—'),
+            'line': f"Ãëàâíàÿ ïðè÷èíà {METRIC_LABELS.get(diagnosis.get('top_drain_metric'), diagnosis.get('top_drain_metric') or '—')}",
         })
 
     return {
@@ -419,6 +422,8 @@ def build_object_view(payload: Dict[str, Any], drain_payload: Optional[Dict[str,
         'object_name': payload.get('object_name'),
         'period': payload.get('period'),
         'children_level': _children_level_from_payload(drain_payload),
+        'slice': _build_slice(payload),
+        'header_note': '? ê ïðîøëîìó ãîäó',
         'metrics': metrics,
         'comparisons': comparisons,
         'metric_rows': _build_metric_rows(level, metrics, comparisons),
@@ -437,9 +442,12 @@ def build_object_view(payload: Dict[str, Any], drain_payload: Optional[Dict[str,
         'priority': payload.get('priority'),
         'action': action,
         'headline': {
-            'signal': SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok')),
             'gap_loss_money': _round(impact.get('gap_loss_money')),
-            'top_driver': _top_driver(payload),
+            'gap_loss_money_display': _format_money(impact.get('gap_loss_money')),
+            'gap_percent': _round(impact.get('gap_percent')),
+            'gap_percent_display': _format_pp(impact.get('gap_percent')),
+            'signal': SIGNAL_LABELS.get(str(signal.get('status') or 'ok'), str(signal.get('status') or 'ok')),
+            'top_driver': METRIC_LABELS.get(_top_driver(payload), _top_driver(payload)),
             'suggested_action': action.get('suggested_action'),
         },
         'pnl_breakdown': _build_metric_rows('business', metrics, comparisons) if level == 'business' else None,
@@ -454,6 +462,8 @@ def build_list_view(scope_payload: Dict[str, Any], list_payload: Dict[str, Any])
     level = scope_payload.get('level')
     metrics = _build_metrics(level, scope_payload)
     comparisons = _build_comparisons(level, scope_payload)
+    items = _build_list_items(list_payload, max_items=500)
+
     return {
         'type': 'management_list',
         'mode': 'management',
@@ -462,20 +472,18 @@ def build_list_view(scope_payload: Dict[str, Any], list_payload: Dict[str, Any])
         'object_name': scope_payload.get('object_name'),
         'period': scope_payload.get('period'),
         'children_level': list_payload.get('children_level') or list_payload.get('level'),
+        'slice': _build_slice(scope_payload),
+        'header_note': '? ê ïðîøëîìó ãîäó',
         'metrics': metrics,
         'comparisons': comparisons,
         'metric_rows': _build_metric_rows(level, metrics, comparisons),
         'vs_business': _build_vs_business(level, scope_payload),
-        'items': _build_list_items(list_payload, max_items=500),
+        'items': items,
         'commands': _commands(level),
         'warning_flag': _warning_flag(scope_payload) or _warning_flag(list_payload),
         'consistency': scope_payload.get('consistency') or list_payload.get('consistency'),
         'items_meta': list_payload.get('items_meta'),
     }
-
-
-def build_drilldown_management_view(drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
-    return build_object_view(drilldown_payload)
 
 
 def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, Any], previous: Dict[str, Any]) -> Dict[str, Any]:
@@ -508,19 +516,7 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
         'signal': {
             'current': current_signal,
             'previous': previous_signal,
-            'delta_status': 'Ð±ÐµÐ· Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ð¹' if current_signal.get('status') == previous_signal.get('status') else 'Ð¸Ð·Ð¼ÐµÐ½Ð¸Ð»ÑÑ',
-        },
-        'navigation': {
-            'current': current.get('navigation'),
-            'previous': previous.get('navigation'),
-        },
-        'context': {
-            'current': current.get('context'),
-            'previous': previous.get('context'),
-        },
-        'diagnosis_change': {
-            'current': current.get('diagnosis'),
-            'previous': previous.get('diagnosis'),
+            'delta_status': 'áåç èçìåíåíèé' if current_signal.get('status') == previous_signal.get('status') else 'èçìåíèëñÿ',
         },
         'impact': {
             'current': current_impact,
@@ -542,7 +538,7 @@ def build_comparison_management_view(query: Dict[str, Any], current: Dict[str, A
 
 
 def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[str, Any]:
-    losses = _build_drain_rows(drilldown_payload, include_positive=False)
+    losses = _build_drain_rows(drilldown_payload, max_items=500)
     return {
         'type': 'losses',
         'mode': 'management',
@@ -550,6 +546,7 @@ def build_losses_view_from_children(drilldown_payload: Dict[str, Any]) -> Dict[s
         'object_name': drilldown_payload.get('object_name'),
         'period': drilldown_payload.get('period'),
         'children_level': drilldown_payload.get('children_level'),
+        'slice': _build_slice(drilldown_payload),
         'items': losses,
         'losses': losses,
         'warning_flag': _warning_flag(drilldown_payload),
@@ -596,11 +593,11 @@ def build_reasons_view(payload: Dict[str, Any]) -> Dict[str, Any]:
             'impact_value': _round(impact_value),
             'impact_value_display': _format_money(impact_value),
             'fact_percent': _round(fact_percent),
-            'fact_percent_display': _format_percent(fact_percent),
+            'fact_percent_display': _format_plain_percent(fact_percent),
             'plan_percent': _round(plan_percent),
-            'plan_percent_display': _format_percent(plan_percent),
+            'plan_percent_display': _format_plain_percent(plan_percent),
             'business_percent': _round(business_percent),
-            'business_percent_display': _format_percent(business_percent),
+            'business_percent_display': _format_plain_percent(business_percent),
             'gap_pp': _round(fact_percent - business_percent),
             'gap_pp_display': _format_pp(fact_percent - business_percent),
         }
@@ -612,18 +609,18 @@ def build_reasons_view(payload: Dict[str, Any]) -> Dict[str, Any]:
         impact_value = float(row.get('impact_value') or 0.0)
         share = (abs(impact_value) / total_negative * 100.0) if total_negative > 0 and impact_value > 0 else 0.0
         row['impact_share'] = _round(share)
-        row['impact_share_display'] = _format_percent(share) if share > 0 else 'â€”'
+        row['impact_share_display'] = _format_percent(share) if share > 0 else '—'
         row['line'] = (
             f"{row['factor_label']} "
-            f"Ð¿Ð»Ð°Ð½ {row['plan_value_display']} "
-            f"Ñ„Ð°ÐºÑ‚ {row['fact_value_display']} "
-            f"Ð¾Ñ‚ÐºÐ»Ð¾Ð½ÐµÐ½Ð¸Ðµ {row['deviation_value_display']} "
-            f"Ð²Ð»Ð¸ÑÐ½Ð¸Ðµ {row['impact_value_display']}"
+            f"ýòàëîí {row['plan_value_display']} "
+            f"ôàêò {row['fact_value_display']} "
+            f"îòêëîíåíèå {row['deviation_value_display']} "
+            f"âëèÿíèå {row['impact_value_display']}"
         )
 
     summary = {
-        'business_margin_pre': _round(business_metrics.get('margin_pre')),
-        'object_margin_pre': _round(object_metrics.get('margin_pre')),
+        'business_margin': _round(business_metrics.get('margin_pre')),
+        'object_margin': _round(object_metrics.get('margin_pre')),
         'gap_pp': _gap_margin_pp(payload),
         'lost_profit_value': _gap_value(payload),
     }
@@ -634,6 +631,7 @@ def build_reasons_view(payload: Dict[str, Any]) -> Dict[str, Any]:
         'level': payload.get('level'),
         'object_name': payload.get('object_name'),
         'period': payload.get('period'),
+        'slice': _build_slice(payload),
         'summary': summary,
         'reasons': reason_rows,
         'commands': _commands(payload.get('level')),
