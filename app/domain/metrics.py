@@ -303,4 +303,4 @@ def detect_suggested_action(status: str, priority: str, top_drain_metric: Option
         return action_map[top_drain_metric]
     if status == 'critical':
         return 'провалиться глубже по дренажу'
-    return 'контроль без эскалации'vviewsiews
+    return 'контроль без эскалации'
