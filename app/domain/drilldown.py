@@ -1,35 +1,33 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.domain.comparison import build_comparison_payload
 from app.domain.consistency import build_consistency_from_rows
 from app.domain.filters import filter_rows, get_normalized_rows
 from app.domain.metrics import aggregate_metrics
 from app.domain.normalization import normalize_sku_name
-from app.domain.sorting import select_visible_items, sort_items_by_top_problem
-
-SAFE_LIMIT = 20
 
 
-def _previous_year_period(period: str) -> str | None:
+SAFE_DEFAULT_LIMIT = 20
+SAFE_FULL_LIMIT = 500
+
+FILTER_DIMENSIONS = [
+    'business',
+    'manager_top',
+    'manager',
+    'network',
+    'category',
+    'tmc_group',
+    'sku',
+]
+
+
+def _previous_year_period(period: str) -> Optional[str]:
     if not period or not isinstance(period, str) or len(period) != 7 or period[4] != '-':
         return None
     try:
         return f"{int(period[:4]) - 1:04d}-{period[5:7]}"
     except Exception:
         return None
-
-
-def _group_previous_rows(rows: List[Dict[str, Any]], group_field: str, transform_sku: bool = False) -> Dict[str, Dict[str, Any]]:
-    if not rows:
-        return {}
-    if transform_sku:
-        grouped: Dict[str, List[Dict[str, Any]]] = {}
-        for row in rows:
-            sku_name = normalize_sku_name(row['sku'])
-            grouped.setdefault(sku_name, []).append(row)
-    else:
-        grouped = _group(rows, group_field)
-    return {name: aggregate_metrics(chunk) for name, chunk in grouped.items()}
 
 
 def _safe_get_rows() -> List[Dict[str, Any]]:
@@ -51,27 +49,19 @@ def _run_filter(rows: List[Dict[str, Any]], period: str, **kwargs: Any):
     return result, {}
 
 
-
-FILTER_DIMENSIONS = [
-    "business",
-    "manager_top",
-    "manager",
-    "network",
-    "category",
-    "tmc_group",
-    "sku",
-]
-
-
 def _normalize_filter_payload(filter_payload: Dict[str, Any] | None) -> Dict[str, Any]:
     payload = dict(filter_payload or {})
-    return {k: v for k, v in payload.items() if k in FILTER_DIMENSIONS and v not in (None, "")}
+    return {
+        k: v
+        for k, v in payload.items()
+        if k in FILTER_DIMENSIONS and v not in (None, '')
+    }
 
 
 def _merge_filter_kwargs(filter_payload: Dict[str, Any] | None, overrides: Dict[str, Any]) -> Dict[str, Any]:
     merged = _normalize_filter_payload(filter_payload)
     for key, value in overrides.items():
-        if key in FILTER_DIMENSIONS and value not in (None, ""):
+        if key in FILTER_DIMENSIONS and value not in (None, ''):
             merged[key] = value
     merged.pop('business', None)
     return merged
@@ -85,16 +75,46 @@ def _handle_empty(meta: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _group(rows: List[Dict[str, Any]], field: str) -> Dict[str, List[Dict[str, Any]]]:
+def _group(rows: List[Dict[str, Any]], field: str, transform_sku: bool = False) -> Dict[str, List[Dict[str, Any]]]:
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for row in rows:
-        key = row.get(field) or 'UNKNOWN'
+        key = normalize_sku_name(row.get('sku')) if transform_sku else (row.get(field) or 'UNKNOWN')
         grouped.setdefault(key, []).append(row)
     return grouped
 
 
-def _build_items(grouped, level, business_metrics, period):
-    items = []
+def _group_previous_rows(rows: List[Dict[str, Any]], group_field: str, transform_sku: bool = False) -> Dict[str, Dict[str, Any]]:
+    if not rows:
+        return {}
+    grouped = _group(rows, group_field, transform_sku=transform_sku)
+    return {name: aggregate_metrics(chunk) for name, chunk in grouped.items()}
+
+
+def _item_sort_key(item: Dict[str, Any]) -> tuple:
+    signal = item.get('signal') or {}
+    impact = item.get('impact') or {}
+    metrics = (item.get('metrics') or {}).get('object_metrics') or {}
+
+    status_order = {
+        'critical': 0,
+        'risk': 1,
+        'attention': 2,
+        'ok': 3,
+        'no_data': 4,
+    }
+    status = str(signal.get('status') or 'ok')
+    gap_money = float(impact.get('gap_loss_money') or 0.0)
+    finrez = float(metrics.get('finrez_pre') or 0.0)
+    return (
+        status_order.get(status, 9),
+        -gap_money,
+        finrez,
+        str(item.get('object_name') or ''),
+    )
+
+
+def _build_items(grouped: Dict[str, List[Dict[str, Any]]], level: str, business_metrics: Dict[str, float], period: str) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
     for name, chunk in grouped.items():
         item = build_comparison_payload(
             level=level,
@@ -106,28 +126,21 @@ def _build_items(grouped, level, business_metrics, period):
         )
         items.append(item)
 
-    sort_items_by_top_problem(items)
+    items.sort(key=_item_sort_key)
     return items
 
 
-def _apply_safe_full_view(
-    items: List[Dict[str, Any]],
-    items_meta: Dict[str, Any],
-    full_view: bool,
-) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    if not full_view:
-        return items, items_meta
-
-    total_count = items_meta.get('total_count', len(items))
-    items_meta = {
-        **items_meta,
-        'returned_count': len(items),
-        'hidden_count': max(total_count - len(items), 0),
-        'has_more': total_count > len(items),
-        'is_truncated': False,
+def _slice_visible_items(items: List[Dict[str, Any]], full_view: bool) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    total_count = len(items)
+    limit = SAFE_FULL_LIMIT if full_view else SAFE_DEFAULT_LIMIT
+    visible_items = items[:limit]
+    return visible_items, {
+        'total_count': total_count,
+        'returned_count': len(visible_items),
+        'hidden_count': max(total_count - len(visible_items), 0),
+        'has_more': total_count > len(visible_items),
+        'is_truncated': total_count > len(visible_items),
     }
-
-    return items, items_meta
 
 
 def _run_drilldown(
@@ -149,17 +162,12 @@ def _run_drilldown(
     if not filtered_rows:
         return _handle_empty(meta)
 
-    business_rows, _ = _run_filter(rows, period=period)
+    business_rows, business_meta = _run_filter(rows, period=period)
+    if not business_rows:
+        return _handle_empty(business_meta)
+
     business_metrics = aggregate_metrics(business_rows)
-
-    if transform_sku:
-        grouped: Dict[str, List[Dict[str, Any]]] = {}
-        for row in filtered_rows:
-            sku_name = normalize_sku_name(row['sku'])
-            grouped.setdefault(sku_name, []).append(row)
-    else:
-        grouped = _group(filtered_rows, group_field)
-
+    grouped = _group(filtered_rows, group_field, transform_sku=transform_sku)
     all_items = _build_items(grouped, child_level, business_metrics, period)
 
     previous_period = _previous_year_period(period)
@@ -169,15 +177,7 @@ def _run_drilldown(
         for item in all_items:
             item['previous_object_metrics'] = previous_metrics_map.get(item.get('object_name')) or {}
 
-    # текущая логика показа (top / pareto / hidden meta)
-    visible_items, items_meta = select_visible_items(all_items, full_view=full_view)
-
-    # технический предохранитель для full_view
-    visible_items, items_meta = _apply_safe_full_view(
-        visible_items,
-        items_meta,
-        full_view,
-    )
+    visible_items, items_meta = _slice_visible_items(all_items, full_view=full_view)
 
     parent_metrics = aggregate_metrics(filtered_rows)
     parent_consistency = build_consistency_from_rows(
