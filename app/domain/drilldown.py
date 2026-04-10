@@ -129,7 +129,7 @@ def _filter_visible_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if object_name == '':
             continue
 
-        # "Без менеджера" не удаляем — это управленческий сигнал
+        # "Р‘РµР· РјРµРЅРµРґР¶РµСЂР°" РЅРµ СѓРґР°Р»СЏРµРј вЂ” СЌС‚Рѕ СѓРїСЂР°РІР»РµРЅС‡РµСЃРєРёР№ СЃРёРіРЅР°Р»
         if gap_money == 0.0:
             continue
 
