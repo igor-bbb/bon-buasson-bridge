@@ -8,17 +8,12 @@ def ok_response(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def error_response(message: str, extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def error_response(message: str) -> Dict[str, Any]:
     return {
         "status": "error",
         "message": message,
-        "extra": extra or {},
     }
 
-
-# =========================
-# OBJECT RESPONSE
-# =========================
 
 def object_response(payload: Dict[str, Any]) -> Dict[str, Any]:
     return ok_response({
@@ -34,22 +29,14 @@ def object_response(payload: Dict[str, Any]) -> Dict[str, Any]:
     })
 
 
-# =========================
-# LIST RESPONSE
-# =========================
-
-def list_response(items: list) -> Dict[str, Any]:
+def list_response(items):
     return ok_response({
         "type": "list",
         "items": items,
     })
 
 
-# =========================
-# DRAIN RESPONSE
-# =========================
-
-def drain_response(items: list) -> Dict[str, Any]:
+def drain_response(items):
     return ok_response({
         "type": "drain",
         "items": items,
