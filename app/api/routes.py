@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from app.presentation.views import (
     build_object_view,
     build_list_view,
@@ -12,8 +14,15 @@ from app.presentation.contracts import (
 
 from app.domain.comparison import build_impact
 
+router = APIRouter()
 
-def handle_object(payload):
+
+# =========================
+# OBJECT
+# =========================
+
+@router.post("/object")
+def handle_object(payload: dict):
     payload["impact"] = build_impact(payload)
 
     view = build_object_view(payload)
@@ -21,11 +30,27 @@ def handle_object(payload):
     return object_response(view)
 
 
-def handle_list(items):
+# =========================
+# LIST
+# =========================
+
+@router.post("/list")
+def handle_list(payload: dict):
+    items = payload.get("items", [])
+
     view = build_list_view(items)
+
     return list_response(view)
 
 
-def handle_drain(items):
+# =========================
+# DRAIN
+# =========================
+
+@router.post("/drain")
+def handle_drain(payload: dict):
+    items = payload.get("items", [])
+
     view = build_drain_view(items)
+
     return drain_response(view)
