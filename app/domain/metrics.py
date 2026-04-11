@@ -17,7 +17,7 @@ def round_money(x: float) -> float:
 
 
 # =========================
-# CORE METRICS
+# CORE METRICS (НЕ ЛОМАЕМ)
 # =========================
 
 def calculate_margin(revenue: float, finrez: float) -> float:
@@ -40,12 +40,40 @@ def calculate_markup(revenue: float, cost: float) -> float:
     return (revenue / cost) * 100.0
 
 
-def calculate_gap_money(object_value: float, business_value: float) -> float:
-    return to_float(business_value) - to_float(object_value)
+# =========================
+# 🔴 КРИТИЧНО — ВОССТАНОВИЛ
+# =========================
 
+def aggregate_metrics(rows: List[Dict]) -> Dict:
+    """
+    Базовая агрегация (нужна системе)
+    """
+    result = {
+        "revenue": 0.0,
+        "finrez_pre": 0.0,
+        "margin_pre": 0.0,
+    }
 
-def calculate_gap_percent(object_value: float, business_value: float) -> float:
-    return to_float(business_value) - to_float(object_value)
+    if not rows:
+        return result
+
+    total_revenue = 0.0
+    total_finrez = 0.0
+
+    for r in rows:
+        revenue = to_float(r.get("revenue"))
+        finrez = to_float(r.get("finrez_pre"))
+
+        total_revenue += revenue
+        total_finrez += finrez
+
+    result["revenue"] = total_revenue
+    result["finrez_pre"] = total_finrez
+
+    if total_revenue != 0:
+        result["margin_pre"] = (total_finrez / total_revenue) * 100.0
+
+    return result
 
 
 # =========================
@@ -80,7 +108,7 @@ def build_solutions_from_effects(
         if impact <= 0:
             continue
 
-        # 🔷 МАРЖА / НАЦЕНКА
+        # 🔷 НАЦЕНКА / МАРЖА
         if metric in ("margin", "markup"):
             effect = simulate_margin_improvement(object_metrics, 5)
 
