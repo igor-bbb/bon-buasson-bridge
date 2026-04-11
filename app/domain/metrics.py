@@ -3,17 +3,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.normalization import round_money, round_percent
 
-MONEY_METRICS = [
-    'revenue',
-    'cost',
-    'gross_profit',
-    'retro_bonus',
-    'logistics_cost',
-    'personnel_cost',
-    'other_costs',
-    'finrez_pre',
-]
-
 EFFECT_METRICS = [
     'retro_bonus',
     'logistics_cost',
@@ -65,12 +54,10 @@ def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     personnel_cost = round_money(sum(_to_float(r.get('personnel_cost')) for r in rows))
     other_costs = round_money(sum(_to_float(r.get('other_costs')) for r in rows))
     finrez_pre = round_money(sum(_to_float(r.get('finrez_pre')) for r in rows))
-    finrez_final = round_money(
-        finrez_pre
-        - retro_bonus
-        - logistics_cost
-        - personnel_cost
-        - other_costs
+    finrez = round_money(sum(_to_float(r.get('finrez')) for r in rows))
+
+    finrez_final = finrez if abs(finrez) > 1e-9 else round_money(
+        finrez_pre - retro_bonus - logistics_cost - personnel_cost - other_costs
     )
 
     margin_pre = _safe_percent(finrez_pre, revenue)
@@ -86,49 +73,11 @@ def aggregate_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
         'personnel_cost': personnel_cost,
         'other_costs': other_costs,
         'finrez_pre': finrez_pre,
+        'finrez': finrez,
         'finrez_final': finrez_final,
         'margin_pre': margin_pre,
         'markup': markup,
         'kpi_gap': kpi_gap,
-    }
-
-
-def build_consistency(
-    parent_finrez_pre: float,
-    child_metrics_list: List[Dict[str, Any]],
-    child_level: str,
-) -> Dict[str, Any]:
-    if not child_metrics_list:
-        return {
-            'checked': False,
-            'reason': 'no_child_data',
-        }
-
-    child_sum = round_money(sum(_to_float(item.get('finrez_pre')) for item in child_metrics_list))
-    delta = round_money(_to_float(parent_finrez_pre) - child_sum)
-
-    if abs(parent_finrez_pre) < 1e-9:
-        delta_pct = 0.0 if abs(delta) < 1e-9 else None
-    else:
-        delta_pct = round_percent((abs(delta) / abs(parent_finrez_pre)) * 100.0)
-
-    if delta_pct is None:
-        status = 'warning'
-    elif delta_pct < 1:
-        status = 'ok'
-    elif delta_pct <= 5:
-        status = 'warning'
-    else:
-        status = 'critical'
-
-    return {
-        'checked': True,
-        'child_level': child_level,
-        'parent_finrez_pre': round_money(parent_finrez_pre),
-        'child_sum_finrez_pre': child_sum,
-        'delta': delta,
-        'delta_pct': delta_pct,
-        'status': status,
     }
 
 
@@ -307,10 +256,6 @@ def detect_suggested_action(status: str, priority: str, top_drain_metric: Option
     return 'контроль без эскалации'
 
 
-# =========================
-# WHAT-IF / РЕШЕНИЯ
-# =========================
-
 def simulate_margin_improvement(object_metrics: Dict[str, float], percent_change: float) -> float:
     revenue = _to_float(object_metrics.get('revenue'))
     if revenue <= 0:
@@ -331,7 +276,6 @@ def build_solutions_from_effects(
 ) -> List[Dict[str, Any]]:
     solutions: List[Dict[str, Any]] = []
 
-    # решение по наценке / марже — как общий рычаг по выручке
     margin_gap = _to_float(object_metrics.get('markup')) - _to_float(object_metrics.get('margin_pre'))
     if object_metrics.get('revenue') and margin_gap > 0:
         effect = simulate_margin_improvement(object_metrics, 5)
