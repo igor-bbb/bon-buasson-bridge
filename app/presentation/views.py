@@ -1,5 +1,7 @@
 from typing import Any, Dict, List
 
+from app.domain.metrics import build_solutions_from_effects
+
 
 # =========================
 # FORMAT HELPERS
@@ -28,17 +30,15 @@ def _format_pp(x: Any) -> str:
 
 
 # =========================
-# CORE BUILDERS
+# OBJECT VIEW
 # =========================
 
 def build_object_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     metrics = payload.get("metrics", {})
     impact = payload.get("impact", {})
-    diagnosis = payload.get("diagnosis", {})
     previous = payload.get("previous_object_metrics", {})
 
     object_metrics = metrics.get("object_metrics", {})
-    business_metrics = metrics.get("business_metrics", {})
 
     # =========================
     # ЯКОРЬ
@@ -52,9 +52,9 @@ def build_object_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     prev_margin = previous.get("margin_pre")
 
     def yoy(current, prev):
-        if not prev:
+        if prev in (None, 0):
             return None
-        return ((current - prev) / abs(prev)) * 100 if prev != 0 else None
+        return ((current - prev) / abs(prev)) * 100
 
     anchor = [
         {
@@ -96,30 +96,39 @@ def build_object_view(payload: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append({
             "name": key,
             "money": _format_money(money),
-            "percent": None,
         })
 
-    reasons = sorted(reasons, key=lambda x: -_to_float(x["money"].replace(" ", "")))[:3]
+    reasons = sorted(
+        reasons,
+        key=lambda x: -_to_float(x["money"].replace(" ", ""))
+    )[:3]
 
     # =========================
-    # РЕШЕНИЯ (НОВОЕ)
+    # РЕШЕНИЯ (ИЗ DOMAIN)
     # =========================
+    solutions_raw = build_solutions_from_effects(
+        object_metrics,
+        effects
+    )
+
     solutions = []
 
-    for r in reasons:
-        val = _to_float(r["money"].replace(" ", ""))
-        if val <= 0:
-            continue
+    for s in solutions_raw[:3]:
+        effect = _format_money(s.get("effect"))
 
         solutions.append({
-            "title": r["name"],
-            "action": "изменить на 5%",
-            "effect": r["money"],
-            "line": f"{r['name']}\nИзменение на 5%\n→ {r['money']}"
+            "title": s.get("metric"),
+            "action": s.get("action"),
+            "effect": effect,
+            "line": (
+                f"{s.get('metric')}\n"
+                f"{s.get('action')}\n"
+                f"→ {effect}"
+            )
         })
 
     # =========================
-    # ФИНАЛ
+    # RESULT
     # =========================
     return {
         "object": payload.get("object_name"),
@@ -134,7 +143,7 @@ def build_object_view(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # =========================
-# LIST VIEW (КРИТИЧНО)
+# LIST VIEW
 # =========================
 
 def build_list_view(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
