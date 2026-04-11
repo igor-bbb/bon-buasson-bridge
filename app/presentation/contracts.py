@@ -1,43 +1,26 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
-def ok_response(data: Dict[str, Any]) -> Dict[str, Any]:
+def ok_response(query: Optional[Dict[str, Any]], data: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "status": "ok",
-        "data": data,
+        'status': 'ok',
+        'query': query or {},
+        'data': data,
     }
 
 
-def error_response(message: str) -> Dict[str, Any]:
+def error_response(message: str, query: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
-        "status": "error",
-        "message": message,
+        'status': 'error',
+        'reason': message,
+        'query': query or {},
     }
 
 
-def object_response(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return ok_response({
-        "type": "object",
-        "object": payload.get("object"),
-        "level": payload.get("level"),
-        "period": payload.get("period"),
-
-        "anchor": payload.get("anchor", []),
-        "vector": payload.get("vector", {}),
-        "reasons": payload.get("reasons", []),
-        "solutions": payload.get("solutions", []),
-    })
-
-
-def list_response(items):
-    return ok_response({
-        "type": "list",
-        "items": items,
-    })
-
-
-def drain_response(items):
-    return ok_response({
-        "type": "drain",
-        "items": items,
-    })
+def not_implemented_response(query: Optional[Dict[str, Any]], message: str) -> Dict[str, Any]:
+    return {
+        'status': 'error',
+        'reason': message,
+        'query': query or {},
+        'not_implemented': True,
+    }
