@@ -1,34 +1,35 @@
 import requests
 from app.config import SHEET_URL
 
-GOOGLE_SHEETS_EDIT_TOKEN = '/edit'
-GOOGLE_SHEETS_EXPORT_TOKEN = '/export?format=csv'
-
-# 🔴 CACHE
 CSV_TEXT_CACHE = None
-
-
-def normalize_sheet_url(url: str) -> str:
-    if GOOGLE_SHEETS_EDIT_TOKEN in url and 'format=csv' not in url:
-        return url.replace(GOOGLE_SHEETS_EDIT_TOKEN, GOOGLE_SHEETS_EXPORT_TOKEN)
-    return url
 
 
 def get_csv_text() -> str:
     global CSV_TEXT_CACHE
 
-    # 🔴 ЕСЛИ УЖЕ ЗАГРУЖАЛИ — ВЕРНУТЬ ИЗ CACHE
     if CSV_TEXT_CACHE is not None:
         return CSV_TEXT_CACHE
 
     if not SHEET_URL:
-        raise ValueError('VECTRA_GOOGLE_SHEET_URL is empty')
+        raise ValueError("SHEET_URL is empty")
 
-    url = normalize_sheet_url(SHEET_URL)
+    url = SHEET_URL
+
+    # 🔴 ГАРАНТИЯ CSV
+    if "/edit" in url:
+        url = url.replace("/edit", "/export?format=csv")
 
     response = requests.get(url)
-    response.raise_for_status()
 
-    CSV_TEXT_CACHE = response.content.decode("utf-8-sig")
+    if response.status_code != 200:
+        raise Exception(f"Failed to load sheet: {response.status_code}")
+
+    text = response.text
+
+    # 🔴 ПРОВЕРКА: НЕ HTML ЛИ ЭТО
+    if "<html" in text.lower():
+        raise Exception("Google Sheet is not публичный или ссылка неверная")
+
+    CSV_TEXT_CACHE = text
 
     return CSV_TEXT_CACHE
