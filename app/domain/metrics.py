@@ -304,3 +304,77 @@ def detect_suggested_action(status: str, priority: str, top_drain_metric: Option
     if status == 'critical':
         return 'провалиться глубже по дренажу'
     return 'контроль без эскалации'
+# =========================
+# WHAT-IF (РЕШЕНИЯ)
+# =========================
+
+def simulate_margin_improvement(object_metrics: Dict[str, float], percent_change: float) -> float:
+    """
+    Если поднять маржу (или цену) на X%
+    → сколько даст денег
+    """
+    revenue = float(object_metrics.get("revenue", 0.0) or 0.0)
+    if revenue <= 0:
+        return 0.0
+
+    return round_money(revenue * (percent_change / 100.0))
+
+
+def simulate_cost_reduction(cost_value: float, percent_change: float) -> float:
+    """
+    Если снизить затраты на X%
+    """
+    value = float(cost_value or 0.0)
+    if value <= 0:
+        return 0.0
+
+    return round_money(value * (percent_change / 100.0))
+
+
+def build_solutions_from_effects(
+    object_metrics: Dict[str, float],
+    effects: Dict[str, float],
+) -> list:
+    """
+    Генерация управленческих решений:
+    → показывает что сделать и сколько это даст
+    """
+    solutions = []
+
+    for metric, value in effects.items():
+        impact = float(value or 0.0)
+
+        if impact <= 0:
+            continue
+
+        # 🔷 НАЦЕНКА / МАРЖА (через revenue)
+        if metric in ("margin", "markup"):
+            effect = simulate_margin_improvement(object_metrics, 5)
+
+            solutions.append({
+                "metric": metric,
+                "action": "поднять цену на 5%",
+                "effect": effect,
+            })
+
+        # 🔷 ЗАТРАТЫ
+        elif metric in ("logistics_cost", "personnel_cost", "other_costs"):
+            effect = simulate_cost_reduction(object_metrics.get(metric), 5)
+
+            solutions.append({
+                "metric": metric,
+                "action": "снизить на 5%",
+                "effect": effect,
+            })
+
+        # 🔷 РЕТРОБОНУС
+        elif metric == "retro_bonus":
+            effect = simulate_margin_improvement(object_metrics, 2)
+
+            solutions.append({
+                "metric": metric,
+                "action": "добрать +2%",
+                "effect": effect,
+            })
+
+    return solutions
