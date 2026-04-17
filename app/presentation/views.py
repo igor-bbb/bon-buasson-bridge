@@ -571,7 +571,13 @@ def _build_decision_view(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 
-
+def _prune_nones(obj):
+    if isinstance(obj, dict):
+        return {k: _prune_nones(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [_prune_nones(v) for v in obj if v is not None]
+    else:
+        return obj
 def build_object_view(payload: Dict[str, Any], drain_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     level = payload.get('level')
     source = drain_payload if isinstance(drain_payload, dict) else payload
