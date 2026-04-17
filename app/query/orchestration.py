@@ -31,7 +31,6 @@ from app.domain.drilldown import (
 from app.domain.filters import get_normalized_rows
 from app.presentation.contracts import error_response, not_implemented_response, ok_response
 from app.presentation.views import (
-    build_comparison_management_view,
     build_list_view,
     build_losses_view_from_children,
     build_object_view,
@@ -837,12 +836,7 @@ def _route_base_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
         if 'error' in previous:
             return error_response(previous['error'], query)
 
-        response = ok_response(query, build_comparison_management_view(query, sanitize_payload(current), sanitize_payload(previous)))
-        if response.get('status') == 'ok':
-            _store_scope(session_id, level, object_name, period, previous_period, mode, existing_filter=(current.get('filter') or query.get('filter_payload')), push_to_stack=True)
-            save_session_state(session_id, last_response_type='comparison', last_list_level=None, last_list_items=[], full_view=False)
-            save_last_payload(session_id, response)
-        return response
+        return not_implemented_response('comparison mode removed; use summary endpoints', query)
 
     if query.get('query_type') == 'reasons':
         response = ok_response(query, build_reasons_view(sanitize_payload(current)))
