@@ -205,36 +205,50 @@ def _normalize_reasons(payload, structure_items):
     raw = payload.get('reasons_block')
     if raw is None:
         return None
+
     struct_map = {str(item.get('name')).lower(): item for item in structure_items}
     struct_map.setdefault('прочее', struct_map.get('прочие', {}))
     struct_map.setdefault('прочие', struct_map.get('прочее', {}))
+
     items = []
+
     if isinstance(raw, list):
         for entry in raw:
             if not isinstance(entry, dict):
                 continue
+
             raw_name = entry.get('name')
             name = STRUCTURE_NAME_MAP.get(str(raw_name), str(raw_name))
+
+            if name in ("Прочее", "прочее"):
+                name = "Прочие"
+
             base = struct_map.get(str(name).lower(), {})
+
             money = entry.get('money')
             percent = entry.get('percent')
             base_percent = entry.get('base_percent')
             effect_money = entry.get('effect_money', base.get('effect_money'))
+
             if (_num(money) == 0.0 and _num(effect_money) != 0.0 and base):
                 money = base.get('money')
+
             if (_num(percent) == 0.0 and _num(effect_money) != 0.0 and base):
                 percent = base.get('percent')
+
             if (_num(base_percent) == 0.0 and _num(effect_money) != 0.0 and base):
                 base_percent = base.get('base_percent')
+
             items.append({
-                'name': normalized_name,
+                'name': name,
                 'money': _num(money, _num(base.get('money'))),
                 'percent': _num(percent, _num(base.get('percent'))),
                 'base_percent': _num(base_percent, _num(base.get('base_percent'))),
                 'effect_money': _num(effect_money, _num(base.get('effect_money'))),
                 'is_main_driver': bool(entry.get('is_main_driver', base.get('is_main_driver', False))),
             })
-        return items
+
+    return items
     return None
 
 
