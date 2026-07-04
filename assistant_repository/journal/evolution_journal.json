@@ -1,0 +1,18 @@
+[
+  {
+    "entry_id": "ej-9e2babd290d6",
+    "created_at": "2026-07-04T08:13:01Z",
+    "source": "release_seed",
+    "object_changed": "VECTRA internal assistant runtime",
+    "decision": "Assistant Runtime Repository Foundation created inside VECTRA.",
+    "rationale": "Product Owner requires VECTRA to be the persistent professional workspace of Product Team Assistant, not a separate digital organization platform.",
+    "consequences": [],
+    "related_documents": [
+      "VECTRA Core Constitution",
+      "Digital Organization Runtime",
+      "Assistant Runtime Repository Foundation"
+    ],
+    "status": "confirmed",
+    "metadata": {}
+  }
+]
