@@ -1,0 +1,121 @@
+{
+  "snapshot_id": "snapshot-20260704T120000Z-runtime0003",
+  "created_at": "2026-07-04T12:00:00Z",
+  "release": "VECTRA-RUNTIME-0003",
+  "state": {
+    "repository_version": "VECTRA-RUNTIME-0003",
+    "identity_root": {
+      "name": "VECTRA",
+      "type": "living_business_management_system",
+      "role": "digital organization and universal business management methodology",
+      "mission": "turn business data into understanding, decisions, action, feedback and reusable corporate memory"
+    },
+    "professional_model": {
+      "name": "Product Team Assistant",
+      "role": "internal professional interaction model of VECTRA for Product Owner and product development work",
+      "status": "internal_vectra_model_not_separate_product"
+    },
+    "interface_model": {
+      "gpt_role": "intelligent interface for human interaction with VECTRA",
+      "laboratory_role": "development environment where future VECTRA versions are designed and accepted",
+      "production_role": "working VECTRA environment where business and internal runtime operate"
+    },
+    "architectural_principle": "VECTRA is the digital organization; Product Team Assistant is its professional model; GPT is the interface.",
+    "active_standards": [
+      "VECTRA Core Constitution",
+      "Digital Communication Standard",
+      "Self Evolution",
+      "Professional Activity",
+      "Digital Organization Protocol",
+      "VECTRA Runtime Repository",
+      "Natural Command Guidance",
+      "Write Readback Verification"
+    ],
+    "open_responsibilities": [],
+    "active_decisions": [],
+    "last_recovery_snapshot_id": "snapshot-20260704T120000Z-runtime0003",
+    "updated_at": "2026-07-04T12:00:00Z"
+  },
+  "runtime": {
+    "status": "ready",
+    "release": "VECTRA-RUNTIME-0003",
+    "last_integrity_check": "2026-07-04T12:00:00Z",
+    "blocking_issues": [],
+    "capabilities": [
+      "recovery_bundle",
+      "state_read_write",
+      "evolution_journal_append",
+      "knowledge_document_upsert",
+      "product_decision_record",
+      "recovery_snapshot_create",
+      "runtime_execution_engine",
+      "impact_analysis",
+      "transparent_product_owner_report",
+      "work_shift_start_close",
+      "pending_approvals",
+      "natural_command_guidance",
+      "guided_readback",
+      "write_readback_verification",
+      "vectra_identity_root"
+    ]
+  },
+  "knowledge_documents": [
+    {
+      "document_id": "vectra-runtime-0001-assistant-repository-foundation",
+      "title": "VECTRA-RUNTIME-0001 Assistant Runtime Repository Foundation",
+      "folder": "architecture",
+      "status": "active",
+      "path": "knowledge/architecture/vectra-runtime-0001-assistant-repository-foundation.md",
+      "version": 1,
+      "created_at": "2026-07-04T08:13:01Z",
+      "updated_at": "2026-07-04T08:13:01Z",
+      "metadata": {}
+    }
+  ],
+  "recent_journal_entries": [
+    {
+      "entry_id": "ej-runtime0001-seed",
+      "created_at": "2026-07-04T08:13:01Z",
+      "source": "release_seed",
+      "object_changed": "VECTRA runtime repository",
+      "decision": "Assistant Runtime Repository Foundation created inside VECTRA.",
+      "rationale": "Product Owner requires VECTRA to be the persistent professional workspace, not a separate digital organization platform.",
+      "consequences": [
+        "Runtime repository exists as internal VECTRA workspace."
+      ],
+      "related_documents": [
+        "VECTRA Core Constitution",
+        "Assistant Runtime Repository Foundation"
+      ],
+      "status": "confirmed",
+      "metadata": {
+        "release": "VECTRA-RUNTIME-0001"
+      }
+    },
+    {
+      "entry_id": "ej-runtime0003-identity-guidance",
+      "created_at": "2026-07-04T12:00:00Z",
+      "source": "release_seed",
+      "object_changed": "VECTRA identity and command interaction model",
+      "decision": "VECTRA becomes the identity root; Product Team Assistant becomes an internal professional model; Product Owner uses natural language commands.",
+      "rationale": "Product Owner must not remember technical commands, and Runtime must be able to read back what was written.",
+      "consequences": [
+        "Natural Command Guidance added.",
+        "Readback Verification added.",
+        "VECTRA read endpoints added."
+      ],
+      "related_documents": [
+        "VECTRA-RUNTIME-0003 Natural Command Guidance & Readback Verification"
+      ],
+      "status": "confirmed",
+      "metadata": {
+        "release": "VECTRA-RUNTIME-0003"
+      }
+    }
+  ],
+  "decisions": [],
+  "responsibilities": [],
+  "metadata": {
+    "purpose": "Clean recovery seed after VECTRA identity migration and natural command guidance."
+  }
+}

@@ -1,0 +1,41 @@
+[
+  {
+    "entry_id": "ej-runtime0001-seed",
+    "created_at": "2026-07-04T08:13:01Z",
+    "source": "release_seed",
+    "object_changed": "VECTRA runtime repository",
+    "decision": "Assistant Runtime Repository Foundation created inside VECTRA.",
+    "rationale": "Product Owner requires VECTRA to be the persistent professional workspace, not a separate digital organization platform.",
+    "consequences": [
+      "Runtime repository exists as internal VECTRA workspace."
+    ],
+    "related_documents": [
+      "VECTRA Core Constitution",
+      "Assistant Runtime Repository Foundation"
+    ],
+    "status": "confirmed",
+    "metadata": {
+      "release": "VECTRA-RUNTIME-0001"
+    }
+  },
+  {
+    "entry_id": "ej-runtime0003-identity-guidance",
+    "created_at": "2026-07-04T12:00:00Z",
+    "source": "release_seed",
+    "object_changed": "VECTRA identity and command interaction model",
+    "decision": "VECTRA becomes the identity root; Product Team Assistant becomes an internal professional model; Product Owner uses natural language commands.",
+    "rationale": "Product Owner must not remember technical commands, and Runtime must be able to read back what was written.",
+    "consequences": [
+      "Natural Command Guidance added.",
+      "Readback Verification added.",
+      "VECTRA read endpoints added."
+    ],
+    "related_documents": [
+      "VECTRA-RUNTIME-0003 Natural Command Guidance & Readback Verification"
+    ],
+    "status": "confirmed",
+    "metadata": {
+      "release": "VECTRA-RUNTIME-0003"
+    }
+  }
+]
