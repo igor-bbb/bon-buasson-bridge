@@ -1,0 +1,26 @@
+[
+  {
+    "report_id": "RECOVERY-REPORT-20260705T173744Z-9dbed2d4",
+    "created_at": "2026-07-05T17:37:44Z",
+    "identity_root": "VECTRA",
+    "recovery_evolution_release": "GENESIS-0007",
+    "reason": "local_engineering_check",
+    "checkpoint_id": "RECOVERY-CHECKPOINT-20260705T173744Z-48084839",
+    "snapshot_id": "snapshot-20260705T173744Z-a0d2bc",
+    "readback_status": "PASS",
+    "overall": "PASS",
+    "restored_scope": {
+      "professional_model": true,
+      "professional_state": true,
+      "active_responsibilities": true,
+      "product_decisions": true,
+      "runtime": true
+    },
+    "boundaries": {
+      "professional_model_unchanged": true,
+      "reflection_triggered_automatically": false,
+      "knowledge_consolidation_triggered": false,
+      "automatic_product_decisions": false
+    }
+  }
+]
