@@ -1,0 +1,11 @@
+{
+  "status": "active",
+  "release": "VECTRA-RUNTIME-0001",
+  "purpose": "Persistent professional memory and operating environment for Product Team Assistant inside VECTRA.",
+  "repository_is": "internal VECTRA runtime workspace",
+  "repository_is_not": "separate digital organization platform",
+  "storage_model": "file-based JSON/Markdown foundation, replaceable by database or Git-backed persistence later",
+  "created_at": "2026-07-04T08:13:01Z",
+  "runtime_execution_release": "VECTRA-RUNTIME-0002",
+  "transparent_control_principle": "Automation removes manual execution, not Product Owner control."
+}
