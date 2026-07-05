@@ -1,0 +1,1 @@
+# GENESIS-0004 Release Brief\nImplemented Knowledge Consolidation Foundation.
