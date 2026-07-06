@@ -1,0 +1,86 @@
+[
+  {
+    "decision_id": "pd-7011fd0d559e",
+    "created_at": "2026-07-04T12:26:21Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  },
+  {
+    "decision_id": "pd-9928e96b7b5d",
+    "created_at": "2026-07-04T12:26:21Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  },
+  {
+    "decision_id": "pd-e1abbb0c52dd",
+    "created_at": "2026-07-04T12:26:49Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  },
+  {
+    "decision_id": "pd-ccc518987a1b",
+    "created_at": "2026-07-04T12:26:49Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  },
+  {
+    "decision_id": "pd-0e1a067a6179",
+    "created_at": "2026-07-04T13:27:04Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  },
+  {
+    "decision_id": "pd-6ed3d984b005",
+    "created_at": "2026-07-04T13:27:04Z",
+    "title": "Runtime Product Verification Probe",
+    "decision": "Проверить, что Runtime VECTRA умеет записывать и читать собственные объекты памяти.",
+    "management_purpose": "Независимая Product Verification через Runtime.",
+    "status": "confirmed",
+    "owner": "Product Owner",
+    "related_documents": [],
+    "metadata": {
+      "verification_probe": true,
+      "release": "VECTRA-RUNTIME-0004"
+    }
+  }
+]
