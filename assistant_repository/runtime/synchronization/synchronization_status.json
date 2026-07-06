@@ -1,0 +1,22 @@
+{
+  "status": "active",
+  "identity_root": "VECTRA",
+  "synchronization_release": "GENESIS-0008",
+  "mode": "laboratory_to_working_vectra_package_preparation",
+  "packages_count": 0,
+  "reports_count": 0,
+  "approved_candidates_available": 0,
+  "professional_model_id": "vectra-professional-model-root",
+  "professional_model_updated_at": "2026-07-05T13:03:28Z",
+  "latest_recovery_checkpoint_id": "RECOVERY-CHECKPOINT-20260705T173744Z-48084839",
+  "latest_recovery_snapshot_id": "snapshot-20260705T173744Z-a0d2bc",
+  "boundaries": {
+    "professional_model_unchanged": true,
+    "working_vectra_not_modified_automatically": true,
+    "reflection_triggered_automatically": false,
+    "knowledge_consolidation_triggered": false,
+    "automatic_product_decisions": false,
+    "product_owner_approval_required_for_apply": true
+  },
+  "updated_at": "2026-07-06T05:41:20Z"
+}
