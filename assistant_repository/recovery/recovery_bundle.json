@@ -1,9 +1,0 @@
-{
-  "bundle_id": "recovery-bundle-root",
-  "identity_root": "VECTRA",
-  "created_at": "2026-07-04T12:26:21Z",
-  "updated_at": "2026-07-06T06:46:41Z",
-  "purpose": "Restore VECTRA working state from Runtime Repository.",
-  "last_snapshot_id": "snapshot-20260705T173744Z-a0d2bc",
-  "status": "active"
-}
