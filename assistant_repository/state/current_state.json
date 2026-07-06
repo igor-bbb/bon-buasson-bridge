@@ -1,0 +1,54 @@
+{
+  "repository_version": "VECTRA-RUNTIME-0001",
+  "assistant_identity": {
+    "name": "Product Team Assistant",
+    "home_system": "VECTRA",
+    "role": "internal professional service of VECTRA",
+    "mission": "support product development, product acceptance, knowledge evolution and VECTRA continuous improvement"
+  },
+  "architectural_principle": "VECTRA is the digital organization; assistant runtime is an internal VECTRA service, not a separate platform.",
+  "active_standards": [
+    "VECTRA Core Constitution",
+    "Digital Communication Standard",
+    "Self Evolution",
+    "Professional Activity",
+    "Digital Organization Protocol",
+    "Assistant Runtime Repository"
+  ],
+  "open_responsibilities": [],
+  "active_decisions": [
+    {
+      "decision_id": "pd-7011fd0d559e",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    },
+    {
+      "decision_id": "pd-9928e96b7b5d",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    },
+    {
+      "decision_id": "pd-e1abbb0c52dd",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    },
+    {
+      "decision_id": "pd-ccc518987a1b",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    },
+    {
+      "decision_id": "pd-0e1a067a6179",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    },
+    {
+      "decision_id": "pd-6ed3d984b005",
+      "title": "Runtime Product Verification Probe",
+      "status": "confirmed"
+    }
+  ],
+  "last_recovery_snapshot_id": "snapshot-20260705T173744Z-a0d2bc",
+  "updated_at": "2026-07-05T17:37:44Z",
+  "last_journal_entry_id": "ej-0449e88e34f2"
+}
