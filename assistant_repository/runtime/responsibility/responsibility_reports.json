@@ -1,0 +1,54 @@
+[
+  {
+    "report_id": "RESP-REPORT-20260705T172253Z-f6ec7dfb",
+    "created_at": "2026-07-05T17:22:53Z",
+    "identity_root": "VECTRA",
+    "responsibility_release": "GENESIS-0006",
+    "reason": "local_test",
+    "responsibilities_total": 4,
+    "checks": [
+      {
+        "responsibility_id": "RESP-RUNTIME-OBSERVABILITY",
+        "title": "Maintain Runtime Observability",
+        "status": "ACTIVE",
+        "check_status": "PASS",
+        "owner": "VECTRA Runtime",
+        "verification_method": "Runtime Snapshot and readback verification"
+      },
+      {
+        "responsibility_id": "RESP-PROFESSIONAL-REFLECTION",
+        "title": "Prepare Professional Reflection",
+        "status": "ACTIVE",
+        "check_status": "PASS",
+        "owner": "VECTRA Runtime",
+        "verification_method": "Reflection Reports and Knowledge Candidate Repository"
+      },
+      {
+        "responsibility_id": "RESP-KNOWLEDGE-CONSOLIDATION-CONTROL",
+        "title": "Preserve Product Owner control over Knowledge Consolidation",
+        "status": "WATCH",
+        "check_status": "PASS",
+        "owner": "VECTRA Runtime",
+        "verification_method": "Consolidation boundary check and Professional Model readback"
+      },
+      {
+        "responsibility_id": "RESP-PROFESSIONAL-OBSERVATION",
+        "title": "Capture Professional Observations",
+        "status": "ACTIVE",
+        "check_status": "PASS",
+        "owner": "VECTRA Runtime",
+        "verification_method": "Observation Repository and Observation Reports"
+      }
+    ],
+    "blocked_count": 0,
+    "overall": "PASS",
+    "boundaries": {
+      "professional_model_unchanged": true,
+      "reflection_triggered_automatically": false,
+      "knowledge_consolidation_triggered": false,
+      "automatic_product_decisions": false
+    },
+    "professional_model_readable_after_check": true,
+    "professional_model_modified_by_responsibility_engine": false
+  }
+]
