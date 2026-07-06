@@ -1,0 +1,16 @@
+{
+  "status": "active",
+  "identity_root": "VECTRA",
+  "recovery_evolution_release": "GENESIS-0007",
+  "professional_model_sections_count": 9,
+  "has_professional_state": true,
+  "has_recovery_bundle": true,
+  "latest_recovery_snapshot_id": "snapshot-20260705T173744Z-a0d2bc",
+  "checkpoints_count": 1,
+  "reports_count": 1,
+  "professional_model_unchanged": true,
+  "reflection_triggered_automatically": false,
+  "knowledge_consolidation_triggered": false,
+  "automatic_product_decisions": false,
+  "updated_at": "2026-07-05T19:07:35Z"
+}
