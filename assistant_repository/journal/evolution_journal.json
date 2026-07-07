@@ -1,0 +1,70 @@
+[
+  {
+    "entry_id": "knowledge-capitalization-e63cf241b6",
+    "timestamp": "2026-07-07T07:23:12Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072312Z-b0201d",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-a927816298",
+    "timestamp": "2026-07-07T07:23:22Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072322Z-48a607",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-5b8def756d",
+    "timestamp": "2026-07-07T07:23:54Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072354Z-d3f015",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-7ec498aa21",
+    "timestamp": "2026-07-07T08:08:30Z",
+    "release": "FOUNDATION-0012",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T080830Z-3c8e3f",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-149fa2d845",
+    "timestamp": "2026-07-07T11:17:15Z",
+    "release": "FOUNDATION-0013",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge BK-001 capitalized into business_domains/bonboason/business_knowledge.json.",
+    "package_id": "KCAP-20260707T111715Z-eeca29",
+    "knowledge_id": "BK-001",
+    "knowledge_type": "business",
+    "domain": "bonboason"
+  },
+  {
+    "entry_id": "knowledge-capitalization-87a5337c4b",
+    "timestamp": "2026-07-07T11:18:32Z",
+    "release": "FOUNDATION-0013",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge BK-001 capitalized into business_domains/bonboason/business_knowledge.json.",
+    "package_id": "KCAP-20260707T111832Z-2bb5d6",
+    "knowledge_id": "BK-001",
+    "knowledge_type": "business",
+    "domain": "bonboason"
+  }
+]
