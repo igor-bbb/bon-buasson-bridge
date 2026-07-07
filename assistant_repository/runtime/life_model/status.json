@@ -1,9 +1,0 @@
-{
-  "status": "active",
-  "release": "FOUNDATION-0007",
-  "life_model_id": "vectra-life-model-root",
-  "source_of_truth": "Runtime Repository",
-  "professional_model_auto_update": false,
-  "product_owner_approval_required": true,
-  "updated_at": "2026-07-07T07:23:12Z"
-}
