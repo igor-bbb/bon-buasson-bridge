@@ -1,0 +1,180 @@
+{
+  "domain_id": "bonboason",
+  "release": "FOUNDATION-0006",
+  "status": "active",
+  "created_at": "2026-07-07T18:39:15Z",
+  "updated_at": "2026-07-07T18:40:43Z",
+  "domain_identity": {
+    "business_name": "Bonboason",
+    "canonical_name": "Бон Буассон",
+    "purpose": "Professional business domain for commercial management of Bonboason FMCG beverage business.",
+    "description": "Bonboason Domain stores persistent business context, decision logic, vocabulary, product history, active projects and recovery state for the first VECTRA business domain.",
+    "status": "active"
+  },
+  "business_model": {
+    "commercial_model": "FMCG beverage manufacturer working through Modern Trade, regional distributors and contract/customer workspaces. Main management object is profit, not report viewing.",
+    "management_levels": [
+      "Business",
+      "Top Manager / DMRS / National Manager",
+      "Manager / CAM / KAM",
+      "Network / Contract",
+      "Category",
+      "TMC Group",
+      "Format",
+      "SKU",
+      "Negotiation",
+      "Task",
+      "Feedback"
+    ],
+    "decision_flow": [
+      "DATA",
+      "Context",
+      "Understanding",
+      "Priorities",
+      "Decision",
+      "Action",
+      "Execution",
+      "Feedback",
+      "Learning"
+    ],
+    "core_processes": [
+      "business profit management",
+      "contract development",
+      "assortment development",
+      "negotiation preparation",
+      "task execution control",
+      "result feedback",
+      "corporate learning"
+    ]
+  },
+  "organizational_model": {
+    "roles": [
+      "Commercial Director",
+      "Top Manager / DMRS",
+      "National Manager",
+      "CAM / KAM",
+      "Territorial Manager",
+      "Trade Marketing",
+      "Logistics",
+      "Finance",
+      "Executor"
+    ],
+    "responsibility_principle": "Every business object has an owner. VECTRA strengthens the owner of the current Workspace.",
+    "structure_notes": "Commercial work is interpreted through responsibility levels and business objects, not through static screen navigation."
+  },
+  "business_vocabulary": {
+    "business": "верхний контур анализа результата бизнеса",
+    "manager_top": "руководитель направления / зона ответственности",
+    "manager": "CAM / KAM / владелец портфеля контрактов",
+    "network": "сеть / клиент / контракт / контрагент",
+    "contract": "рабочий стол клиента, где принимается коммерческое решение",
+    "category": "категория продукта как уровень ассортиментного развития",
+    "tmc_group": "продуктовая линейка / группа ТМС",
+    "format": "формат упаковки или продуктовый формат: 2 л, 1 л, 0.5 л, 5 л и т.д.",
+    "sku": "атом системы и объект доказательной базы",
+    "route": "маршрут управленческого действия, а не механическая навигация",
+    "trade_marketing": "контур промо, полки, активности и поддержки продаж",
+    "retro": "коммерческое условие контракта, анализируется как управляемый фактор только с контекстом",
+    "finrez_pre": "главный денежный KPI до распределений",
+    "margin_pre": "маржа до, качество прибыли относительно оборота",
+    "markup": "наценка, модель доходности относительно себестоимости"
+  },
+  "decision_model": {
+    "principles": [
+      "Navigation is built around decisions, not organizational structure.",
+      "Business, Manager, Network and SKU are professional views of one business, not isolated screens.",
+      "Analysis starts from the purpose of the decision, then examines indicators.",
+      "The main driver is more important than a list of symptoms.",
+      "Profit is the primary management object.",
+      "Before interpreting finance, VECTRA checks whether the structure of the object changed.",
+      "Workspace must provide enough context to make a management decision without forcing the user into extra reports.",
+      "Recommendations require evidence: data, comparison, money effect and management interpretation.",
+      "Professional Model and identity-level changes require Product Owner confirmation."
+    ],
+    "analysis_sequence": [
+      "purpose",
+      "performance",
+      "structure",
+      "drivers",
+      "business context",
+      "opportunity",
+      "priority",
+      "decision",
+      "action"
+    ],
+    "product_review_question": "What new professional value can VECTRA safely bring to Bonboason after this change?"
+  },
+  "business_knowledge": [
+    {
+      "knowledge_id": "bonboason-domain-knowledge-001",
+      "status": "confirmed",
+      "content": "Bonboason Domain is the first Business Domain and separates business-specific context from VECTRA Professional Identity."
+    },
+    {
+      "knowledge_id": "bonboason-domain-knowledge-002",
+      "status": "confirmed",
+      "content": "GPT is an interaction interface. Runtime Repository is the source of persistent professional state."
+    }
+  ],
+  "product_decisions": [
+    {
+      "decision_id": "bonboason-product-decision-001",
+      "status": "confirmed",
+      "content": "Network is interpreted as Contract/Client/Counterparty, not as a purely assortment object."
+    },
+    {
+      "decision_id": "bonboason-product-decision-002",
+      "status": "confirmed",
+      "content": "Format is a professional analysis level between TMC Group and SKU."
+    },
+    {
+      "decision_id": "bonboason-product-decision-003",
+      "status": "confirmed",
+      "content": "Workspace must lead to decisions and actions; it is not a BI report."
+    }
+  ],
+  "evolution_journal": [
+    {
+      "entry_id": "bonboason-evolution-001",
+      "timestamp": "2026-07-07T18:39:15Z",
+      "release": "FOUNDATION-0006",
+      "status": "confirmed",
+      "summary": "Bonboason Business Domain created as the first professional subject area of VECTRA."
+    }
+  ],
+  "active_projects": [
+    {
+      "project_id": "bonboason-active-project-001",
+      "title": "VECTRA Bonboason Domain Formation",
+      "status": "active",
+      "purpose": "Move Bonboason context from chat memory into Runtime Domain Profile."
+    }
+  ],
+  "domain_recovery_snapshot": {
+    "snapshot_id": "bonboason-domain-recovery-root",
+    "domain_id": "bonboason",
+    "status": "ready",
+    "release": "FOUNDATION-0006",
+    "created_at": "2026-07-07T18:39:15Z",
+    "purpose": "Restore Business Domain professional state from Runtime Repository without using chat memory.",
+    "contains": [
+      "domain_identity",
+      "business_model",
+      "organizational_model",
+      "business_vocabulary",
+      "decision_model",
+      "business_knowledge",
+      "product_decisions",
+      "evolution_journal",
+      "active_projects"
+    ]
+  },
+  "protection": {
+    "is_knowledge_repository": false,
+    "professional_model_auto_update": false,
+    "product_owner_approval_required_for_identity_changes": true,
+    "switching_domain_changes_vectra_identity": false
+  },
+  "business_knowledge_repository": "business_domains/bonboason/business_knowledge.json",
+  "business_knowledge_last_updated": "2026-07-07T18:40:43Z"
+}
