@@ -1,0 +1,35 @@
+[
+  {
+    "entry_id": "knowledge-capitalization-e63cf241b6",
+    "timestamp": "2026-07-07T07:23:12Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072312Z-b0201d",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-a927816298",
+    "timestamp": "2026-07-07T07:23:22Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072322Z-48a607",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  },
+  {
+    "entry_id": "knowledge-capitalization-5b8def756d",
+    "timestamp": "2026-07-07T07:23:54Z",
+    "release": "FOUNDATION-0010",
+    "status": "CAPITALIZED",
+    "event_type": "knowledge_capitalization",
+    "summary": "Knowledge PK-001 capitalized into knowledge/professional_knowledge.json.",
+    "package_id": "KCAP-20260707T072354Z-d3f015",
+    "knowledge_id": "PK-001",
+    "knowledge_type": "professional"
+  }
+]
