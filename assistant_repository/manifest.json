@@ -1,9 +1,0 @@
-{
-  "status": "active",
-  "release": "GENESIS-0001",
-  "purpose": "Persistent professional memory and operating environment for VECTRA.",
-  "repository_is": "internal VECTRA runtime workspace",
-  "repository_is_not": "separate digital organization platform",
-  "storage_model": "file-based JSON/Markdown foundation, replaceable by database or Git-backed persistence later",
-  "created_at": "2026-07-07T07:23:12Z"
-}
