@@ -258,6 +258,18 @@ from app.assistant_runtime.memory_health import (
     get_memory_diagnostics_report as get_vectra_memory_diagnostics_report,
     verify_memory_health as verify_vectra_memory_health,
 )
+from app.assistant_runtime.architecture_conformance import (
+    get_architecture_conformance_report as get_vectra_architecture_conformance_report,
+    verify_architecture_conformance as verify_vectra_architecture_conformance,
+)
+from app.assistant_runtime.recovery_optimization import (
+    build_compact_recovery_context as build_vectra_compact_recovery_context,
+    verify_recovery_optimization as verify_vectra_recovery_optimization,
+)
+from app.assistant_runtime.professional_memory_validation import (
+    run_professional_memory_e2e_validation as run_vectra_professional_memory_e2e_validation,
+    verify_professional_memory_program as verify_vectra_professional_memory_program,
+)
 from app.assistant_runtime.general_knowledge import (
     list_general_knowledge as list_vectra_general_knowledge_runtime,
     get_general_knowledge as get_vectra_general_knowledge_runtime,
@@ -7580,6 +7592,12 @@ _LABORATORY_KNOWLEDGE_PATHS = {
     '/vectra/memory/health',
     '/vectra/memory/diagnostics',
     '/vectra/memory/health/verify',
+    '/vectra/memory/architecture-conformance',
+    '/vectra/memory/architecture-conformance/verify',
+    '/vectra/memory/recovery-optimized',
+    '/vectra/memory/recovery-optimized/verify',
+    '/vectra/memory/e2e-validation',
+    '/vectra/memory/e2e-validation/verify',
     '/vectra/memory/general-knowledge',
     '/vectra/memory/general-knowledge/{knowledge_id}',
     '/vectra/memory/general-knowledge/verify/readback',
@@ -7910,7 +7928,7 @@ _FACADE_ACTIONS = [
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
-    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History and Memory Health operations.'),
+    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
 ]
@@ -8076,8 +8094,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'MEMORY-IMPL-0007-0009-PRODUCT-MEMORY-HEALTH',
-            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. LABORATORY-KNOWLEDGE-0010-PV fixes GPT facade payload normalization so working_context/session material is passed into Runtime extraction before capitalization. VECTRA performs the professional session audit; Runtime accepts prepared packages and can also convert supplied session audit evidence into a normalized, deduplicated package, then performs incremental diff, safe batch persistence, readback verification and the final report.',
+            'version': 'MEMORY-IMPL-0013-0015-PROFESSIONAL-MEMORY-V1',
+            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -8093,7 +8111,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'MEMORY-IMPL-0007-0009',
+        'x-vectra-release': 'MEMORY-IMPL-0013-0015',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9350,11 +9368,59 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'memory_health.get_memory_diagnostics_report', '/vectra/memory/diagnostics', get_vectra_memory_diagnostics_report(domain=payload.get('domain') or domain)))
         if operation_type in {'verify_health', 'verify_memory_health'}:
             return json_response(_facade_response(operation_type, 'memory_health.verify_memory_health', '/vectra/memory/health/verify', verify_vectra_memory_health(domain=payload.get('domain') or domain)))
+        if operation_type in {'architecture_conformance', 'conformance', 'get_architecture_conformance'}:
+            return json_response(_facade_response(operation_type, 'architecture_conformance.get_architecture_conformance_report', '/vectra/memory/architecture-conformance', get_vectra_architecture_conformance_report(domain=payload.get('domain') or domain)))
+        if operation_type in {'verify_architecture_conformance', 'verify_conformance'}:
+            return json_response(_facade_response(operation_type, 'architecture_conformance.verify_architecture_conformance', '/vectra/memory/architecture-conformance/verify', verify_vectra_architecture_conformance(domain=payload.get('domain') or domain)))
+        if operation_type in {'recovery_optimized', 'compact_recovery', 'build_compact_recovery_context'}:
+            return json_response(_facade_response(operation_type, 'recovery_optimization.build_compact_recovery_context', '/vectra/memory/recovery-optimized', build_vectra_compact_recovery_context(domain=payload.get('domain') or domain, max_objects_per_space=int(payload.get('max_objects_per_space') or 5))))
+        if operation_type in {'verify_recovery_optimization', 'verify_compact_recovery'}:
+            return json_response(_facade_response(operation_type, 'recovery_optimization.verify_recovery_optimization', '/vectra/memory/recovery-optimized/verify', verify_vectra_recovery_optimization(domain=payload.get('domain') or domain)))
+        if operation_type in {'e2e_validation', 'end_to_end_validation', 'professional_memory_validation'}:
+            return json_response(_facade_response(operation_type, 'professional_memory_validation.run_professional_memory_e2e_validation', '/vectra/memory/e2e-validation', run_vectra_professional_memory_e2e_validation(domain=payload.get('domain') or domain)))
+        if operation_type in {'verify_professional_memory_program', 'verify_e2e_validation'}:
+            return json_response(_facade_response(operation_type, 'professional_memory_validation.verify_professional_memory_program', '/vectra/memory/e2e-validation/verify', verify_vectra_professional_memory_program(domain=payload.get('domain') or domain)))
         return json_response(_facade_error(operation_type, f'Unsupported memory operation_type: {operation_type}', runtime_service='memory_facade'))
     except Exception as exc:
         logger.exception('memory_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='memory_facade'))
 
+
+
+@router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
+def vectra_memory_architecture_conformance(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_architecture_conformance_report(domain=domain))
+
+
+@router.get('/vectra/memory/architecture-conformance/verify', summary='Verify VECTRA Memory Architecture Conformance')
+def vectra_memory_architecture_conformance_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_architecture_conformance(domain=domain))
+
+
+@router.get('/vectra/memory/recovery-optimized', summary='Build compact VECTRA Professional Memory recovery context')
+def vectra_memory_recovery_optimized(domain: str = 'bonboason', max_objects_per_space: int = 5, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(build_vectra_compact_recovery_context(domain=domain, max_objects_per_space=max_objects_per_space))
+
+
+@router.get('/vectra/memory/recovery-optimized/verify', summary='Verify compact VECTRA Professional Memory recovery context')
+def vectra_memory_recovery_optimized_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_recovery_optimization(domain=domain))
+
+
+@router.get('/vectra/memory/e2e-validation', summary='Run End-to-End Professional Memory validation')
+def vectra_memory_e2e_validation(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(run_vectra_professional_memory_e2e_validation(domain=domain))
+
+
+@router.get('/vectra/memory/e2e-validation/verify', summary='Verify Professional Memory v1.0 program completion')
+def vectra_memory_e2e_validation_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_memory_program(domain=domain))
 
 
 @router.get('/vectra/memory/general-knowledge', summary='List VECTRA General Knowledge Runtime objects')
