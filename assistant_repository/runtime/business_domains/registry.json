@@ -1,0 +1,18 @@
+{
+  "registry_id": "vectra-business-domain-registry-root",
+  "release": "FOUNDATION-0006",
+  "status": "active",
+  "created_at": "2026-07-07T18:39:15Z",
+  "updated_at": "2026-07-07T18:39:15Z",
+  "principle": "Business Domain is a professional model of a concrete business. It is not Knowledge Repository and does not change VECTRA Professional Identity.",
+  "domains": [
+    {
+      "domain_id": "bonboason",
+      "title": "Bonboason",
+      "status": "active",
+      "profile_path": "runtime/business_domains/bonboason/domain_profile.json",
+      "activation_phrase": "Работаем над Bonboason",
+      "purpose": "First professional subject area of VECTRA: business context, vocabulary, decision model, product history and active projects for Bonboason."
+    }
+  ]
+}
