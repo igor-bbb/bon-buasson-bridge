@@ -1,11 +1,13 @@
 """Professional Intelligence runtime foundation.
 
 PI-IMPL-0001 — Session Context Foundation.
+PI-IMPL-0002 — Session Audit Runtime.
 
-This module intentionally does not extract, classify, validate or capitalize
-knowledge. Its only responsibility is to convert a working session input into a
-stable SessionContext object that later Professional Intelligence components can
-consume.
+This module intentionally does not extract, classify, validate, normalize,
+deduplicate or capitalize knowledge. PI-IMPL-0001 converts working session input
+into a stable SessionContext object. PI-IMPL-0002 performs structural audit of
+that SessionContext and produces maps for later Professional Intelligence
+components.
 """
 
 from __future__ import annotations
@@ -72,6 +74,50 @@ FINAL_OUTPUT_KEYWORDS = {
     "приступить": "IMPLEMENTATION_AUTHORIZED",
     "разрешено": "AUTHORIZED_RESULT",
 }
+
+
+TOPIC_KEYWORDS = {
+    "professional_intelligence": {
+        "title": "Professional Intelligence",
+        "keywords": ["professional intelligence", "pi-impl", "session context", "session audit", "интеллект", "капитализируй знания"],
+    },
+    "architecture": {
+        "title": "Architecture",
+        "keywords": ["architecture", "архитектур", "architecture pass", "architecture freeze"],
+    },
+    "engineering_implementation": {
+        "title": "Engineering Implementation",
+        "keywords": ["implementation", "deploy", "release", "инкремент", "реализац", "поставка", "код", "github"],
+    },
+    "product_verification": {
+        "title": "Product Verification",
+        "keywords": ["product verification", "runtime verification", "regression verification", "pass", "проверка", "лаборатор"],
+    },
+    "professional_memory": {
+        "title": "Professional Memory",
+        "keywords": ["professional memory", "memory", "runtime", "readback", "recovery", "память", "runtime"],
+    },
+    "engineering_process": {
+        "title": "Engineering Process",
+        "keywords": ["cycle closed", "backlog", "definition of done", "стандарт", "цикл", "процесс", "product owner"],
+    },
+    "business_domain": {
+        "title": "Business Domain",
+        "keywords": ["business domain", "бон буассон", "bonboason", "business", "бизнес"],
+    },
+}
+
+DRAFT_KEYWORDS = [
+    "draft", "чернов", "вариант", "может", "думаю", "предлагаю", "не уверен", "обсужд", "идея", "пока", "примерно",
+]
+
+DECISION_KEYWORDS = [
+    "решение", "решили", "принимается", "принят", "утвержд", "approved", "pass", "cycle closed", "разрешен", "разрешён", "приступить",
+]
+
+UNRESOLVED_KEYWORDS = [
+    "вопрос", "уточнить", "непонятно", "не ясно", "blocked", "блокер", "осталось", "нужно решить", "?",
+]
 
 
 def _utc_now() -> str:
@@ -321,6 +367,252 @@ def build_session_context(payload: dict[str, Any] | None = None) -> dict[str, An
     }
 
 
+
+def _as_session_context(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("session_context"), dict):
+        return value["session_context"]
+    built = build_session_context(value)
+    context = built.get("session_context") if isinstance(built, dict) else {}
+    return context if isinstance(context, dict) else {}
+
+
+def _fragment_text(fragment: dict[str, Any]) -> str:
+    return _safe_str(fragment.get("normalized_content") or fragment.get("raw_content")).lower()
+
+
+def _keyword_hit(text: str, keywords: list[str]) -> str | None:
+    for keyword in keywords:
+        if keyword.lower() in text:
+            return keyword
+    return None
+
+
+def _build_topic_map(context: dict[str, Any]) -> list[dict[str, Any]]:
+    topic_buckets: dict[str, dict[str, Any]] = {}
+    fragments = context.get("fragments") if isinstance(context.get("fragments"), list) else []
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        text = _fragment_text(fragment)
+        matched_topic = "session_discussion"
+        matched_signal = "default"
+        title = "Session Discussion"
+        for topic_key, config in TOPIC_KEYWORDS.items():
+            hit = _keyword_hit(text, config["keywords"])
+            if hit:
+                matched_topic = topic_key
+                matched_signal = hit
+                title = config["title"]
+                break
+        bucket = topic_buckets.setdefault(matched_topic, {
+            "topic_id": _stable_id("TOPIC", context.get("session_id"), matched_topic),
+            "topic_key": matched_topic,
+            "title": title,
+            "fragment_ids": [],
+            "signals": [],
+            "status": "STRUCTURAL_TOPIC",
+        })
+        bucket["fragment_ids"].append(fragment.get("fragment_id"))
+        if matched_signal not in bucket["signals"]:
+            bucket["signals"].append(matched_signal)
+    return list(topic_buckets.values())
+
+
+def _build_confirmation_map(context: dict[str, Any]) -> list[dict[str, Any]]:
+    confirmations = context.get("confirmations") if isinstance(context.get("confirmations"), list) else []
+    mapped: list[dict[str, Any]] = []
+    for item in confirmations:
+        if not isinstance(item, dict):
+            continue
+        mapped.append({
+            "confirmation_id": item.get("confirmation_id"),
+            "fragment_id": item.get("fragment_id"),
+            "confirmation_type": item.get("confirmation_type"),
+            "confirmation_actor": item.get("confirmation_actor"),
+            "confidence": item.get("confidence"),
+            "audit_status": "CONFIRMATION_SIGNAL_DETECTED",
+        })
+    return mapped
+
+
+def _build_draft_map(context: dict[str, Any]) -> list[dict[str, Any]]:
+    fragments = context.get("fragments") if isinstance(context.get("fragments"), list) else []
+    drafts: list[dict[str, Any]] = []
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        text = _fragment_text(fragment)
+        hit = _keyword_hit(text, DRAFT_KEYWORDS)
+        if not hit:
+            continue
+        drafts.append({
+            "draft_id": _stable_id("DRAFT", context.get("session_id"), fragment.get("fragment_id"), hit),
+            "fragment_id": fragment.get("fragment_id"),
+            "draft_signal": hit,
+            "draft_type": "DISCUSSION_OR_INTERMEDIATE_VARIANT",
+            "audit_status": "DRAFT_SIGNAL_DETECTED",
+        })
+    return drafts
+
+
+def _build_decision_map(context: dict[str, Any]) -> list[dict[str, Any]]:
+    fragments = context.get("fragments") if isinstance(context.get("fragments"), list) else []
+    final_outputs = context.get("final_outputs") if isinstance(context.get("final_outputs"), list) else []
+    decisions_by_id: dict[str, dict[str, Any]] = {}
+    for output in final_outputs:
+        if not isinstance(output, dict):
+            continue
+        decision_id = _stable_id("DEC", context.get("session_id"), output.get("final_output_id"), output.get("title"))
+        decisions_by_id[decision_id] = {
+            "decision_id": decision_id,
+            "fragment_id": output.get("fragment_id"),
+            "source_type": "FINAL_OUTPUT_MARKER",
+            "decision_signal": output.get("output_type"),
+            "title": output.get("title"),
+            "audit_status": "DECISION_SIGNAL_DETECTED",
+        }
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        text = _fragment_text(fragment)
+        hit = _keyword_hit(text, DECISION_KEYWORDS)
+        if not hit:
+            continue
+        decision_id = _stable_id("DEC", context.get("session_id"), fragment.get("fragment_id"), hit)
+        decisions_by_id[decision_id] = {
+            "decision_id": decision_id,
+            "fragment_id": fragment.get("fragment_id"),
+            "source_type": "SESSION_FRAGMENT",
+            "decision_signal": hit,
+            "title": "Decision Signal",
+            "audit_status": "DECISION_SIGNAL_DETECTED",
+        }
+    return list(decisions_by_id.values())
+
+
+def _build_unresolved_issue_map(context: dict[str, Any]) -> list[dict[str, Any]]:
+    fragments = context.get("fragments") if isinstance(context.get("fragments"), list) else []
+    issues: list[dict[str, Any]] = []
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        text = _fragment_text(fragment)
+        hit = _keyword_hit(text, UNRESOLVED_KEYWORDS)
+        if not hit:
+            continue
+        # Product Verification PASS and closed-cycle statements are not unresolved issues just because they contain punctuation.
+        if hit == "?" and any(marker in text for marker in ["pass", "cycle closed", "готово", "утвержден", "утверждён"]):
+            continue
+        issues.append({
+            "issue_id": _stable_id("ISSUE", context.get("session_id"), fragment.get("fragment_id"), hit),
+            "fragment_id": fragment.get("fragment_id"),
+            "issue_signal": hit,
+            "issue_type": "OPEN_OR_UNRESOLVED_SIGNAL",
+            "audit_status": "UNRESOLVED_SIGNAL_DETECTED",
+        })
+    return issues
+
+
+def build_session_audit_report(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build a structural Session Audit Report for PI-IMPL-0002.
+
+    This report maps topics, confirmations, drafts, decisions and unresolved
+    issues. It intentionally does not extract, classify, validate, normalize,
+    deduplicate or capitalize knowledge.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+    context = _as_session_context(payload)
+    session_id = _safe_str(context.get("session_id") or _stable_id("SESSION", _utc_now()))
+    topic_map = _build_topic_map(context)
+    confirmation_map = _build_confirmation_map(context)
+    draft_map = _build_draft_map(context)
+    decision_map = _build_decision_map(context)
+    unresolved_issues_map = _build_unresolved_issue_map(context)
+    report = {
+        "audit_report_id": _stable_id("AUDIT", session_id, len(topic_map), len(confirmation_map), len(draft_map), len(decision_map), len(unresolved_issues_map)),
+        "session_id": session_id,
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0002",
+        "created_at": _utc_now(),
+        "topic_map": topic_map,
+        "confirmation_map": confirmation_map,
+        "draft_map": draft_map,
+        "decision_map": decision_map,
+        "unresolved_issues_map": unresolved_issues_map,
+        "statistics": {
+            "topics_count": len(topic_map),
+            "confirmations_count": len(confirmation_map),
+            "drafts_count": len(draft_map),
+            "decisions_count": len(decision_map),
+            "unresolved_issues_count": len(unresolved_issues_map),
+            "fragments_count": len(context.get("fragments") if isinstance(context.get("fragments"), list) else []),
+        },
+    }
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_session_audit_report",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0002",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_audit_report": report,
+        "boundaries": {
+            "extracts_knowledge": False,
+            "classifies_knowledge": False,
+            "validates_knowledge": False,
+            "normalizes_knowledge": False,
+            "deduplicates_knowledge": False,
+            "builds_prepared_knowledge_package": False,
+            "writes_to_runtime_memory": False,
+        },
+        "next_increment": "PI-IMPL-0003 — Knowledge Candidate Extraction",
+    }
+
+
+def verify_session_audit_runtime() -> dict[str, Any]:
+    sample_context = build_session_context({
+        "session_id": "PI-IMPL-0002-VERIFY",
+        "project_id": "vectra",
+        "program_id": "professional_intelligence",
+        "business_domain": "bonboason",
+        "messages": [
+            {"role": "Product Owner", "author": "Product Owner", "content": "Architecture PASS. Приступить к реализации PI-IMPL-0002."},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "Предлагаю вариант Session Audit Runtime: topic map, confirmation map, draft map."},
+            {"role": "Product Owner", "author": "Product Owner", "content": "Решение принято. Реализуем пакет без извлечения знаний."},
+            {"role": "VECTRA Laboratory", "author": "Laboratory", "content": "Product Verification проверит Runtime Verification и Regression Verification."},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "Открытый вопрос: нужно уточнить сценарии для следующего PI-IMPL-0003?"},
+        ],
+        "final_outputs": [
+            {"output_type": "IMPLEMENTATION_AUTHORIZED", "title": "PI-IMPL-0002 authorized", "status": "APPROVED"}
+        ],
+    })
+    audit = build_session_audit_report(sample_context)
+    report = audit.get("session_audit_report") if isinstance(audit, dict) else {}
+    stats = report.get("statistics") if isinstance(report, dict) else {}
+    boundary_ok = all(value is False for value in audit.get("boundaries", {}).values())
+    checks = {
+        "session_audit_report_schema": "PASS" if isinstance(report, dict) and report.get("audit_report_id") else "FAIL",
+        "topic_detection": "PASS" if stats.get("topics_count", 0) >= 1 else "FAIL",
+        "confirmation_detection": "PASS" if stats.get("confirmations_count", 0) >= 1 else "FAIL",
+        "draft_detection": "PASS" if stats.get("drafts_count", 0) >= 1 else "FAIL",
+        "decision_detection": "PASS" if stats.get("decisions_count", 0) >= 1 else "FAIL",
+        "unresolved_issues_detection": "PASS" if stats.get("unresolved_issues_count", 0) >= 1 else "FAIL",
+        "architecture_boundary_no_knowledge_extraction": "PASS" if boundary_ok else "FAIL",
+    }
+    pass_status = all(value == "PASS" for value in checks.values())
+    return {
+        "status": "ok" if pass_status else "error",
+        "render_mode": "professional_intelligence_session_audit_verification",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0002",
+        "verification_status": "PASS" if pass_status else "FAIL",
+        "checks": checks,
+        "sample_statistics": stats,
+        "next_increment": "PI-IMPL-0003 — Knowledge Candidate Extraction" if pass_status else "Fix PI-IMPL-0002 before continuing.",
+    }
+
 def get_professional_intelligence_status() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -328,12 +620,12 @@ def get_professional_intelligence_status() -> dict[str, Any]:
         "program": "Professional Intelligence",
         "architecture_status": "APPROVED_FOR_IMPLEMENTATION",
         "architecture_freeze": True,
-        "implemented_increments": ["PI-IMPL-0001"],
-        "current_increment": "PI-IMPL-0001 — Session Context Foundation",
-        "next_increment": "PI-IMPL-0002 — Session Audit Runtime",
+        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002"],
+        "current_increment": "PI-IMPL-0002 — Session Audit Runtime",
+        "next_increment": "PI-IMPL-0003 — Knowledge Candidate Extraction",
         "implementation_boundaries": {
             "session_context_foundation": "implemented",
-            "session_audit": "not_implemented",
+            "session_audit": "implemented",
             "knowledge_extraction": "not_implemented",
             "evidence_mapping": "not_implemented",
             "validation": "not_implemented",

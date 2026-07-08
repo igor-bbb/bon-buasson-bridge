@@ -292,6 +292,8 @@ from app.assistant_runtime.professional_intelligence import (
     get_professional_intelligence_status as get_vectra_professional_intelligence_status,
     build_session_context as build_vectra_professional_intelligence_session_context,
     verify_session_context_foundation as verify_vectra_professional_intelligence_session_context,
+    build_session_audit_report as build_vectra_professional_intelligence_session_audit,
+    verify_session_audit_runtime as verify_vectra_professional_intelligence_session_audit,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9333,6 +9335,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_session_context', '/vectra/professional-intelligence/session-context', build_vectra_professional_intelligence_session_context(payload), next_action='Run session_context_verify, then continue to PI-IMPL-0002 after Product Verification PASS.'))
         if operation_type in {'verify_session_context', 'verify_session_context_foundation', 'professional_intelligence_verify'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.verify_session_context_foundation', '/vectra/professional-intelligence/session-context/verify', verify_vectra_professional_intelligence_session_context()))
+        if operation_type in {'build_session_audit', 'session_audit', 'professional_intelligence_session_audit'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_session_audit_report', '/vectra/professional-intelligence/session-audit', build_vectra_professional_intelligence_session_audit(payload), next_action='Run session_audit_verify, then continue to PI-IMPL-0003 after Product Verification PASS.'))
+        if operation_type in {'verify_session_audit', 'verify_session_audit_runtime', 'session_audit_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.verify_session_audit_runtime', '/vectra/professional-intelligence/session-audit/verify', verify_vectra_professional_intelligence_session_audit()))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
@@ -9399,10 +9405,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
 
 
 
-# PROFESSIONAL-INTELLIGENCE — PI-IMPL-0001: Session Context Foundation.
+# PROFESSIONAL-INTELLIGENCE — PI-IMPL-0001/0002.
 # These endpoints are structural/read-only for Product Verification of the first
-# Professional Intelligence implementation increment. They do not extract,
-# classify, validate or capitalize knowledge.
+# Professional Intelligence implementation increments. They do not extract,
+# classify, validate, normalize, deduplicate or capitalize knowledge.
 
 @router.get('/vectra/professional-intelligence/status', summary='Read VECTRA Professional Intelligence implementation status')
 def vectra_professional_intelligence_status(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
@@ -9421,6 +9427,19 @@ def vectra_professional_intelligence_session_context(request: dict = None, x_vec
 def vectra_professional_intelligence_session_context_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_professional_intelligence_session_context())
+
+
+@router.post('/vectra/professional-intelligence/session-audit', summary='Build Professional Intelligence Session Audit Report')
+def vectra_professional_intelligence_session_audit(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_session_audit(payload))
+
+
+@router.get('/vectra/professional-intelligence/session-audit/verify', summary='Verify Professional Intelligence Session Audit Runtime')
+def vectra_professional_intelligence_session_audit_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_intelligence_session_audit())
 
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
