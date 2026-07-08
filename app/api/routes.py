@@ -288,6 +288,11 @@ from app.assistant_runtime.release_history_runtime import (
     write_release_history as write_vectra_release_history_runtime,
     verify_release_history_readback as verify_vectra_release_history_runtime,
 )
+from app.assistant_runtime.professional_intelligence import (
+    get_professional_intelligence_status as get_vectra_professional_intelligence_status,
+    build_session_context as build_vectra_professional_intelligence_session_context,
+    verify_session_context_foundation as verify_vectra_professional_intelligence_session_context,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -9322,6 +9327,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'professional_intelligence_status', 'pi_status'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.get_status', '/vectra/professional-intelligence/status', get_vectra_professional_intelligence_status()))
+        if operation_type in {'build_session_context', 'session_context', 'professional_intelligence_session_context'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_session_context', '/vectra/professional-intelligence/session-context', build_vectra_professional_intelligence_session_context(payload), next_action='Run session_context_verify, then continue to PI-IMPL-0002 after Product Verification PASS.'))
+        if operation_type in {'verify_session_context', 'verify_session_context_foundation', 'professional_intelligence_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.verify_session_context_foundation', '/vectra/professional-intelligence/session-context/verify', verify_vectra_professional_intelligence_session_context()))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
@@ -9385,6 +9396,31 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
         logger.exception('memory_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='memory_facade'))
 
+
+
+
+# PROFESSIONAL-INTELLIGENCE — PI-IMPL-0001: Session Context Foundation.
+# These endpoints are structural/read-only for Product Verification of the first
+# Professional Intelligence implementation increment. They do not extract,
+# classify, validate or capitalize knowledge.
+
+@router.get('/vectra/professional-intelligence/status', summary='Read VECTRA Professional Intelligence implementation status')
+def vectra_professional_intelligence_status(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_professional_intelligence_status())
+
+
+@router.post('/vectra/professional-intelligence/session-context', summary='Build Professional Intelligence Session Context')
+def vectra_professional_intelligence_session_context(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_session_context(payload))
+
+
+@router.get('/vectra/professional-intelligence/session-context/verify', summary='Verify Professional Intelligence Session Context Foundation')
+def vectra_professional_intelligence_session_context_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_intelligence_session_context())
 
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
@@ -9454,17 +9490,17 @@ def vectra_memory_revisions(object_id: str | None = None, knowledge_id: str | No
     return json_response(list_vectra_memory_revisions(object_id=object_id, knowledge_id=knowledge_id, memory_space=memory_space, limit=limit))
 
 
-@router.get('/vectra/memory/revisions/{revision_id}', summary='Read VECTRA Memory Object revision by ID')
-def vectra_memory_revision_by_id(revision_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
-    _verify_laboratory_api_key(x_vectra_laboratory_key)
-    return json_response(get_vectra_memory_revision(revision_id=revision_id))
-
-
 @router.get('/vectra/memory/revisions/verify', summary='Verify VECTRA Revision and Version Model')
 def vectra_memory_revision_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     objects = list_vectra_memory_objects(domain=domain, limit=10000).get('objects', [])
     return json_response(verify_vectra_revision_model(active_objects=objects))
+
+
+@router.get('/vectra/memory/revisions/{revision_id}', summary='Read VECTRA Memory Object revision by ID')
+def vectra_memory_revision_by_id(revision_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_revision(revision_id=revision_id))
 
 
 @router.get('/vectra/memory/release-history', summary='List VECTRA Release History Runtime objects')
