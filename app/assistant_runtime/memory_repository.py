@@ -25,11 +25,16 @@ from app.assistant_runtime.knowledge_object import (
 from app.assistant_runtime.memory_spaces import (
     BUSINESS_DOMAIN_MEMORY,
     PROFESSIONAL_MEMORY,
+    PRODUCT_MEMORY,
+    PRODUCT_DECISIONS_MEMORY,
     ACTIVE_MEMORY_SPACES,
     list_memory_spaces,
     normalize_memory_space,
     validate_memory_space,
 )
+from app.assistant_runtime.product_knowledge import product_record_to_knowledge_object, product_knowledge_path
+from app.assistant_runtime.product_decisions_runtime import decision_record_to_knowledge_object, product_decisions_path
+from app.assistant_runtime.repository import _read_json
 from app.assistant_runtime.repository import ensure_repository, repository_status
 
 MEMORY_REPOSITORY_RELEASE = "MEMORY-IMPL-0002-0004"
@@ -43,15 +48,37 @@ def _active_domain(domain: str = "bonboason") -> str:
     return str(domain or "bonboason").strip().lower() or "bonboason"
 
 
+def _read_list(path):
+    value = _read_json(path, [])
+    return [dict(item) for item in value] if isinstance(value, list) else []
+
+
+def list_product_knowledge_objects() -> List[Dict[str, Any]]:
+    return [product_record_to_knowledge_object(item) for item in _read_list(product_knowledge_path()) if isinstance(item, dict)]
+
+
+def list_product_decision_objects() -> List[Dict[str, Any]]:
+    return [decision_record_to_knowledge_object(item) for item in _read_list(product_decisions_path()) if isinstance(item, dict)]
+
+
 def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -> List[Dict[str, Any]]:
     space = normalize_memory_space(memory_space) if memory_space else ""
     domain_key = _active_domain(domain)
     if not space:
-        return list_professional_knowledge_objects() + list_business_knowledge_objects(domain_key)
+        return (
+            list_professional_knowledge_objects()
+            + list_business_knowledge_objects(domain_key)
+            + list_product_knowledge_objects()
+            + list_product_decision_objects()
+        )
     if space == PROFESSIONAL_MEMORY:
         return list_professional_knowledge_objects()
     if space == BUSINESS_DOMAIN_MEMORY:
         return list_business_knowledge_objects(domain_key)
+    if space == PRODUCT_MEMORY:
+        return list_product_knowledge_objects()
+    if space == PRODUCT_DECISIONS_MEMORY:
+        return list_product_decision_objects()
     return []
 
 
@@ -185,6 +212,8 @@ def verify_memory_repository_integrity(domain: str = "bonboason") -> Dict[str, A
     required_paths = [
         repo / "knowledge" / "professional_knowledge.json",
         repo / "business_domains" / domain_key / "business_knowledge.json",
+        repo / "knowledge" / "product_knowledge.json",
+        repo / "decisions" / "product_decisions.json",
         repo / "recovery" / "recovery_bundle.json",
     ]
     missing = [str(path.relative_to(repo)).replace("\\", "/") for path in required_paths if not path.exists()]

@@ -241,6 +241,23 @@ from app.assistant_runtime.memory_inspection import (
     get_memory_readback_report as get_vectra_memory_readback_report,
     run_memory_inspection as run_vectra_memory_inspection,
 )
+from app.assistant_runtime.product_knowledge import (
+    list_product_knowledge as list_vectra_product_knowledge_runtime,
+    get_product_knowledge as get_vectra_product_knowledge_runtime,
+    write_product_knowledge as write_vectra_product_knowledge_runtime,
+    verify_product_knowledge_readback as verify_vectra_product_knowledge_runtime,
+)
+from app.assistant_runtime.product_decisions_runtime import (
+    list_product_decisions as list_vectra_product_decisions_runtime,
+    get_product_decision as get_vectra_product_decision_runtime,
+    write_product_decision as write_vectra_product_decision_runtime,
+    verify_product_decisions_readback as verify_vectra_product_decisions_runtime,
+)
+from app.assistant_runtime.memory_health import (
+    get_memory_health_status as get_vectra_memory_health_status,
+    get_memory_diagnostics_report as get_vectra_memory_diagnostics_report,
+    verify_memory_health as verify_vectra_memory_health,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -7174,6 +7191,112 @@ def _laboratory_public_openapi_schema() -> dict:
                     'responses': response('Memory readback report'),
                 }
             },
+            '/vectra/memory/product-knowledge': {
+                'get': {
+                    'operationId': 'getVectraProductKnowledge',
+                    'summary': 'List VECTRA Product Knowledge Runtime objects',
+                    'description': 'Reads Product Knowledge from product_memory as unified Knowledge Objects.',
+                    'security': security,
+                    'parameters': [{'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}}],
+                    'responses': response('Product Knowledge list'),
+                },
+                'post': {
+                    'operationId': 'writeVectraProductKnowledge',
+                    'summary': 'Capitalize VECTRA Product Knowledge',
+                    'description': 'Writes Product Owner approved Product Knowledge into product_memory.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Product Knowledge write'),
+                },
+            },
+            '/vectra/memory/product-knowledge/{knowledge_id}': {
+                'get': {
+                    'operationId': 'getVectraProductKnowledgeById',
+                    'summary': 'Read VECTRA Product Knowledge by ID',
+                    'description': 'Reads one Product Knowledge object and verifies Knowledge Object mapping.',
+                    'security': security,
+                    'parameters': [{'name': 'knowledge_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}],
+                    'responses': response('Product Knowledge object'),
+                }
+            },
+            '/vectra/memory/product-knowledge/verify/readback': {
+                'get': {
+                    'operationId': 'verifyVectraProductKnowledgeReadback',
+                    'summary': 'Verify VECTRA Product Knowledge readback',
+                    'description': 'Verifies Product Knowledge readback and Knowledge Object mapping.',
+                    'security': security,
+                    'parameters': [{'name': 'knowledge_id', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Product Knowledge readback'),
+                }
+            },
+            '/vectra/memory/product-decisions': {
+                'get': {
+                    'operationId': 'getVectraProductDecisions',
+                    'summary': 'List VECTRA Product Decisions Runtime objects',
+                    'description': 'Reads Product Owner approved Product Decisions from a separate normative memory space.',
+                    'security': security,
+                    'parameters': [{'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}}],
+                    'responses': response('Product Decisions list'),
+                },
+                'post': {
+                    'operationId': 'writeVectraProductDecision',
+                    'summary': 'Record VECTRA Product Decision',
+                    'description': 'Writes a Product Owner approved decision into product_decisions_memory.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Product Decision write'),
+                },
+            },
+            '/vectra/memory/product-decisions/{decision_id}': {
+                'get': {
+                    'operationId': 'getVectraProductDecisionById',
+                    'summary': 'Read VECTRA Product Decision by ID',
+                    'description': 'Reads one Product Decision object and verifies Knowledge Object mapping.',
+                    'security': security,
+                    'parameters': [{'name': 'decision_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}],
+                    'responses': response('Product Decision object'),
+                }
+            },
+            '/vectra/memory/product-decisions/verify/readback': {
+                'get': {
+                    'operationId': 'verifyVectraProductDecisionsReadback',
+                    'summary': 'Verify VECTRA Product Decisions readback',
+                    'description': 'Verifies Product Decisions readback and confirms decisions stay separate from ordinary knowledge.',
+                    'security': security,
+                    'parameters': [{'name': 'decision_id', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Product Decisions readback'),
+                }
+            },
+            '/vectra/memory/health': {
+                'get': {
+                    'operationId': 'getVectraMemoryHealth',
+                    'summary': 'Get VECTRA Memory Health status',
+                    'description': 'Returns compact memory health status for Laboratory Product Verification.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Memory health status'),
+                }
+            },
+            '/vectra/memory/diagnostics': {
+                'get': {
+                    'operationId': 'getVectraMemoryDiagnostics',
+                    'summary': 'Get VECTRA Memory Diagnostics report',
+                    'description': 'Returns memory health, overview, statistics, readback and repository integrity in one report.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Memory diagnostics report'),
+                }
+            },
+            '/vectra/memory/health/verify': {
+                'get': {
+                    'operationId': 'verifyVectraMemoryHealth',
+                    'summary': 'Verify VECTRA Memory Health',
+                    'description': 'Verifies memory health and reports blocking issues before Product Verification.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Memory health verification'),
+                }
+            },
             '/vectra/knowledge/professional': {
                 'get': {
                     'operationId': 'getVectraProfessionalKnowledge',
@@ -7430,6 +7553,15 @@ _LABORATORY_KNOWLEDGE_PATHS = {
     '/vectra/memory/statistics',
     '/vectra/memory/integrity-report',
     '/vectra/memory/readback-report',
+    '/vectra/memory/product-knowledge',
+    '/vectra/memory/product-knowledge/{knowledge_id}',
+    '/vectra/memory/product-knowledge/verify/readback',
+    '/vectra/memory/product-decisions',
+    '/vectra/memory/product-decisions/{decision_id}',
+    '/vectra/memory/product-decisions/verify/readback',
+    '/vectra/memory/health',
+    '/vectra/memory/diagnostics',
+    '/vectra/memory/health/verify',
     '/vectra/knowledge/capitalization/reports',
     '/vectra/knowledge/professional',
     '/vectra/knowledge/professional/overview',
@@ -7509,6 +7641,17 @@ def _action_runtime_service_for(operation_id: str, endpoint: str) -> str:
         'getVectraMemoryStatistics': 'memory_inspection.get_memory_statistics',
         'getVectraMemoryIntegrityReport': 'memory_inspection.get_memory_integrity_report',
         'getVectraMemoryReadbackReport': 'memory_inspection.get_memory_readback_report',
+        'getVectraProductKnowledge': 'product_knowledge.list_product_knowledge',
+        'getVectraProductKnowledgeById': 'product_knowledge.get_product_knowledge',
+        'writeVectraProductKnowledge': 'product_knowledge.write_product_knowledge',
+        'verifyVectraProductKnowledgeReadback': 'product_knowledge.verify_product_knowledge_readback',
+        'getVectraProductDecisions': 'product_decisions_runtime.list_product_decisions',
+        'getVectraProductDecisionById': 'product_decisions_runtime.get_product_decision',
+        'writeVectraProductDecision': 'product_decisions_runtime.write_product_decision',
+        'verifyVectraProductDecisionsReadback': 'product_decisions_runtime.verify_product_decisions_readback',
+        'getVectraMemoryHealth': 'memory_health.get_memory_health_status',
+        'getVectraMemoryDiagnostics': 'memory_health.get_memory_diagnostics_report',
+        'verifyVectraMemoryHealth': 'memory_health.verify_memory_health',
         'getVectraProfessionalKnowledge': 'knowledge_capitalization.list_professional_knowledge',
         'getVectraProfessionalKnowledgeOverview': 'knowledge_capitalization.get_professional_knowledge_overview',
         'getVectraProfessionalKnowledgeById': 'knowledge_capitalization.get_professional_knowledge',
@@ -7728,6 +7871,7 @@ _FACADE_ACTIONS = [
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
+    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions and Memory Health operations.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
 ]
@@ -7893,7 +8037,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'MEMORY-IMPL-0005-0006-AUTOMATIC-CLASSIFICATION-INSPECTION',
+            'version': 'MEMORY-IMPL-0007-0009-PRODUCT-MEMORY-HEALTH',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. LABORATORY-KNOWLEDGE-0010-PV fixes GPT facade payload normalization so working_context/session material is passed into Runtime extraction before capitalization. VECTRA performs the professional session audit; Runtime accepts prepared packages and can also convert supplied session audit evidence into a normalized, deduplicated package, then performs incremental diff, safe batch persistence, readback verification and the final report.',
         },
         'servers': [{'url': server_url}],
@@ -7910,7 +8054,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'MEMORY-IMPL-0005-0006',
+        'x-vectra-release': 'MEMORY-IMPL-0007-0009',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -8960,6 +9104,74 @@ def vectra_memory_readback_report(domain: str = 'bonboason', limit: int = 100, x
     return json_response(get_vectra_memory_readback_report(domain=domain, limit=limit))
 
 
+@router.get('/vectra/memory/product-knowledge', summary='List VECTRA Product Knowledge Runtime objects')
+def vectra_product_knowledge_runtime(limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_product_knowledge_runtime(limit=limit))
+
+
+@router.get('/vectra/memory/product-knowledge/{knowledge_id}', summary='Read VECTRA Product Knowledge by ID')
+def vectra_product_knowledge_runtime_by_id(knowledge_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_product_knowledge_runtime(knowledge_id=knowledge_id))
+
+
+@router.post('/vectra/memory/product-knowledge', summary='Capitalize VECTRA Product Knowledge')
+def vectra_product_knowledge_runtime_write(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(write_vectra_product_knowledge_runtime(payload))
+
+
+@router.get('/vectra/memory/product-knowledge/verify/readback', summary='Verify VECTRA Product Knowledge readback')
+def vectra_product_knowledge_runtime_verify(knowledge_id: str | None = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_product_knowledge_runtime(knowledge_id=knowledge_id))
+
+
+@router.get('/vectra/memory/product-decisions', summary='List VECTRA Product Decisions Runtime objects')
+def vectra_product_decisions_runtime(limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_product_decisions_runtime(limit=limit))
+
+
+@router.get('/vectra/memory/product-decisions/{decision_id}', summary='Read VECTRA Product Decision by ID')
+def vectra_product_decision_runtime_by_id(decision_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_product_decision_runtime(decision_id=decision_id))
+
+
+@router.post('/vectra/memory/product-decisions', summary='Record VECTRA Product Decision')
+def vectra_product_decision_runtime_write(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(write_vectra_product_decision_runtime(payload))
+
+
+@router.get('/vectra/memory/product-decisions/verify/readback', summary='Verify VECTRA Product Decisions readback')
+def vectra_product_decisions_runtime_verify(decision_id: str | None = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_product_decisions_runtime(decision_id=decision_id))
+
+
+@router.get('/vectra/memory/health', summary='Get VECTRA Memory Health status')
+def vectra_memory_health(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_health_status(domain=domain))
+
+
+@router.get('/vectra/memory/diagnostics', summary='Get VECTRA Memory Diagnostics report')
+def vectra_memory_diagnostics(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_diagnostics_report(domain=domain))
+
+
+@router.get('/vectra/memory/health/verify', summary='Verify VECTRA Memory Health')
+def vectra_memory_health_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_memory_health(domain=domain))
+
+
 @router.post('/vectra/laboratory/facade/business-domain', summary='Execute VECTRA Business Domain facade operation')
 def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
@@ -9046,6 +9258,37 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
     except Exception as exc:
         logger.exception('product_review_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='product_review_facade'))
+
+
+@router.post('/vectra/laboratory/facade/memory', summary='Execute VECTRA Memory facade operation')
+def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
+    try:
+        if operation_type in {'product_knowledge', 'list_product_knowledge'}:
+            return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
+        if operation_type == 'write_product_knowledge':
+            payload['product_owner_approval'] = bool(payload.get('product_owner_approval') or approval)
+            return json_response(_facade_response(operation_type, 'product_knowledge.write_product_knowledge', '/vectra/memory/product-knowledge', write_vectra_product_knowledge_runtime(payload)))
+        if operation_type == 'verify_product_knowledge':
+            return json_response(_facade_response(operation_type, 'product_knowledge.verify_product_knowledge_readback', '/vectra/memory/product-knowledge/verify/readback', verify_vectra_product_knowledge_runtime(knowledge_id=payload.get('knowledge_id'))))
+        if operation_type in {'product_decisions', 'list_product_decisions'}:
+            return json_response(_facade_response(operation_type, 'product_decisions_runtime.list_product_decisions', '/vectra/memory/product-decisions', list_vectra_product_decisions_runtime(limit=int(payload.get('limit') or 100))))
+        if operation_type == 'write_product_decision':
+            payload['product_owner_approval'] = bool(payload.get('product_owner_approval') or approval)
+            return json_response(_facade_response(operation_type, 'product_decisions_runtime.write_product_decision', '/vectra/memory/product-decisions', write_vectra_product_decision_runtime(payload)))
+        if operation_type == 'verify_product_decisions':
+            return json_response(_facade_response(operation_type, 'product_decisions_runtime.verify_product_decisions_readback', '/vectra/memory/product-decisions/verify/readback', verify_vectra_product_decisions_runtime(decision_id=payload.get('decision_id'))))
+        if operation_type in {'health', 'memory_health'}:
+            return json_response(_facade_response(operation_type, 'memory_health.get_memory_health_status', '/vectra/memory/health', get_vectra_memory_health_status(domain=payload.get('domain') or domain)))
+        if operation_type in {'diagnostics', 'memory_diagnostics'}:
+            return json_response(_facade_response(operation_type, 'memory_health.get_memory_diagnostics_report', '/vectra/memory/diagnostics', get_vectra_memory_diagnostics_report(domain=payload.get('domain') or domain)))
+        if operation_type in {'verify_health', 'verify_memory_health'}:
+            return json_response(_facade_response(operation_type, 'memory_health.verify_memory_health', '/vectra/memory/health/verify', verify_vectra_memory_health(domain=payload.get('domain') or domain)))
+        return json_response(_facade_error(operation_type, f'Unsupported memory operation_type: {operation_type}', runtime_service='memory_facade'))
+    except Exception as exc:
+        logger.exception('memory_facade_operation_failed')
+        return json_response(_facade_error(operation_type, str(exc), runtime_service='memory_facade'))
 
 
 @router.post('/vectra/laboratory/facade/repository', summary='Execute VECTRA Repository facade operation')
