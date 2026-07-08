@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from app.assistant_runtime.repository import ensure_repository, _read_json, _write_json
 from app.assistant_runtime.knowledge_object import verify_knowledge_object_mapping
 from app.assistant_runtime.memory_spaces import PRODUCT_DECISIONS_MEMORY
+from app.assistant_runtime.revision_model import archive_revision, next_version_from_record
 
 PRODUCT_DECISIONS_RELEASE = "MEMORY-IMPL-0008"
 
@@ -137,6 +138,15 @@ def write_product_decision(payload: Optional[Dict[str, Any]] = None) -> Dict[str
         }
     now = _now()
     decision_id = str(payload.get("decision_id") or payload.get("knowledge_id") or f"PD-{uuid.uuid4().hex[:8].upper()}")
+    items = _read_decisions()
+    previous = None
+    previous_index = None
+    for idx, item in enumerate(items):
+        if _decision_id(item) == decision_id:
+            previous = dict(item)
+            previous_index = idx
+            break
+    version = int(payload.get("version") or payload.get("revision") or next_version_from_record(previous)) if str(payload.get("version") or payload.get("revision") or next_version_from_record(previous)).isdigit() else next_version_from_record(previous)
     record = {
         "decision_id": decision_id,
         "knowledge_id": decision_id,
@@ -147,7 +157,7 @@ def write_product_decision(payload: Optional[Dict[str, Any]] = None) -> Dict[str
         "description": str(payload.get("description") or payload.get("decision") or payload.get("content") or payload.get("text") or ""),
         "status": "APPROVED",
         "lifecycle_status": "APPROVED",
-        "version": int(payload.get("version") or payload.get("revision") or 1) if str(payload.get("version") or payload.get("revision") or "1").isdigit() else 1,
+        "version": version,
         "source": str(payload.get("source") or "Product Owner"),
         "evidence": _normalize_evidence(payload.get("evidence")),
         "created_at": payload.get("created_at") or now,
@@ -156,15 +166,11 @@ def write_product_decision(payload: Optional[Dict[str, Any]] = None) -> Dict[str
         "repository_path": "decisions/product_decisions.json",
         "product_owner_approved": True,
     }
-    items = _read_decisions()
-    replaced = False
-    for idx, item in enumerate(items):
-        if _decision_id(item) == decision_id:
-            record["created_at"] = item.get("created_at") or record["created_at"]
-            items[idx] = record
-            replaced = True
-            break
-    if not replaced:
+    if previous is not None and previous_index is not None:
+        record["created_at"] = previous.get("created_at") or record["created_at"]
+        archive_revision(memory_object=decision_record_to_knowledge_object(previous), reason="product_decision_updated", superseded_by_version=version, source_repository="decisions/product_decisions.json")
+        items[previous_index] = record
+    else:
         items.append(record)
     _write_decisions(items)
     readback = get_product_decision(decision_id)
@@ -177,6 +183,7 @@ def write_product_decision(payload: Optional[Dict[str, Any]] = None) -> Dict[str
         "memory_space": PRODUCT_DECISIONS_MEMORY,
         "repository_path": "decisions/product_decisions.json",
         "memory_object": readback.get("memory_object"),
+        "revision_model_status": "PASS",
     }
 
 

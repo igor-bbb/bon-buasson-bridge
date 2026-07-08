@@ -26,6 +26,8 @@ from app.assistant_runtime.memory_spaces import (
     BUSINESS_DOMAIN_MEMORY,
     PROFESSIONAL_MEMORY,
     PRODUCT_MEMORY,
+    GENERAL_MEMORY,
+    RELEASE_HISTORY_MEMORY,
     PRODUCT_DECISIONS_MEMORY,
     ACTIVE_MEMORY_SPACES,
     list_memory_spaces,
@@ -34,10 +36,13 @@ from app.assistant_runtime.memory_spaces import (
 )
 from app.assistant_runtime.product_knowledge import product_record_to_knowledge_object, product_knowledge_path
 from app.assistant_runtime.product_decisions_runtime import decision_record_to_knowledge_object, product_decisions_path
+from app.assistant_runtime.general_knowledge import general_record_to_knowledge_object, general_knowledge_path
+from app.assistant_runtime.release_history_runtime import release_record_to_knowledge_object, release_history_path
+from app.assistant_runtime.revision_model import verify_revision_model
 from app.assistant_runtime.repository import _read_json
 from app.assistant_runtime.repository import ensure_repository, repository_status
 
-MEMORY_REPOSITORY_RELEASE = "MEMORY-IMPL-0002-0004"
+MEMORY_REPOSITORY_RELEASE = "MEMORY-IMPL-0002-0004/MEMORY-IMPL-0010-0012"
 
 
 def _now() -> str:
@@ -61,6 +66,14 @@ def list_product_decision_objects() -> List[Dict[str, Any]]:
     return [decision_record_to_knowledge_object(item) for item in _read_list(product_decisions_path()) if isinstance(item, dict)]
 
 
+def list_general_knowledge_objects() -> List[Dict[str, Any]]:
+    return [general_record_to_knowledge_object(item) for item in _read_list(general_knowledge_path()) if isinstance(item, dict)]
+
+
+def list_release_history_objects() -> List[Dict[str, Any]]:
+    return [release_record_to_knowledge_object(item) for item in _read_list(release_history_path()) if isinstance(item, dict)]
+
+
 def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -> List[Dict[str, Any]]:
     space = normalize_memory_space(memory_space) if memory_space else ""
     domain_key = _active_domain(domain)
@@ -70,6 +83,8 @@ def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -
             + list_business_knowledge_objects(domain_key)
             + list_product_knowledge_objects()
             + list_product_decision_objects()
+            + list_general_knowledge_objects()
+            + list_release_history_objects()
         )
     if space == PROFESSIONAL_MEMORY:
         return list_professional_knowledge_objects()
@@ -79,6 +94,10 @@ def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -
         return list_product_knowledge_objects()
     if space == PRODUCT_DECISIONS_MEMORY:
         return list_product_decision_objects()
+    if space == GENERAL_MEMORY:
+        return list_general_knowledge_objects()
+    if space == RELEASE_HISTORY_MEMORY:
+        return list_release_history_objects()
     return []
 
 
@@ -113,6 +132,7 @@ def list_memory_objects(memory_space: Optional[str] = None, domain: str = "bonbo
         "limit": n,
         "repository_mode": "adapter_compatible",
         "source_repositories_preserved": True,
+        "revision_model_status": verify_revision_model(active_objects=objects).get("verification_status"),
     }
 
 
@@ -198,6 +218,7 @@ def get_memory_overview(domain: str = "bonboason") -> Dict[str, Any]:
         "repository_status": repo_status.get("status"),
         "repository_mode": "adapter_compatible",
         "source_repositories_preserved": True,
+        "revision_model_status": verify_revision_model(active_objects=objects).get("verification_status"),
         "updated_at": _now(),
     }
 
@@ -213,7 +234,10 @@ def verify_memory_repository_integrity(domain: str = "bonboason") -> Dict[str, A
         repo / "knowledge" / "professional_knowledge.json",
         repo / "business_domains" / domain_key / "business_knowledge.json",
         repo / "knowledge" / "product_knowledge.json",
+        repo / "knowledge" / "general_knowledge.json",
         repo / "decisions" / "product_decisions.json",
+        repo / "releases" / "release_history.json",
+        repo / "memory" / "revisions.json",
         repo / "recovery" / "recovery_bundle.json",
     ]
     missing = [str(path.relative_to(repo)).replace("\\", "/") for path in required_paths if not path.exists()]

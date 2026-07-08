@@ -12,16 +12,17 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-MEMORY_SPACE_MANAGER_RELEASE = "MEMORY-IMPL-0004"
+MEMORY_SPACE_MANAGER_RELEASE = "MEMORY-IMPL-0004/MEMORY-IMPL-0010-0012"
 
 PROFESSIONAL_MEMORY = "professional_memory"
 BUSINESS_DOMAIN_MEMORY = "business_domain_memory"
 PRODUCT_MEMORY = "product_memory"
 GENERAL_MEMORY = "general_memory"
+RELEASE_HISTORY_MEMORY = "release_history_memory"
 PRODUCT_DECISIONS_MEMORY = "product_decisions_memory"
 
-ACTIVE_MEMORY_SPACES = {PROFESSIONAL_MEMORY, BUSINESS_DOMAIN_MEMORY, PRODUCT_MEMORY, PRODUCT_DECISIONS_MEMORY}
-PREPARED_MEMORY_SPACES = {GENERAL_MEMORY}
+ACTIVE_MEMORY_SPACES = {PROFESSIONAL_MEMORY, BUSINESS_DOMAIN_MEMORY, PRODUCT_MEMORY, GENERAL_MEMORY, PRODUCT_DECISIONS_MEMORY, RELEASE_HISTORY_MEMORY}
+PREPARED_MEMORY_SPACES = set()
 SUPPORTED_MEMORY_SPACES = ACTIVE_MEMORY_SPACES | PREPARED_MEMORY_SPACES
 
 _MEMORY_SPACE_REGISTRY: Dict[str, Dict[str, Any]] = {
@@ -54,12 +55,22 @@ _MEMORY_SPACE_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
     GENERAL_MEMORY: {
         "memory_space": GENERAL_MEMORY,
-        "status": "PREPARED",
-        "description": "Reserved memory space for General Knowledge objects introduced by a later increment.",
-        "repository_adapter": "not_implemented_yet",
+        "status": "ACTIVE",
+        "description": "Confirmed general knowledge not tied to a Business Domain or product architecture.",
+        "repository_adapter": "general_knowledge_repository_adapter",
         "default_domain_required": False,
-        "write_enabled": False,
-        "read_enabled": False,
+        "write_enabled": True,
+        "read_enabled": True,
+    },
+
+    RELEASE_HISTORY_MEMORY: {
+        "memory_space": RELEASE_HISTORY_MEMORY,
+        "status": "ACTIVE",
+        "description": "Verified engineering release history connected to Product Verification and Deployment.",
+        "repository_adapter": "release_history_repository_adapter",
+        "default_domain_required": False,
+        "write_enabled": True,
+        "read_enabled": True,
     },
     PRODUCT_DECISIONS_MEMORY: {
         "memory_space": PRODUCT_DECISIONS_MEMORY,

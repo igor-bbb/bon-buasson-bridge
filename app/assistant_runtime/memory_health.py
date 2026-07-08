@@ -15,7 +15,7 @@ from app.assistant_runtime.memory_repository import get_memory_overview, list_me
 from app.assistant_runtime.memory_inspection import get_memory_statistics, get_memory_readback_report
 from app.assistant_runtime.memory_spaces import ACTIVE_MEMORY_SPACES, list_memory_spaces
 
-MEMORY_HEALTH_RELEASE = "MEMORY-IMPL-0009"
+MEMORY_HEALTH_RELEASE = "MEMORY-IMPL-0009/MEMORY-IMPL-0010-0012"
 
 
 def _now() -> str:
@@ -28,7 +28,10 @@ def _required_path_status(domain: str = "bonboason") -> Dict[str, Any]:
         "knowledge/professional_knowledge.json",
         "business_domains/{}/business_knowledge.json".format(str(domain or "bonboason").strip().lower() or "bonboason"),
         "knowledge/product_knowledge.json",
+        "knowledge/general_knowledge.json",
         "decisions/product_decisions.json",
+        "releases/release_history.json",
+        "memory/revisions.json",
         "recovery/recovery_bundle.json",
     ]
     paths = []

@@ -258,6 +258,24 @@ from app.assistant_runtime.memory_health import (
     get_memory_diagnostics_report as get_vectra_memory_diagnostics_report,
     verify_memory_health as verify_vectra_memory_health,
 )
+from app.assistant_runtime.general_knowledge import (
+    list_general_knowledge as list_vectra_general_knowledge_runtime,
+    get_general_knowledge as get_vectra_general_knowledge_runtime,
+    write_general_knowledge as write_vectra_general_knowledge_runtime,
+    verify_general_knowledge_readback as verify_vectra_general_knowledge_runtime,
+)
+from app.assistant_runtime.revision_model import (
+    list_revisions as list_vectra_memory_revisions,
+    get_revision as get_vectra_memory_revision,
+    get_version_status as get_vectra_memory_version_status,
+    verify_revision_model as verify_vectra_revision_model,
+)
+from app.assistant_runtime.release_history_runtime import (
+    list_release_history as list_vectra_release_history_runtime,
+    get_release_history as get_vectra_release_history_runtime,
+    write_release_history as write_vectra_release_history_runtime,
+    verify_release_history_readback as verify_vectra_release_history_runtime,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -7562,6 +7580,15 @@ _LABORATORY_KNOWLEDGE_PATHS = {
     '/vectra/memory/health',
     '/vectra/memory/diagnostics',
     '/vectra/memory/health/verify',
+    '/vectra/memory/general-knowledge',
+    '/vectra/memory/general-knowledge/{knowledge_id}',
+    '/vectra/memory/general-knowledge/verify/readback',
+    '/vectra/memory/revisions',
+    '/vectra/memory/revisions/{revision_id}',
+    '/vectra/memory/revisions/verify',
+    '/vectra/memory/release-history',
+    '/vectra/memory/release-history/{release_id}',
+    '/vectra/memory/release-history/verify/readback',
     '/vectra/knowledge/capitalization/reports',
     '/vectra/knowledge/professional',
     '/vectra/knowledge/professional/overview',
@@ -7652,6 +7679,18 @@ def _action_runtime_service_for(operation_id: str, endpoint: str) -> str:
         'getVectraMemoryHealth': 'memory_health.get_memory_health_status',
         'getVectraMemoryDiagnostics': 'memory_health.get_memory_diagnostics_report',
         'verifyVectraMemoryHealth': 'memory_health.verify_memory_health',
+        'getVectraGeneralKnowledge': 'general_knowledge.list_general_knowledge',
+        'getVectraGeneralKnowledgeById': 'general_knowledge.get_general_knowledge',
+        'writeVectraGeneralKnowledge': 'general_knowledge.write_general_knowledge',
+        'verifyVectraGeneralKnowledgeReadback': 'general_knowledge.verify_general_knowledge_readback',
+        'getVectraMemoryRevisions': 'revision_model.list_revisions',
+        'getVectraMemoryRevisionById': 'revision_model.get_revision',
+        'getVectraMemoryVersionStatus': 'revision_model.get_version_status',
+        'verifyVectraRevisionModel': 'revision_model.verify_revision_model',
+        'getVectraReleaseHistory': 'release_history_runtime.list_release_history',
+        'getVectraReleaseHistoryById': 'release_history_runtime.get_release_history',
+        'writeVectraReleaseHistory': 'release_history_runtime.write_release_history',
+        'verifyVectraReleaseHistoryReadback': 'release_history_runtime.verify_release_history_readback',
         'getVectraProfessionalKnowledge': 'knowledge_capitalization.list_professional_knowledge',
         'getVectraProfessionalKnowledgeOverview': 'knowledge_capitalization.get_professional_knowledge_overview',
         'getVectraProfessionalKnowledgeById': 'knowledge_capitalization.get_professional_knowledge',
@@ -7871,7 +7910,7 @@ _FACADE_ACTIONS = [
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
-    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions and Memory Health operations.'),
+    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History and Memory Health operations.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
 ]
@@ -9279,6 +9318,32 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'product_decisions_runtime.write_product_decision', '/vectra/memory/product-decisions', write_vectra_product_decision_runtime(payload)))
         if operation_type == 'verify_product_decisions':
             return json_response(_facade_response(operation_type, 'product_decisions_runtime.verify_product_decisions_readback', '/vectra/memory/product-decisions/verify/readback', verify_vectra_product_decisions_runtime(decision_id=payload.get('decision_id'))))
+        if operation_type in {'general_knowledge', 'list_general_knowledge'}:
+            return json_response(_facade_response(operation_type, 'general_knowledge.list_general_knowledge', '/vectra/memory/general-knowledge', list_vectra_general_knowledge_runtime(limit=int(payload.get('limit') or 100))))
+        if operation_type == 'write_general_knowledge':
+            payload['product_owner_approval'] = bool(payload.get('product_owner_approval') or approval)
+            return json_response(_facade_response(operation_type, 'general_knowledge.write_general_knowledge', '/vectra/memory/general-knowledge', write_vectra_general_knowledge_runtime(payload)))
+        if operation_type == 'verify_general_knowledge':
+            return json_response(_facade_response(operation_type, 'general_knowledge.verify_general_knowledge_readback', '/vectra/memory/general-knowledge/verify/readback', verify_vectra_general_knowledge_runtime(knowledge_id=payload.get('knowledge_id'))))
+        if operation_type in {'revisions', 'list_revisions'}:
+            return json_response(_facade_response(operation_type, 'revision_model.list_revisions', '/vectra/memory/revisions', list_vectra_memory_revisions(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), limit=int(payload.get('limit') or 100))))
+        if operation_type == 'get_revision':
+            return json_response(_facade_response(operation_type, 'revision_model.get_revision', '/vectra/memory/revisions/{revision_id}', get_vectra_memory_revision(revision_id=str(payload.get('revision_id') or ''))))
+        if operation_type in {'version_status', 'memory_version_status'}:
+            from app.assistant_runtime.memory_repository import list_memory_objects as _list_memory_objects_for_version_status
+            _objects = _list_memory_objects_for_version_status(domain=payload.get('domain') or domain, limit=10000).get('objects', [])
+            return json_response(_facade_response(operation_type, 'revision_model.get_version_status', '/vectra/memory/revisions', get_vectra_memory_version_status(active_objects=_objects)))
+        if operation_type in {'verify_revisions', 'verify_revision_model'}:
+            from app.assistant_runtime.memory_repository import list_memory_objects as _list_memory_objects_for_revision_verify
+            _objects = _list_memory_objects_for_revision_verify(domain=payload.get('domain') or domain, limit=10000).get('objects', [])
+            return json_response(_facade_response(operation_type, 'revision_model.verify_revision_model', '/vectra/memory/revisions/verify', verify_vectra_revision_model(active_objects=_objects)))
+        if operation_type in {'release_history', 'list_release_history'}:
+            return json_response(_facade_response(operation_type, 'release_history_runtime.list_release_history', '/vectra/memory/release-history', list_vectra_release_history_runtime(limit=int(payload.get('limit') or 100))))
+        if operation_type == 'write_release_history':
+            payload['product_verification_pass'] = bool(payload.get('product_verification_pass') or approval)
+            return json_response(_facade_response(operation_type, 'release_history_runtime.write_release_history', '/vectra/memory/release-history', write_vectra_release_history_runtime(payload)))
+        if operation_type == 'verify_release_history':
+            return json_response(_facade_response(operation_type, 'release_history_runtime.verify_release_history_readback', '/vectra/memory/release-history/verify/readback', verify_vectra_release_history_runtime(release_id=payload.get('release_id'))))
         if operation_type in {'health', 'memory_health'}:
             return json_response(_facade_response(operation_type, 'memory_health.get_memory_health_status', '/vectra/memory/health', get_vectra_memory_health_status(domain=payload.get('domain') or domain)))
         if operation_type in {'diagnostics', 'memory_diagnostics'}:
@@ -9289,6 +9354,76 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     except Exception as exc:
         logger.exception('memory_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='memory_facade'))
+
+
+
+@router.get('/vectra/memory/general-knowledge', summary='List VECTRA General Knowledge Runtime objects')
+def vectra_general_knowledge_runtime(limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_general_knowledge_runtime(limit=limit))
+
+
+@router.get('/vectra/memory/general-knowledge/{knowledge_id}', summary='Read VECTRA General Knowledge by ID')
+def vectra_general_knowledge_runtime_by_id(knowledge_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_general_knowledge_runtime(knowledge_id=knowledge_id))
+
+
+@router.post('/vectra/memory/general-knowledge', summary='Capitalize VECTRA General Knowledge')
+def vectra_general_knowledge_runtime_write(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(write_vectra_general_knowledge_runtime(payload))
+
+
+@router.get('/vectra/memory/general-knowledge/verify/readback', summary='Verify VECTRA General Knowledge readback')
+def vectra_general_knowledge_runtime_verify(knowledge_id: str | None = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_general_knowledge_runtime(knowledge_id=knowledge_id))
+
+
+@router.get('/vectra/memory/revisions', summary='List VECTRA Memory Object revisions')
+def vectra_memory_revisions(object_id: str | None = None, knowledge_id: str | None = None, memory_space: str | None = None, limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_memory_revisions(object_id=object_id, knowledge_id=knowledge_id, memory_space=memory_space, limit=limit))
+
+
+@router.get('/vectra/memory/revisions/{revision_id}', summary='Read VECTRA Memory Object revision by ID')
+def vectra_memory_revision_by_id(revision_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_revision(revision_id=revision_id))
+
+
+@router.get('/vectra/memory/revisions/verify', summary='Verify VECTRA Revision and Version Model')
+def vectra_memory_revision_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    objects = list_vectra_memory_objects(domain=domain, limit=10000).get('objects', [])
+    return json_response(verify_vectra_revision_model(active_objects=objects))
+
+
+@router.get('/vectra/memory/release-history', summary='List VECTRA Release History Runtime objects')
+def vectra_release_history_runtime(limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_release_history_runtime(limit=limit))
+
+
+@router.get('/vectra/memory/release-history/{release_id}', summary='Read VECTRA Release History by ID')
+def vectra_release_history_runtime_by_id(release_id: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_release_history_runtime(release_id=release_id))
+
+
+@router.post('/vectra/memory/release-history', summary='Record VECTRA verified engineering release')
+def vectra_release_history_runtime_write(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(write_vectra_release_history_runtime(payload))
+
+
+@router.get('/vectra/memory/release-history/verify/readback', summary='Verify VECTRA Release History readback')
+def vectra_release_history_runtime_verify(release_id: str | None = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_release_history_runtime(release_id=release_id))
 
 
 @router.post('/vectra/laboratory/facade/repository', summary='Execute VECTRA Repository facade operation')
