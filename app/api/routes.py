@@ -294,6 +294,8 @@ from app.assistant_runtime.professional_intelligence import (
     verify_session_context_foundation as verify_vectra_professional_intelligence_session_context,
     build_session_audit_report as build_vectra_professional_intelligence_session_audit,
     verify_session_audit_runtime as verify_vectra_professional_intelligence_session_audit,
+    build_knowledge_candidate_report as build_vectra_professional_intelligence_knowledge_candidates,
+    verify_knowledge_candidate_runtime as verify_vectra_professional_intelligence_knowledge_candidates,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9405,10 +9407,11 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
 
 
 
-# PROFESSIONAL-INTELLIGENCE — PI-IMPL-0001/0002.
-# These endpoints are structural/read-only for Product Verification of the first
-# Professional Intelligence implementation increments. They do not extract,
-# classify, validate, normalize, deduplicate or capitalize knowledge.
+# PROFESSIONAL-INTELLIGENCE — PI-IMPL-0001/0002/0003/0004.
+# These endpoints are structural/read-only for Product Verification of the early
+# Professional Intelligence implementation increments. PI-IMPL-0003/0004 extract
+# Knowledge Candidates with Evidence only. They do not validate, classify into
+# Memory Spaces, normalize, deduplicate, build packages or capitalize knowledge.
 
 @router.get('/vectra/professional-intelligence/status', summary='Read VECTRA Professional Intelligence implementation status')
 def vectra_professional_intelligence_status(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
@@ -9441,6 +9444,20 @@ def vectra_professional_intelligence_session_audit_verify(x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_professional_intelligence_session_audit())
 
+
+
+
+@router.post('/vectra/professional-intelligence/knowledge-candidates', summary='Build Professional Intelligence Knowledge Candidates with Evidence')
+def vectra_professional_intelligence_knowledge_candidates(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_knowledge_candidates(payload))
+
+
+@router.get('/vectra/professional-intelligence/knowledge-candidates/verify', summary='Verify Professional Intelligence Knowledge Candidate and Evidence Runtime')
+def vectra_professional_intelligence_knowledge_candidates_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_intelligence_knowledge_candidates())
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
 def vectra_memory_architecture_conformance(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):

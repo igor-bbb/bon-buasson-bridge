@@ -2,12 +2,16 @@
 
 PI-IMPL-0001 — Session Context Foundation.
 PI-IMPL-0002 — Session Audit Runtime.
+PI-IMPL-0003 — Knowledge Candidate Extraction.
+PI-IMPL-0004 — Evidence Mapping.
 
-This module intentionally does not extract, classify, validate, normalize,
-deduplicate or capitalize knowledge. PI-IMPL-0001 converts working session input
-into a stable SessionContext object. PI-IMPL-0002 performs structural audit of
-that SessionContext and produces maps for later Professional Intelligence
-components.
+This module implements the approved early Professional Intelligence increments.
+PI-IMPL-0001 converts working session input into a stable SessionContext object.
+PI-IMPL-0002 performs structural audit of that SessionContext. PI-IMPL-0003 and
+PI-IMPL-0004 extract Knowledge Candidates with required Evidence Mapping. The
+module still intentionally does not validate, classify into Memory Spaces,
+normalize, deduplicate, build prepared_knowledge_package, or capitalize
+knowledge.
 """
 
 from __future__ import annotations
@@ -106,6 +110,38 @@ TOPIC_KEYWORDS = {
         "keywords": ["business domain", "бон буассон", "bonboason", "business", "бизнес"],
     },
 }
+
+CANDIDATE_TYPE_RULES = {
+    "proposed_professional": [
+        "standard", "architecture", "engineering", "runtime", "release brief", "deploy", "product verification",
+        "стандарт", "архитектур", "инженер", "релиз", "поставка", "проверка", "правило", "цикл",
+    ],
+    "proposed_business": [
+        "business", "business domain", "бон буассон", "network", "sku", "margin", "revenue",
+        "бизнес", "сеть", "маржа", "оборот", "клиент", "регион", "канал",
+    ],
+    "proposed_product": [
+        "product", "screen", "command", "scenario", "vectra", "workspace",
+        "продукт", "экран", "команда", "сценарий", "вектора", "рабочая сессия",
+    ],
+    "proposed_decision": [
+        "decision", "approved", "accepted", "pass", "cycle closed", "решение", "утвержд", "принят", "разреш",
+    ],
+    "proposed_general": [
+        "general", "общ", "универсальн",
+    ],
+}
+
+EVIDENCE_STRENGTH_ORDER = {
+    "NONE": 0,
+    "WEAK": 1,
+    "STRUCTURAL": 2,
+    "CONFIRMATION": 3,
+    "FINAL_OUTPUT": 4,
+    "ARTIFACT": 4,
+    "PRODUCT_VERIFICATION": 5,
+}
+
 
 DRAFT_KEYWORDS = [
     "draft", "чернов", "вариант", "может", "думаю", "предлагаю", "не уверен", "обсужд", "идея", "пока", "примерно",
@@ -613,6 +649,337 @@ def verify_session_audit_runtime() -> dict[str, Any]:
         "next_increment": "PI-IMPL-0003 — Knowledge Candidate Extraction" if pass_status else "Fix PI-IMPL-0002 before continuing.",
     }
 
+def _as_session_audit_report(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("session_audit_report"), dict):
+        return value["session_audit_report"]
+    built = build_session_audit_report(value)
+    report = built.get("session_audit_report") if isinstance(built, dict) else {}
+    return report if isinstance(report, dict) else {}
+
+
+def _index_by(items: Any, key: str) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        if isinstance(item, dict) and item.get(key):
+            result[_safe_str(item.get(key))] = item
+    return result
+
+
+def _candidate_type_from_text(text: str, *, is_decision: bool = False) -> str:
+    if is_decision:
+        return "proposed_decision"
+    lowered = text.lower()
+    for candidate_type, keywords in CANDIDATE_TYPE_RULES.items():
+        if _keyword_hit(lowered, keywords):
+            return candidate_type
+    return "unknown"
+
+
+def _evidence_strength(evidence: dict[str, Any]) -> str:
+    signals = evidence.get("signals") if isinstance(evidence.get("signals"), list) else []
+    if any(signal.get("signal_type") == "PRODUCT_VERIFICATION" for signal in signals if isinstance(signal, dict)):
+        return "PRODUCT_VERIFICATION"
+    if evidence.get("artifact_reference") or evidence.get("final_output_reference"):
+        return "ARTIFACT" if evidence.get("artifact_reference") else "FINAL_OUTPUT"
+    if evidence.get("confirmation_reference"):
+        return "CONFIRMATION"
+    if evidence.get("source_fragment_reference"):
+        return "STRUCTURAL"
+    return "NONE"
+
+
+def _candidate_from_fragment(
+    *,
+    session_id: str,
+    fragment: dict[str, Any],
+    topic_by_fragment: dict[str, list[dict[str, Any]]],
+    confirmation_by_fragment: dict[str, list[dict[str, Any]]],
+    decision_by_fragment: dict[str, list[dict[str, Any]]],
+    draft_by_fragment: dict[str, list[dict[str, Any]]],
+    issue_by_fragment: dict[str, list[dict[str, Any]]],
+    artifacts_by_id: dict[str, dict[str, Any]],
+    final_outputs_by_fragment: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any] | None:
+    fragment_id = _safe_str(fragment.get("fragment_id"))
+    text = _safe_str(fragment.get("normalized_content") or fragment.get("raw_content")).strip()
+    if not fragment_id or not text:
+        return None
+    if len(text) < 12:
+        return None
+
+    is_decision = bool(decision_by_fragment.get(fragment_id))
+    proposed_type = _candidate_type_from_text(text, is_decision=is_decision)
+    related_topics = topic_by_fragment.get(fragment_id, [])
+    related_confirmations = confirmation_by_fragment.get(fragment_id, [])
+    related_decisions = decision_by_fragment.get(fragment_id, [])
+    related_drafts = draft_by_fragment.get(fragment_id, [])
+    related_issues = issue_by_fragment.get(fragment_id, [])
+    related_finals = final_outputs_by_fragment.get(fragment_id, [])
+
+    referenced_artifacts = []
+    for artifact_id in fragment.get("referenced_artifacts") or []:
+        artifact = artifacts_by_id.get(_safe_str(artifact_id))
+        if artifact:
+            referenced_artifacts.append(artifact)
+
+    # PI-IMPL-0003 extracts candidates; it does not validate them. Draft and open issue
+    # flags are retained as extraction signals for PI-IMPL-0005 validation.
+    signals: list[dict[str, Any]] = []
+    for topic in related_topics:
+        signals.append({"signal_type": "TOPIC", "signal_id": topic.get("topic_id"), "signal": topic.get("topic_key")})
+    for confirmation in related_confirmations:
+        signals.append({"signal_type": "CONFIRMATION", "signal_id": confirmation.get("confirmation_id"), "signal": confirmation.get("confirmation_type")})
+    for decision in related_decisions:
+        signals.append({"signal_type": "DECISION", "signal_id": decision.get("decision_id"), "signal": decision.get("decision_signal")})
+    for draft in related_drafts:
+        signals.append({"signal_type": "DRAFT", "signal_id": draft.get("draft_id"), "signal": draft.get("draft_signal")})
+    for issue in related_issues:
+        signals.append({"signal_type": "UNRESOLVED_ISSUE", "signal_id": issue.get("issue_id"), "signal": issue.get("issue_signal")})
+    for final_output in related_finals:
+        signals.append({"signal_type": "FINAL_OUTPUT", "signal_id": final_output.get("final_output_id"), "signal": final_output.get("output_type")})
+    for artifact in referenced_artifacts:
+        artifact_type = _safe_str(artifact.get("artifact_type"))
+        signal_type = "PRODUCT_VERIFICATION" if artifact_type.lower() == "product verification" else "ARTIFACT"
+        signals.append({"signal_type": signal_type, "signal_id": artifact.get("artifact_id"), "signal": artifact_type})
+
+    confirmation_reference = related_confirmations[0] if related_confirmations else None
+    final_output_reference = related_finals[0] if related_finals else None
+    artifact_reference = referenced_artifacts[0] if referenced_artifacts else None
+    evidence = {
+        "evidence_id": _stable_id("EVID", session_id, fragment_id, len(signals)),
+        "source_fragment_reference": {
+            "fragment_id": fragment_id,
+            "chronological_index": fragment.get("chronological_index"),
+            "author": fragment.get("author"),
+            "role": fragment.get("role"),
+        },
+        "confirmation_reference": confirmation_reference,
+        "artifact_reference": artifact_reference,
+        "final_output_reference": final_output_reference,
+        "signals": signals,
+        "confidence": "STRUCTURAL_EXTRACTION",
+    }
+    evidence["evidence_strength"] = _evidence_strength(evidence)
+
+    candidate_id = _stable_id("KC", session_id, fragment_id, proposed_type, text[:160])
+    return {
+        "candidate_id": candidate_id,
+        "source_session_id": session_id,
+        "source_fragment_ids": [fragment_id],
+        "raw_statement": fragment.get("raw_content"),
+        "interpreted_statement": text,
+        "proposed_candidate_type": proposed_type,
+        "status": "EXTRACTED",
+        "extraction_reason": "STRUCTURAL_SESSION_AUDIT_SIGNAL",
+        "topic_references": [topic.get("topic_id") for topic in related_topics],
+        "decision_references": [decision.get("decision_id") for decision in related_decisions],
+        "draft_references": [draft.get("draft_id") for draft in related_drafts],
+        "unresolved_issue_references": [issue.get("issue_id") for issue in related_issues],
+        "evidence": evidence,
+        "architecture_boundary": {
+            "validated": False,
+            "classified_to_memory_space": False,
+            "normalized": False,
+            "deduplicated": False,
+            "included_in_prepared_package": False,
+            "capitalized": False,
+        },
+    }
+
+
+def _group_by_fragment(items: Any, fragment_key: str = "fragment_id") -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    if not isinstance(items, list):
+        return grouped
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        fragment_id = item.get(fragment_key)
+        if not fragment_id:
+            continue
+        grouped.setdefault(_safe_str(fragment_id), []).append(item)
+    return grouped
+
+
+def _topic_by_fragment(topic_map: Any) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    if not isinstance(topic_map, list):
+        return grouped
+    for topic in topic_map:
+        if not isinstance(topic, dict):
+            continue
+        for fragment_id in topic.get("fragment_ids") or []:
+            grouped.setdefault(_safe_str(fragment_id), []).append(topic)
+    return grouped
+
+
+def build_knowledge_candidate_report(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build Knowledge Candidates with Evidence Mapping for PI-IMPL-0003/0004.
+
+    This layer extracts candidates only. It does not validate, classify into
+    Memory Spaces, normalize, deduplicate, build prepared_knowledge_package or
+    capitalize knowledge.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+    context = _as_session_context(payload)
+    audit_report = _as_session_audit_report(payload if isinstance(payload.get("session_audit_report"), dict) else {"session_context": context})
+    session_id = _safe_str(context.get("session_id") or audit_report.get("session_id") or _stable_id("SESSION", _utc_now()))
+    fragments = context.get("fragments") if isinstance(context.get("fragments"), list) else []
+    artifacts_by_id = _index_by(context.get("artifacts"), "artifact_id")
+    final_outputs_by_fragment = _group_by_fragment(context.get("final_outputs"), "fragment_id")
+    topic_by_fragment = _topic_by_fragment(audit_report.get("topic_map"))
+    confirmation_by_fragment = _group_by_fragment(audit_report.get("confirmation_map"), "fragment_id")
+    decision_by_fragment = _group_by_fragment(audit_report.get("decision_map"), "fragment_id")
+    draft_by_fragment = _group_by_fragment(audit_report.get("draft_map"), "fragment_id")
+    issue_by_fragment = _group_by_fragment(audit_report.get("unresolved_issues_map"), "fragment_id")
+
+    candidates_by_id: dict[str, dict[str, Any]] = {}
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        candidate = _candidate_from_fragment(
+            session_id=session_id,
+            fragment=fragment,
+            topic_by_fragment=topic_by_fragment,
+            confirmation_by_fragment=confirmation_by_fragment,
+            decision_by_fragment=decision_by_fragment,
+            draft_by_fragment=draft_by_fragment,
+            issue_by_fragment=issue_by_fragment,
+            artifacts_by_id=artifacts_by_id,
+            final_outputs_by_fragment=final_outputs_by_fragment,
+        )
+        if candidate:
+            candidates_by_id[candidate["candidate_id"]] = candidate
+
+    candidates = list(candidates_by_id.values())
+    candidate_registry = {
+        "registry_id": _stable_id("KC-REG", session_id, len(candidates)),
+        "session_id": session_id,
+        "candidate_ids": [candidate["candidate_id"] for candidate in candidates],
+        "candidate_count": len(candidates),
+        "repository_mode": "IN_MEMORY_REPORT_ONLY",
+    }
+    candidate_repository = {
+        "repository_id": _stable_id("KC-REPO", session_id, "PI-IMPL-0003-0004"),
+        "session_id": session_id,
+        "objects": candidates,
+        "persistence": "NOT_RUNTIME_MEMORY",
+        "write_status": "NOT_WRITTEN_TO_PROFESSIONAL_MEMORY",
+    }
+    evidence_report = {
+        "evidence_report_id": _stable_id("EVID-REPORT", session_id, len(candidates)),
+        "candidate_count": len(candidates),
+        "evidence_count": sum(1 for candidate in candidates if isinstance(candidate.get("evidence"), dict)),
+        "missing_evidence_count": sum(1 for candidate in candidates if not isinstance(candidate.get("evidence"), dict)),
+        "strength_distribution": {},
+    }
+    for candidate in candidates:
+        strength = _safe_str((candidate.get("evidence") or {}).get("evidence_strength") or "NONE")
+        evidence_report["strength_distribution"][strength] = evidence_report["strength_distribution"].get(strength, 0) + 1
+
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_knowledge_candidate_report",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0003+PI-IMPL-0004",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_id": session_id,
+        "knowledge_candidates": candidates,
+        "candidate_registry": candidate_registry,
+        "candidate_repository": candidate_repository,
+        "evidence_report": evidence_report,
+        "statistics": {
+            "fragments_count": len(fragments),
+            "candidates_count": len(candidates),
+            "evidence_count": evidence_report["evidence_count"],
+            "candidate_types": {
+                candidate_type: sum(1 for candidate in candidates if candidate.get("proposed_candidate_type") == candidate_type)
+                for candidate_type in ["proposed_professional", "proposed_business", "proposed_product", "proposed_decision", "proposed_general", "unknown"]
+            },
+        },
+        "boundaries": {
+            "extracts_knowledge_candidates": True,
+            "maps_evidence": True,
+            "validates_knowledge": False,
+            "classifies_to_memory_space": False,
+            "normalizes_knowledge": False,
+            "deduplicates_knowledge": False,
+            "builds_prepared_knowledge_package": False,
+            "writes_to_runtime_memory": False,
+        },
+        "next_increment": "PI-IMPL-0005 — Knowledge Validation Engine",
+    }
+
+
+def verify_knowledge_candidate_runtime() -> dict[str, Any]:
+    sample_context = build_session_context({
+        "session_id": "PI-IMPL-0003-0004-VERIFY",
+        "project_id": "vectra",
+        "program_id": "professional_intelligence",
+        "business_domain": "bonboason",
+        "messages": [
+            {"role": "Product Owner", "author": "Product Owner", "content": "Решение принято. Реализуем Knowledge Candidate Extraction вместе с Evidence Mapping."},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "PI-IMPL-0003 создаёт Knowledge Candidate, но не выполняет Validation и не определяет Memory Space."},
+            {"role": "VECTRA Laboratory", "author": "Laboratory", "content": "Product Verification подтвердит Candidate Model, Evidence Mapping и отсутствие prepared_knowledge_package."},
+            {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю архитектурную границу: кандидаты ещё не являются знаниями."},
+        ],
+        "artifacts": [
+            {"artifact_type": "Product Verification", "title": "PI-IMPL-0002 Product Verification PASS", "status": "PASS"}
+        ],
+        "final_outputs": [
+            {"output_type": "IMPLEMENTATION_AUTHORIZED", "title": "PI-IMPL-0003+0004 authorized", "status": "APPROVED", "fragment_id": None}
+        ],
+    })
+    report = build_knowledge_candidate_report(sample_context)
+    candidates = report.get("knowledge_candidates") if isinstance(report.get("knowledge_candidates"), list) else []
+    evidence_report = report.get("evidence_report") if isinstance(report.get("evidence_report"), dict) else {}
+    boundaries = report.get("boundaries") if isinstance(report.get("boundaries"), dict) else {}
+    boundary_ok = (
+        boundaries.get("extracts_knowledge_candidates") is True
+        and boundaries.get("maps_evidence") is True
+        and boundaries.get("validates_knowledge") is False
+        and boundaries.get("classifies_to_memory_space") is False
+        and boundaries.get("normalizes_knowledge") is False
+        and boundaries.get("deduplicates_knowledge") is False
+        and boundaries.get("builds_prepared_knowledge_package") is False
+        and boundaries.get("writes_to_runtime_memory") is False
+    )
+    candidate_has_required_fields = all(
+        isinstance(candidate, dict)
+        and candidate.get("candidate_id")
+        and candidate.get("status") == "EXTRACTED"
+        and candidate.get("proposed_candidate_type")
+        and isinstance(candidate.get("evidence"), dict)
+        for candidate in candidates
+    )
+    checks = {
+        "knowledge_candidate_model": "PASS" if candidate_has_required_fields and candidates else "FAIL",
+        "candidate_registry": "PASS" if isinstance(report.get("candidate_registry"), dict) and report["candidate_registry"].get("candidate_count") == len(candidates) else "FAIL",
+        "candidate_repository": "PASS" if isinstance(report.get("candidate_repository"), dict) and isinstance(report["candidate_repository"].get("objects"), list) else "FAIL",
+        "extraction_engine": "PASS" if len(candidates) >= 3 else "FAIL",
+        "evidence_mapping": "PASS" if evidence_report.get("evidence_count") == len(candidates) and len(candidates) > 0 else "FAIL",
+        "source_references": "PASS" if all(candidate.get("source_fragment_ids") for candidate in candidates) else "FAIL",
+        "candidate_status_extracted_only": "PASS" if all(candidate.get("status") == "EXTRACTED" for candidate in candidates) else "FAIL",
+        "architecture_boundary_no_validation_classification_package": "PASS" if boundary_ok else "FAIL",
+    }
+    pass_status = all(value == "PASS" for value in checks.values())
+    return {
+        "status": "ok" if pass_status else "error",
+        "render_mode": "professional_intelligence_knowledge_candidate_verification",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0003+PI-IMPL-0004",
+        "verification_status": "PASS" if pass_status else "FAIL",
+        "checks": checks,
+        "sample_statistics": report.get("statistics"),
+        "next_increment": "PI-IMPL-0005 — Knowledge Validation Engine" if pass_status else "Fix PI-IMPL-0003/0004 before continuing.",
+    }
+
+
 def get_professional_intelligence_status() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -620,14 +987,14 @@ def get_professional_intelligence_status() -> dict[str, Any]:
         "program": "Professional Intelligence",
         "architecture_status": "APPROVED_FOR_IMPLEMENTATION",
         "architecture_freeze": True,
-        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002"],
-        "current_increment": "PI-IMPL-0002 — Session Audit Runtime",
-        "next_increment": "PI-IMPL-0003 — Knowledge Candidate Extraction",
+        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004"],
+        "current_increment": "PI-IMPL-0003+PI-IMPL-0004 — Knowledge Candidate Extraction + Evidence Mapping",
+        "next_increment": "PI-IMPL-0005 — Knowledge Validation Engine",
         "implementation_boundaries": {
             "session_context_foundation": "implemented",
             "session_audit": "implemented",
-            "knowledge_extraction": "not_implemented",
-            "evidence_mapping": "not_implemented",
+            "knowledge_extraction": "implemented",
+            "evidence_mapping": "implemented",
             "validation": "not_implemented",
             "classification": "not_implemented",
             "normalization": "not_implemented",
