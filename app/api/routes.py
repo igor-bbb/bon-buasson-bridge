@@ -216,6 +216,18 @@ from app.assistant_runtime.review import (
     get_evolution_journal_status as get_vectra_evolution_journal_status,
     verify_evolution_journal_readback as verify_vectra_evolution_journal_readback,
 )
+from app.assistant_runtime.memory_repository import (
+    list_memory_objects as list_vectra_memory_objects,
+    get_memory_object as get_vectra_memory_object,
+    readback_memory_object as readback_vectra_memory_object,
+    get_memory_overview as get_vectra_memory_overview,
+    verify_memory_repository_integrity as verify_vectra_memory_repository_integrity,
+)
+from app.assistant_runtime.memory_spaces import (
+    list_memory_spaces as list_vectra_memory_spaces,
+    get_memory_space as get_vectra_memory_space,
+    validate_memory_space as validate_vectra_memory_space,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -6979,6 +6991,86 @@ def _laboratory_public_openapi_schema() -> dict:
                     'responses': response('Knowledge Capitalization reports'),
                 }
             },
+            '/vectra/memory/objects': {
+                'get': {
+                    'operationId': 'getVectraMemoryObjects',
+                    'summary': 'List unified VECTRA Memory Objects',
+                    'description': 'Lists unified Knowledge Objects through the adapter-compatible Memory Repository layer. Existing Professional and Business Knowledge repositories are preserved.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'memory_space', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Optional memory space filter, for example professional_memory or business_domain_memory.'},
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Business Domain id, default bonboason.'},
+                        {'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}},
+                    ],
+                    'responses': response('Unified Memory Objects'),
+                }
+            },
+            '/vectra/memory/objects/{object_id}': {
+                'get': {
+                    'operationId': 'getVectraMemoryObjectById',
+                    'summary': 'Read unified VECTRA Memory Object',
+                    'description': 'Reads a single Knowledge Object by object_id through the unified Memory Repository layer.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'object_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}},
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}},
+                    ],
+                    'responses': response('Unified Memory Object'),
+                }
+            },
+            '/vectra/memory/readback': {
+                'post': {
+                    'operationId': 'verifyVectraMemoryObjectReadback',
+                    'summary': 'Verify unified VECTRA Memory Object readback',
+                    'description': 'Verifies readback and Knowledge Object mapping by object_id or knowledge_id.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Unified Memory Object readback'),
+                }
+            },
+            '/vectra/memory/overview': {
+                'get': {
+                    'operationId': 'getVectraMemoryOverview',
+                    'summary': 'Get unified VECTRA Memory overview',
+                    'description': 'Returns memory object counts, memory spaces, mapping status and repository compatibility status.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Unified Memory overview'),
+                }
+            },
+            '/vectra/memory/verify': {
+                'get': {
+                    'operationId': 'verifyVectraMemoryRepository',
+                    'summary': 'Verify unified VECTRA Memory Repository',
+                    'description': 'Runs Repository Integrity Check for the unified Memory Repository adapter layer.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Unified Memory Repository verification'),
+                }
+            },
+            '/vectra/memory/spaces': {
+                'get': {
+                    'operationId': 'getVectraMemorySpaces',
+                    'summary': 'List VECTRA Memory Spaces',
+                    'description': 'Returns Memory Space registry including active and prepared spaces.',
+                    'security': security,
+                    'parameters': [{'name': 'include_prepared', 'in': 'query', 'required': False, 'schema': {'type': 'boolean'}}],
+                    'responses': response('Memory Space registry'),
+                }
+            },
+            '/vectra/memory/spaces/{memory_space}/validate': {
+                'get': {
+                    'operationId': 'validateVectraMemorySpace',
+                    'summary': 'Validate VECTRA Memory Space',
+                    'description': 'Validates whether a memory_space is supported and optionally active.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'memory_space', 'in': 'path', 'required': True, 'schema': {'type': 'string'}},
+                        {'name': 'require_active', 'in': 'query', 'required': False, 'schema': {'type': 'boolean'}},
+                    ],
+                    'responses': response('Memory Space validation'),
+                }
+            },
             '/vectra/knowledge/professional': {
                 'get': {
                     'operationId': 'getVectraProfessionalKnowledge',
@@ -7220,6 +7312,13 @@ _LABORATORY_KNOWLEDGE_PATHS = {
     '/vectra/knowledge/capitalization/write',
     '/vectra/knowledge/capitalization',
     '/vectra/knowledge/capitalization/status',
+    '/vectra/memory/objects',
+    '/vectra/memory/objects/{object_id}',
+    '/vectra/memory/readback',
+    '/vectra/memory/overview',
+    '/vectra/memory/verify',
+    '/vectra/memory/spaces',
+    '/vectra/memory/spaces/{memory_space}/validate',
     '/vectra/knowledge/capitalization/reports',
     '/vectra/knowledge/professional',
     '/vectra/knowledge/professional/overview',
@@ -7284,6 +7383,13 @@ def _action_runtime_service_for(operation_id: str, endpoint: str) -> str:
         'getVectraLaboratoryActionManifest': 'laboratory_actions.get_action_manifest',
         'verifyVectraLaboratoryActionCompleteness': 'laboratory_actions.verify_action_completeness',
         'getVectraCapabilities': 'repository.get_capability_registry',
+        'getVectraMemoryObjects': 'memory_repository.list_memory_objects',
+        'getVectraMemoryObjectById': 'memory_repository.get_memory_object',
+        'verifyVectraMemoryObjectReadback': 'memory_repository.readback_memory_object',
+        'getVectraMemoryOverview': 'memory_repository.get_memory_overview',
+        'verifyVectraMemoryRepository': 'memory_repository.verify_memory_repository_integrity',
+        'getVectraMemorySpaces': 'memory_spaces.list_memory_spaces',
+        'validateVectraMemorySpace': 'memory_spaces.validate_memory_space',
         'getVectraProfessionalKnowledge': 'knowledge_capitalization.list_professional_knowledge',
         'getVectraProfessionalKnowledgeOverview': 'knowledge_capitalization.get_professional_knowledge_overview',
         'getVectraProfessionalKnowledgeById': 'knowledge_capitalization.get_professional_knowledge',
@@ -8555,6 +8661,30 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
                 endpoint = '/vectra/knowledge/professional/{knowledge_id}/readback'
                 service = 'knowledge_capitalization.verify_professional_knowledge_readback'
             return json_response(_facade_response(operation_type, service, endpoint, result))
+        if operation_type == 'list_memory_objects':
+            result = list_vectra_memory_objects(memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
+            return json_response(_facade_response(operation_type, 'memory_repository.list_memory_objects', '/vectra/memory/objects', result))
+        if operation_type == 'read_memory_object':
+            result = get_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.get_memory_object', '/vectra/memory/objects/{object_id}', result))
+        if operation_type == 'search_memory_object':
+            result = readback_vectra_memory_object(knowledge_id=str(payload.get('knowledge_id') or ''), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
+        if operation_type == 'verify_memory_object_readback':
+            result = readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
+        if operation_type == 'get_memory_overview':
+            result = get_vectra_memory_overview(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.get_memory_overview', '/vectra/memory/overview', result))
+        if operation_type == 'verify_memory_repository':
+            result = verify_vectra_memory_repository_integrity(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.verify_memory_repository_integrity', '/vectra/memory/verify', result))
+        if operation_type == 'list_memory_spaces':
+            result = list_vectra_memory_spaces(include_prepared=bool(payload.get('include_prepared', True)))
+            return json_response(_facade_response(operation_type, 'memory_spaces.list_memory_spaces', '/vectra/memory/spaces', result))
+        if operation_type == 'validate_memory_space':
+            result = validate_vectra_memory_space(str(payload.get('memory_space') or ''), require_active=bool(payload.get('require_active', False)))
+            return json_response(_facade_response(operation_type, 'memory_spaces.validate_memory_space', '/vectra/memory/spaces/{memory_space}/validate', result))
         if operation_type == 'create_report':
             reports_result = list_vectra_knowledge_capitalization_reports(limit=int(payload.get('limit') or 20), include_failed=bool(payload.get('include_failed', True)))
             report_id = str(payload.get('report_id') or '').strip()
@@ -8582,6 +8712,55 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
     except Exception as exc:
         logger.exception('knowledge_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='knowledge_facade'))
+
+
+@router.get('/vectra/memory/objects', summary='List unified VECTRA Memory Objects')
+def vectra_memory_objects(memory_space: str | None = None, domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_memory_objects(memory_space=memory_space, domain=domain, limit=limit))
+
+
+@router.get('/vectra/memory/objects/{object_id}', summary='Read unified VECTRA Memory Object')
+def vectra_memory_object_by_id(object_id: str, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_object(object_id=object_id, domain=domain))
+
+
+@router.post('/vectra/memory/readback', summary='Verify unified VECTRA Memory Object readback')
+def vectra_memory_object_readback(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=payload.get('domain') or 'bonboason'))
+
+
+@router.get('/vectra/memory/overview', summary='Get unified VECTRA Memory overview')
+def vectra_memory_overview(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_overview(domain=domain))
+
+
+@router.get('/vectra/memory/verify', summary='Verify unified VECTRA Memory Repository integrity')
+def vectra_memory_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_memory_repository_integrity(domain=domain))
+
+
+@router.get('/vectra/memory/spaces', summary='List VECTRA Memory Spaces')
+def vectra_memory_spaces(include_prepared: bool = True, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(list_vectra_memory_spaces(include_prepared=include_prepared))
+
+
+@router.get('/vectra/memory/spaces/{memory_space}', summary='Read VECTRA Memory Space')
+def vectra_memory_space_by_id(memory_space: str, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_space(memory_space))
+
+
+@router.get('/vectra/memory/spaces/{memory_space}/validate', summary='Validate VECTRA Memory Space')
+def vectra_memory_space_validate(memory_space: str, require_active: bool = False, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(validate_vectra_memory_space(memory_space, require_active=require_active))
 
 
 @router.post('/vectra/laboratory/facade/business-domain', summary='Execute VECTRA Business Domain facade operation')
