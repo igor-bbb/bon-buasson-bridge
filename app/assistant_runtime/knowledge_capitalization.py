@@ -32,6 +32,7 @@ from app.assistant_runtime.knowledge_object import (
     get_professional_knowledge_object,
     verify_knowledge_object_mapping,
 )
+from app.assistant_runtime.memory_classification import classify_knowledge_item
 
 KNOWLEDGE_RELEASE = "LABORATORY-KNOWLEDGE-0010"
 KNOWLEDGE_STATUSES = [
@@ -1013,9 +1014,21 @@ def _knowledge_normalized_fingerprint(item: Dict[str, Any]) -> str:
 def _normalize_knowledge_item_for_builder(item: Dict[str, Any], domain: str, source: str) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         item = {"description": str(item or "")}
-    raw_type = str(item.get("knowledge_type") or item.get("type") or "").lower().strip()
-    memory_type = str(item.get("recommended_memory_type") or item.get("memory_type") or "").lower().strip()
+    classification = classify_knowledge_item(item, domain=domain)
+    if classification.get("classification_status") == "REJECTED":
+        return None
+    normalized_classification = classification.get("normalized_knowledge") if isinstance(classification.get("normalized_knowledge"), dict) else {}
+    raw_type = str(item.get("knowledge_type") or item.get("type") or normalized_classification.get("knowledge_type") or "").lower().strip()
+    memory_type = str(item.get("recommended_memory_type") or item.get("memory_type") or normalized_classification.get("memory_space") or "").lower().strip()
     subtype = str(item.get("knowledge_subtype") or item.get("subtype") or "").lower().strip()
+    memory_space_to_type = {
+        "professional_memory": "professional_knowledge",
+        "business_domain_memory": "business_knowledge",
+        "product_memory": "product_knowledge",
+        "general_memory": "general_knowledge",
+        "product_decisions_memory": "product_decisions",
+    }
+    memory_type = memory_space_to_type.get(memory_type, memory_type)
     if raw_type not in KNOWLEDGE_TYPES:
         raw_type = "business" if item.get("business_domain") or item.get("domain") or memory_type == "business_knowledge" else "professional"
     if memory_type == "product_knowledge" or raw_type == "product":
@@ -1059,6 +1072,9 @@ def _normalize_knowledge_item_for_builder(item: Dict[str, Any], domain: str, sou
         "knowledge_subtype": subtype or item.get("knowledge_subtype"),
         "prepared_item_status": item.get("status") or item.get("prepared_item_status") or "confirmed",
         "revision": item.get("revision") or 1,
+        "memory_space": normalized_classification.get("memory_space") or memory_type,
+        "classification_status": classification.get("classification_status"),
+        "classification_release": classification.get("release"),
         "normalized_fingerprint": _knowledge_normalized_fingerprint(stable_basis),
     }
     return normalized

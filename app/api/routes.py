@@ -228,6 +228,19 @@ from app.assistant_runtime.memory_spaces import (
     get_memory_space as get_vectra_memory_space,
     validate_memory_space as validate_vectra_memory_space,
 )
+from app.assistant_runtime.memory_classification import (
+    classify_knowledge_item as classify_vectra_knowledge_item,
+    classify_knowledge_package as classify_vectra_knowledge_package,
+    verify_automatic_classification as verify_vectra_automatic_classification,
+)
+from app.assistant_runtime.memory_inspection import (
+    inspect_memory_object as inspect_vectra_memory_object,
+    inspect_memory_space as inspect_vectra_memory_space,
+    get_memory_statistics as get_vectra_memory_statistics,
+    get_memory_integrity_report as get_vectra_memory_integrity_report,
+    get_memory_readback_report as get_vectra_memory_readback_report,
+    run_memory_inspection as run_vectra_memory_inspection,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -7071,6 +7084,96 @@ def _laboratory_public_openapi_schema() -> dict:
                     'responses': response('Memory Space validation'),
                 }
             },
+            '/vectra/memory/classification': {
+                'post': {
+                    'operationId': 'classifyVectraKnowledgePackage',
+                    'summary': 'Classify VECTRA knowledge package',
+                    'description': 'Classifies supplied knowledge items into memory spaces and prepares a normalized Knowledge Package without writing Repository data.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Knowledge classification package'),
+                }
+            },
+            '/vectra/memory/classification/verify': {
+                'post': {
+                    'operationId': 'verifyVectraAutomaticClassification',
+                    'summary': 'Verify VECTRA automatic knowledge classification',
+                    'description': 'Runs deterministic classification verification and confirms that no invalid classification failures occurred.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Automatic classification verification'),
+                }
+            },
+            '/vectra/memory/inspection': {
+                'post': {
+                    'operationId': 'inspectVectraMemory',
+                    'summary': 'Run VECTRA Memory Inspection',
+                    'description': 'Runs read-only Memory Inspection Runtime operations: overview, statistics, integrity report, readback report, inspect object or inspect space.',
+                    'security': security,
+                    'requestBody': {'required': False, 'content': {'application/json': {'schema': {'type': 'object', 'additionalProperties': True}}}},
+                    'responses': response('Memory Inspection result'),
+                }
+            },
+            '/vectra/memory/inspection/object/{object_id}': {
+                'get': {
+                    'operationId': 'inspectVectraMemoryObject',
+                    'summary': 'Inspect VECTRA Memory Object',
+                    'description': 'Reads and verifies a single Memory Object without modifying Repository data.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'object_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}},
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}},
+                    ],
+                    'responses': response('Memory Object inspection'),
+                }
+            },
+            '/vectra/memory/inspection/space/{memory_space}': {
+                'get': {
+                    'operationId': 'inspectVectraMemorySpace',
+                    'summary': 'Inspect VECTRA Memory Space',
+                    'description': 'Lists and verifies objects in a memory_space without modifying Repository data.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'memory_space', 'in': 'path', 'required': True, 'schema': {'type': 'string'}},
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}},
+                        {'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}},
+                    ],
+                    'responses': response('Memory Space inspection'),
+                }
+            },
+            '/vectra/memory/statistics': {
+                'get': {
+                    'operationId': 'getVectraMemoryStatistics',
+                    'summary': 'Get VECTRA Memory statistics',
+                    'description': 'Returns counts by memory_space, knowledge_type and verification_status.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Memory statistics'),
+                }
+            },
+            '/vectra/memory/integrity-report': {
+                'get': {
+                    'operationId': 'getVectraMemoryIntegrityReport',
+                    'summary': 'Get VECTRA Memory integrity report',
+                    'description': 'Returns Memory Repository integrity, overview, statistics and Memory Space registry in one read-only report.',
+                    'security': security,
+                    'parameters': [{'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}}],
+                    'responses': response('Memory integrity report'),
+                }
+            },
+            '/vectra/memory/readback-report': {
+                'get': {
+                    'operationId': 'getVectraMemoryReadbackReport',
+                    'summary': 'Get VECTRA Memory readback report',
+                    'description': 'Runs readback verification across Memory Objects and returns pass/fail counts.',
+                    'security': security,
+                    'parameters': [
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}},
+                        {'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}},
+                    ],
+                    'responses': response('Memory readback report'),
+                }
+            },
             '/vectra/knowledge/professional': {
                 'get': {
                     'operationId': 'getVectraProfessionalKnowledge',
@@ -7319,6 +7422,14 @@ _LABORATORY_KNOWLEDGE_PATHS = {
     '/vectra/memory/verify',
     '/vectra/memory/spaces',
     '/vectra/memory/spaces/{memory_space}/validate',
+    '/vectra/memory/classification',
+    '/vectra/memory/classification/verify',
+    '/vectra/memory/inspection',
+    '/vectra/memory/inspection/object/{object_id}',
+    '/vectra/memory/inspection/space/{memory_space}',
+    '/vectra/memory/statistics',
+    '/vectra/memory/integrity-report',
+    '/vectra/memory/readback-report',
     '/vectra/knowledge/capitalization/reports',
     '/vectra/knowledge/professional',
     '/vectra/knowledge/professional/overview',
@@ -7390,6 +7501,14 @@ def _action_runtime_service_for(operation_id: str, endpoint: str) -> str:
         'verifyVectraMemoryRepository': 'memory_repository.verify_memory_repository_integrity',
         'getVectraMemorySpaces': 'memory_spaces.list_memory_spaces',
         'validateVectraMemorySpace': 'memory_spaces.validate_memory_space',
+        'classifyVectraKnowledgeItem': 'memory_classification.classify_knowledge_item',
+        'classifyVectraKnowledgePackage': 'memory_classification.classify_knowledge_package',
+        'verifyVectraAutomaticClassification': 'memory_classification.verify_automatic_classification',
+        'inspectVectraMemoryObject': 'memory_inspection.inspect_memory_object',
+        'inspectVectraMemorySpace': 'memory_inspection.inspect_memory_space',
+        'getVectraMemoryStatistics': 'memory_inspection.get_memory_statistics',
+        'getVectraMemoryIntegrityReport': 'memory_inspection.get_memory_integrity_report',
+        'getVectraMemoryReadbackReport': 'memory_inspection.get_memory_readback_report',
         'getVectraProfessionalKnowledge': 'knowledge_capitalization.list_professional_knowledge',
         'getVectraProfessionalKnowledgeOverview': 'knowledge_capitalization.get_professional_knowledge_overview',
         'getVectraProfessionalKnowledgeById': 'knowledge_capitalization.get_professional_knowledge',
@@ -7774,7 +7893,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'LABORATORY-KNOWLEDGE-0010-PV-WORKING-CONTEXT-PAYLOAD',
+            'version': 'MEMORY-IMPL-0005-0006-AUTOMATIC-CLASSIFICATION-INSPECTION',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. LABORATORY-KNOWLEDGE-0010-PV fixes GPT facade payload normalization so working_context/session material is passed into Runtime extraction before capitalization. VECTRA performs the professional session audit; Runtime accepts prepared packages and can also convert supplied session audit evidence into a normalized, deduplicated package, then performs incremental diff, safe batch persistence, readback verification and the final report.',
         },
         'servers': [{'url': server_url}],
@@ -7791,7 +7910,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'LABORATORY-KNOWLEDGE-0010',
+        'x-vectra-release': 'MEMORY-IMPL-0005-0006',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -8685,6 +8804,33 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
         if operation_type == 'validate_memory_space':
             result = validate_vectra_memory_space(str(payload.get('memory_space') or ''), require_active=bool(payload.get('require_active', False)))
             return json_response(_facade_response(operation_type, 'memory_spaces.validate_memory_space', '/vectra/memory/spaces/{memory_space}/validate', result))
+        if operation_type == 'classify_knowledge_item':
+            result = classify_vectra_knowledge_item(payload, domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_classification.classify_knowledge_item', '/vectra/memory/classification', result))
+        if operation_type == 'classify_knowledge_package':
+            result = classify_vectra_knowledge_package(payload, domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_classification.classify_knowledge_package', '/vectra/memory/classification', result))
+        if operation_type == 'verify_automatic_classification':
+            result = verify_vectra_automatic_classification(payload, domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_classification.verify_automatic_classification', '/vectra/memory/classification/verify', result))
+        if operation_type == 'inspect_memory':
+            result = run_vectra_memory_inspection(operation_type=str(payload.get('inspection_type') or payload.get('inspection_operation') or 'overview'), payload=payload, domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_inspection.run_memory_inspection', '/vectra/memory/inspection', result))
+        if operation_type == 'inspect_memory_object':
+            result = inspect_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_inspection.inspect_memory_object', '/vectra/memory/inspection/object/{object_id}', result))
+        if operation_type == 'inspect_memory_space':
+            result = inspect_vectra_memory_space(memory_space=str(payload.get('memory_space') or ''), domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
+            return json_response(_facade_response(operation_type, 'memory_inspection.inspect_memory_space', '/vectra/memory/inspection/space/{memory_space}', result))
+        if operation_type == 'get_memory_statistics':
+            result = get_vectra_memory_statistics(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_statistics', '/vectra/memory/statistics', result))
+        if operation_type == 'get_memory_integrity_report':
+            result = get_vectra_memory_integrity_report(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_integrity_report', '/vectra/memory/integrity-report', result))
+        if operation_type == 'get_memory_readback_report':
+            result = get_vectra_memory_readback_report(domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
+            return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_readback_report', '/vectra/memory/readback-report', result))
         if operation_type == 'create_report':
             reports_result = list_vectra_knowledge_capitalization_reports(limit=int(payload.get('limit') or 20), include_failed=bool(payload.get('include_failed', True)))
             report_id = str(payload.get('report_id') or '').strip()
@@ -8761,6 +8907,57 @@ def vectra_memory_space_by_id(memory_space: str, x_vectra_laboratory_key: str | 
 def vectra_memory_space_validate(memory_space: str, require_active: bool = False, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(validate_vectra_memory_space(memory_space, require_active=require_active))
+
+
+@router.post('/vectra/memory/classification', summary='Classify VECTRA Knowledge Package')
+def vectra_memory_classification(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(classify_vectra_knowledge_package(payload, domain=payload.get('domain') or domain))
+
+
+@router.post('/vectra/memory/classification/verify', summary='Verify VECTRA Automatic Knowledge Classification')
+def vectra_memory_classification_verify(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(verify_vectra_automatic_classification(payload, domain=payload.get('domain') or domain))
+
+
+@router.post('/vectra/memory/inspection', summary='Run VECTRA Memory Inspection')
+def vectra_memory_inspection(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(run_vectra_memory_inspection(operation_type=str(payload.get('inspection_type') or payload.get('inspection_operation') or 'overview'), payload=payload, domain=payload.get('domain') or domain))
+
+
+@router.get('/vectra/memory/inspection/object/{object_id}', summary='Inspect VECTRA Memory Object')
+def vectra_memory_inspection_object(object_id: str, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(inspect_vectra_memory_object(object_id=object_id, domain=domain))
+
+
+@router.get('/vectra/memory/inspection/space/{memory_space}', summary='Inspect VECTRA Memory Space')
+def vectra_memory_inspection_space(memory_space: str, domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(inspect_vectra_memory_space(memory_space=memory_space, domain=domain, limit=limit))
+
+
+@router.get('/vectra/memory/statistics', summary='Get VECTRA Memory Statistics')
+def vectra_memory_statistics(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_statistics(domain=domain))
+
+
+@router.get('/vectra/memory/integrity-report', summary='Get VECTRA Memory Integrity Report')
+def vectra_memory_integrity_report(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_integrity_report(domain=domain))
+
+
+@router.get('/vectra/memory/readback-report', summary='Get VECTRA Memory Readback Report')
+def vectra_memory_readback_report(domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(get_vectra_memory_readback_report(domain=domain, limit=limit))
 
 
 @router.post('/vectra/laboratory/facade/business-domain', summary='Execute VECTRA Business Domain facade operation')
