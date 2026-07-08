@@ -26,6 +26,13 @@ from app.assistant_runtime.repository import (
     _with_workspace_markdown,
 )
 
+from app.assistant_runtime.knowledge_object import (
+    get_business_knowledge_object,
+    get_knowledge_object_overview,
+    get_professional_knowledge_object,
+    verify_knowledge_object_mapping,
+)
+
 KNOWLEDGE_RELEASE = "LABORATORY-KNOWLEDGE-0010"
 KNOWLEDGE_STATUSES = [
     "DETECTED",
@@ -1610,7 +1617,9 @@ def verify_professional_knowledge_readback(knowledge_id: str) -> Dict[str, Any]:
     normalized = _normalize_professional_record(found) if exists else None
     checksum = _stable_checksum(normalized) if normalized else None
     file_checksum = _file_checksum(paths["professional"])
-    verification_status = "PASS" if exists and checksum else "FAIL"
+    knowledge_object = get_professional_knowledge_object(knowledge_id) if exists else None
+    knowledge_object_verification = verify_knowledge_object_mapping(knowledge_object)
+    verification_status = "PASS" if exists and checksum and knowledge_object_verification.get("status") == "PASS" else "FAIL"
     return {
         "status": verification_status,
         "render_mode": "vectra_professional_knowledge_readback_verification",
@@ -1625,6 +1634,10 @@ def verify_professional_knowledge_readback(knowledge_id: str) -> Dict[str, Any]:
         "professional_model_auto_update": False,
         "professional_model_changed": False,
         "knowledge": normalized,
+        "knowledge_object_mapping_status": knowledge_object_verification.get("mapping_status"),
+        "knowledge_object_verification_status": knowledge_object_verification.get("status"),
+        "knowledge_object_checksum": knowledge_object_verification.get("object_checksum"),
+        "knowledge_object": knowledge_object,
     }
 
 
@@ -1730,7 +1743,9 @@ def verify_domain_knowledge_readback(domain: str = "bonboason", knowledge_id: st
     normalized = _normalize_business_record(found, domain_key) if isinstance(found, dict) else None
     checksum = _stable_checksum(normalized) if normalized else None
     file_checksum = _file_checksum(_business_knowledge_repository_path(domain_key))
-    verification_status = "PASS" if readback.get("status") == "PASS" and checksum else "FAIL"
+    knowledge_object = get_business_knowledge_object(domain_key, knowledge_id) if normalized else None
+    knowledge_object_verification = verify_knowledge_object_mapping(knowledge_object)
+    verification_status = "PASS" if readback.get("status") == "PASS" and checksum and knowledge_object_verification.get("status") == "PASS" else "FAIL"
     return {
         "status": verification_status,
         "render_mode": "vectra_domain_knowledge_readback_verification",
@@ -1746,6 +1761,10 @@ def verify_domain_knowledge_readback(domain: str = "bonboason", knowledge_id: st
         "professional_model_auto_update": False,
         "professional_model_changed": False,
         "knowledge": normalized,
+        "knowledge_object_mapping_status": knowledge_object_verification.get("mapping_status"),
+        "knowledge_object_verification_status": knowledge_object_verification.get("status"),
+        "knowledge_object_checksum": knowledge_object_verification.get("object_checksum"),
+        "knowledge_object": knowledge_object,
     }
 
 
@@ -1776,12 +1795,14 @@ def verify_knowledge_capitalization() -> Dict[str, Any]:
     business_overview = get_domain_knowledge_overview("bonboason")
     reports = list_knowledge_capitalization_reports(limit=5)
     latest_report = (reports.get("reports") or [])[-1] if reports.get("reports") else None
+    knowledge_object_overview = get_knowledge_object_overview("bonboason")
     checks = {
         "runtime_ready": status.get("status") == "ok",
         "product_owner_approval_required": True,
         "professional_repository_readable": professional.get("status") == "ok",
         "business_repository_readable": business_overview.get("repository_status") == "readable",
         "reports_repository_readable": reports.get("status") == "ok",
+        "knowledge_object_mapping_readable": knowledge_object_overview.get("verification_status") == "PASS",
         "latest_capitalized_report_available": bool(latest_report and latest_report.get("final_status") == "CAPITALIZED"),
     }
     return {
@@ -1793,6 +1814,7 @@ def verify_knowledge_capitalization() -> Dict[str, Any]:
         "professional_knowledge_items_count": professional.get("items_count"),
         "business_knowledge_items_count": business_overview.get("business_documents"),
         "business_knowledge_repository": business_overview.get("repository_path"),
+        "knowledge_object_overview": knowledge_object_overview,
         "allowed_statuses": KNOWLEDGE_STATUSES,
     }
 
@@ -1821,7 +1843,9 @@ def verify_knowledge_memory_persistence(domain: str = "bonboason") -> Dict[str, 
     business_status = "PASS" if repo_checks["business_repository_exists"] and repo_checks["business_repository_readable"] else "FAIL"
     recovery_status = "PASS" if isinstance(recovery, dict) and recovery.get("status") in {"ok", "PASS", "ready"} else "PASS" if isinstance(recovery, dict) else "FAIL"
     repository_status = "PASS" if all(repo_checks.values()) else "FAIL"
-    final = "PASS" if prof_status == business_status == recovery_status == repository_status == "PASS" else "FAIL"
+    knowledge_object_overview = get_knowledge_object_overview(domain_key)
+    knowledge_object_status = "PASS" if knowledge_object_overview.get("verification_status") == "PASS" else "FAIL"
+    final = "PASS" if prof_status == business_status == recovery_status == repository_status == knowledge_object_status == "PASS" else "FAIL"
     result = {
         "status": "ok" if final == "PASS" else "error",
         "render_mode": "vectra_knowledge_memory_persistence_verification",
@@ -1833,6 +1857,8 @@ def verify_knowledge_memory_persistence(domain: str = "bonboason") -> Dict[str, 
         "business_documents": len(business_items),
         "recovery_snapshot": recovery_status,
         "repository_integrity": repository_status,
+        "knowledge_object_mapping": knowledge_object_status,
+        "knowledge_object_overview": knowledge_object_overview,
         "repository_checks": repo_checks,
         "verification_status": final,
         "final_status": "MEMORY_PERSISTENCE_PASS" if final == "PASS" else "MEMORY_PERSISTENCE_FAIL",
