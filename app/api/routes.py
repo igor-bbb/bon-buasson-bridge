@@ -318,6 +318,11 @@ from app.assistant_runtime.session_archive import (
     capitalize_archived_session_knowledge as capitalize_vectra_archived_session_knowledge,
     verify_archive_backed_capitalization as verify_vectra_archive_backed_capitalization,
 )
+from app.assistant_runtime.unified_professional_model import (
+    build_unified_archive_context as build_vectra_unified_archive_context,
+    build_unified_professional_model as build_vectra_unified_professional_model,
+    verify_unified_professional_model as verify_vectra_unified_professional_model,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -9546,6 +9551,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'session_archive.capitalize_archived_session_knowledge', '/vectra/laboratory/facade/memory', capitalize_vectra_archived_session_knowledge(payload), next_action='Run verify_archive_backed_capitalization.'))
         if operation_type in {'verify_archive_backed_capitalization', 'archive_backed_capitalization_verify'}:
             return json_response(_facade_response(operation_type, 'session_archive.verify_archive_backed_capitalization', '/vectra/laboratory/facade/memory', verify_vectra_archive_backed_capitalization(payload)))
+        if operation_type in {'get_all_session_archives', 'build_unified_archive_context', 'unified_archive_context', 'historical_archives_context'}:
+            return json_response(_facade_response(operation_type, 'unified_professional_model.build_unified_archive_context', '/vectra/laboratory/facade/memory', build_vectra_unified_archive_context(payload), next_action='Build Unified Professional Model through build_unified_professional_model.'))
+        if operation_type in {'build_unified_professional_model', 'unified_professional_model', 'consolidate_professional_model', 'build_professional_model_from_archives'}:
+            return json_response(_facade_response(operation_type, 'unified_professional_model.build_unified_professional_model', '/vectra/laboratory/facade/memory', build_vectra_unified_professional_model(payload), next_action='Send Unified Professional Model and Consolidation Report to VECTRA Laboratory for Product Verification.'))
+        if operation_type in {'verify_unified_professional_model', 'verify_professional_model_consolidation', 'verify_vpm_consolidation'}:
+            return json_response(_facade_response(operation_type, 'unified_professional_model.verify_unified_professional_model', '/vectra/laboratory/facade/memory', verify_vectra_unified_professional_model(payload)))
         if operation_type in {'build_session_context', 'session_context', 'professional_intelligence_session_context'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_session_context', '/vectra/professional-intelligence/session-context', build_vectra_professional_intelligence_session_context(payload), next_action='Run session_context_verify, then continue to PI-IMPL-0002 after Product Verification PASS.'))
         if operation_type in {'verify_session_context', 'verify_session_context_foundation', 'professional_intelligence_verify'}:
