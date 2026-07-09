@@ -303,6 +303,10 @@ from app.assistant_runtime.professional_intelligence import (
     build_prepared_knowledge_package as build_vectra_professional_intelligence_prepared_package,
     build_package_diagnostics as build_vectra_professional_intelligence_package_diagnostics,
     verify_prepared_knowledge_package_runtime as verify_vectra_professional_intelligence_prepared_package,
+    run_runtime_capitalization_integration as run_vectra_professional_intelligence_runtime_capitalization,
+    build_product_verification_suite as build_vectra_professional_intelligence_product_verification_suite,
+    build_end_to_end_professional_intelligence_validation as build_vectra_professional_intelligence_e2e_validation,
+    verify_runtime_capitalization_integration as verify_vectra_professional_intelligence_runtime_capitalization,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9366,6 +9370,15 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_package_diagnostics', '/vectra/professional-intelligence/prepared-knowledge-package/diagnostics', build_vectra_professional_intelligence_package_diagnostics(payload), next_action='Review completeness_report and risk_report before Runtime Capitalization integration.'))
         if operation_type in {'verify_prepared_knowledge_package', 'verify_prepared_knowledge_package_runtime', 'prepared_knowledge_package_verify'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.verify_prepared_knowledge_package_runtime', '/vectra/professional-intelligence/prepared-knowledge-package/verify', verify_vectra_professional_intelligence_prepared_package()))
+        if operation_type in {'run_runtime_capitalization', 'runtime_capitalization', 'capitalize_prepared_knowledge_package', 'professional_intelligence_runtime_capitalization'}:
+            payload['product_owner_approval'] = bool(payload.get('product_owner_approval') or approval)
+            return json_response(_facade_response(operation_type, 'professional_intelligence.run_runtime_capitalization_integration', '/vectra/professional-intelligence/runtime-capitalization', run_vectra_professional_intelligence_runtime_capitalization(payload), next_action='Run verify_runtime_capitalization.'))
+        if operation_type in {'build_product_verification_suite', 'product_verification_suite', 'professional_intelligence_product_verification_suite'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_product_verification_suite', '/vectra/professional-intelligence/product-verification-suite', build_vectra_professional_intelligence_product_verification_suite(payload), next_action='Run end_to_end_professional_intelligence_validation.'))
+        if operation_type in {'end_to_end_professional_intelligence_validation', 'professional_intelligence_e2e_validation', 'run_professional_intelligence_e2e'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_end_to_end_professional_intelligence_validation', '/vectra/professional-intelligence/e2e-validation', build_vectra_professional_intelligence_e2e_validation(payload), next_action='Run verify_runtime_capitalization.'))
+        if operation_type in {'verify_runtime_capitalization', 'verify_runtime_capitalization_integration', 'runtime_capitalization_verify', 'verify_professional_intelligence_end_to_end'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.verify_runtime_capitalization_integration', '/vectra/professional-intelligence/runtime-capitalization/verify', verify_vectra_professional_intelligence_runtime_capitalization()))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
@@ -9496,6 +9509,33 @@ def vectra_professional_intelligence_knowledge_processing(request: dict = None, 
 def vectra_professional_intelligence_knowledge_processing_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_professional_intelligence_knowledge_processing())
+
+
+@router.post('/vectra/professional-intelligence/runtime-capitalization', summary='Run Professional Intelligence Runtime Capitalization Integration')
+def vectra_professional_intelligence_runtime_capitalization(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(run_vectra_professional_intelligence_runtime_capitalization(payload))
+
+
+@router.get('/vectra/professional-intelligence/runtime-capitalization/verify', summary='Verify Professional Intelligence Runtime Capitalization Integration')
+def vectra_professional_intelligence_runtime_capitalization_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_intelligence_runtime_capitalization())
+
+
+@router.post('/vectra/professional-intelligence/product-verification-suite', summary='Run Professional Intelligence Product Verification Suite')
+def vectra_professional_intelligence_product_verification_suite(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_product_verification_suite(payload))
+
+
+@router.post('/vectra/professional-intelligence/e2e-validation', summary='Run End-to-End Professional Intelligence Validation')
+def vectra_professional_intelligence_e2e_validation(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_e2e_validation(payload))
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
 def vectra_memory_architecture_conformance(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
