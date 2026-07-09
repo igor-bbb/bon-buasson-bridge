@@ -7,15 +7,19 @@ PI-IMPL-0004 — Evidence Mapping.
 PI-IMPL-0005 — Knowledge Validation.
 PI-IMPL-0006 — Knowledge Classification.
 PI-IMPL-0007 — Normalization.
+PI-IMPL-0008 — Deduplication Engine.
+PI-IMPL-0009 — Professional Standards Consolidation.
 
 This module implements the approved Professional Intelligence increments.
 PI-IMPL-0001 converts working session input into a stable SessionContext object.
 PI-IMPL-0002 performs structural audit of that SessionContext. PI-IMPL-0003 and
 PI-IMPL-0004 extract Knowledge Candidates with required Evidence Mapping.
 PI-IMPL-0005, PI-IMPL-0006 and PI-IMPL-0007 validate candidates, classify them
-for target memory handling and normalize their wording. The module still
-intentionally does not deduplicate, build prepared_knowledge_package, write to
-Professional Memory, or capitalize knowledge.
+for target memory handling and normalize their wording. PI-IMPL-0008 and
+PI-IMPL-0009 consolidate processed candidates by grouping duplicates and
+identifying candidates for professional standards. The module still intentionally
+does not build prepared_knowledge_package, write to Professional Memory, or
+capitalize knowledge.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any
+import re
 
 CONFIRMATION_KEYWORDS = {
     "approved": "APPROVED",
@@ -1351,6 +1356,266 @@ def verify_knowledge_processing_runtime() -> dict[str, Any]:
         "next_increment": "PI-IMPL-0008 — Deduplication Engine" if pass_status else "Fix PI-IMPL-0005/0006/0007 before continuing.",
     }
 
+
+STANDARD_TARGET_RULES = {
+    "Engineering Operating Standard": ["engineering", "process", "cycle", "product owner", "release brief", "инженер", "процесс", "цикл", "product owner"],
+    "Engineering Delivery Standard": ["deploy", "delivery", "package", "github", "поставка", "архив", "загруз"],
+    "Regression Prevention Standard": ["regression", "backward compatibility", "регресс", "совместим"],
+    "Platform Constraints": ["constraint", "limitation", "openapi", "gpt actions", "огранич", "фасад", "operation_type"],
+    "Architectural Invariants": ["architecture", "invariant", "memory cannot be lost", "архитектур", "инвариант", "память"],
+    "Engineering Lessons Learned": ["lesson", "learned", "опыт", "вывод", "практика", "ошиб"],
+    "Program Management Standard": ["program", "program management", "программа", "roadmap", "baseline"],
+    "Product Decision Registry": ["decision", "approved", "accepted", "решение", "утвержд", "принят"],
+}
+
+
+def _as_knowledge_processing_report(value: dict[str, Any] | None) -> dict[str, Any]:
+    """Coerce payload to PI-IMPL-0005/0006/0007 processing report."""
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("knowledge_processing_report"), dict):
+        return value["knowledge_processing_report"]
+    if isinstance(value.get("processed_candidates"), list):
+        return value
+    return build_knowledge_processing_report(value)
+
+
+def _deduplication_key(candidate: dict[str, Any]) -> str:
+    normalized = candidate.get("normalization_result") if isinstance(candidate.get("normalization_result"), dict) else {}
+    text = _normalize_content(
+        normalized.get("normalized_statement")
+        or candidate.get("interpreted_statement")
+        or candidate.get("raw_statement")
+    ).lower()
+    text = re.sub(r"^(pass\.?\s*)", "", text).strip()
+    text = re.sub(r"[\.!,;:]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    target = _safe_str((candidate.get("classification_result") or {}).get("target_memory_space") or "needs_review")
+    return f"{target}|{text}"
+
+
+def _candidate_evidence_rank(candidate: dict[str, Any]) -> int:
+    strength = _candidate_evidence_strength(candidate)
+    return EVIDENCE_STRENGTH_ORDER.get(strength, 0)
+
+
+def _select_primary_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            _candidate_evidence_rank(candidate),
+            1 if candidate.get("status") == "APPROVED_FOR_PACKAGE" else 0,
+            len(_safe_str(candidate.get("normalized_statement") or candidate.get("raw_statement"))),
+        ),
+        reverse=True,
+    )[0]
+
+
+def _build_deduplication_groups(processed_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for candidate in processed_candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if candidate.get("status") not in {"APPROVED_FOR_PACKAGE", "NEEDS_REVIEW"}:
+            continue
+        key = _deduplication_key(candidate)
+        if not key.strip("|"):
+            continue
+        grouped.setdefault(key, []).append(candidate)
+
+    groups: list[dict[str, Any]] = []
+    for key, members in grouped.items():
+        primary = _select_primary_candidate(members)
+        if not primary:
+            continue
+        duplicate_ids = [m.get("candidate_id") for m in members if m.get("candidate_id") != primary.get("candidate_id")]
+        target_memory_space = _safe_str((primary.get("classification_result") or {}).get("target_memory_space") or "needs_review")
+        normalized = primary.get("normalization_result") if isinstance(primary.get("normalization_result"), dict) else {}
+        group = {
+            "deduplication_group_id": _stable_id("DEDUP", key),
+            "deduplication_key": key,
+            "target_memory_space": target_memory_space,
+            "primary_candidate_id": primary.get("candidate_id"),
+            "member_candidate_ids": [m.get("candidate_id") for m in members if m.get("candidate_id")],
+            "duplicate_candidate_ids": duplicate_ids,
+            "duplicate_count": len(duplicate_ids),
+            "canonical_statement": normalized.get("normalized_statement") or primary.get("interpreted_statement") or primary.get("raw_statement"),
+            "deduplication_decision": "GROUPED_DUPLICATES" if duplicate_ids else "UNIQUE",
+            "destructive_merge_performed": False,
+            "capitalized": False,
+        }
+        groups.append(group)
+    return groups
+
+
+def _recommend_standard_target(candidate: dict[str, Any]) -> str | None:
+    text = " ".join([
+        _safe_str(candidate.get("raw_statement")),
+        _safe_str(candidate.get("interpreted_statement")),
+        _safe_str((candidate.get("normalization_result") or {}).get("normalized_statement")),
+        _safe_str((candidate.get("classification_result") or {}).get("knowledge_type")),
+    ]).lower()
+    if (candidate.get("classification_result") or {}).get("target_memory_space") == "product_decisions":
+        return "Product Decision Registry"
+    for target, keywords in STANDARD_TARGET_RULES.items():
+        if any(keyword in text for keyword in keywords):
+            return target
+    return None
+
+
+def _is_standard_candidate(candidate: dict[str, Any]) -> bool:
+    if candidate.get("status") != "APPROVED_FOR_PACKAGE":
+        return False
+    classification = candidate.get("classification_result") if isinstance(candidate.get("classification_result"), dict) else {}
+    if classification.get("target_memory_space") in {"professional_memory", "product_decisions"}:
+        return True
+    text = " ".join([
+        _safe_str(candidate.get("raw_statement")),
+        _safe_str(candidate.get("interpreted_statement")),
+        _safe_str((candidate.get("normalization_result") or {}).get("normalized_statement")),
+    ]).lower()
+    return any(token in text for token in ["standard", "rule", "policy", "lesson", "стандарт", "правило", "политик", "урок", "lesson"])
+
+
+def _build_standards_recommendations(processed_candidates: list[dict[str, Any]], groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    group_by_primary = {group.get("primary_candidate_id"): group for group in groups}
+    recommendations: list[dict[str, Any]] = []
+    for candidate in processed_candidates:
+        if not isinstance(candidate, dict) or not _is_standard_candidate(candidate):
+            continue
+        target = _recommend_standard_target(candidate) or "Professional Knowledge"
+        normalized = candidate.get("normalization_result") if isinstance(candidate.get("normalization_result"), dict) else {}
+        classification = candidate.get("classification_result") if isinstance(candidate.get("classification_result"), dict) else {}
+        recommendation = {
+            "standard_candidate_id": _stable_id("STD-CAND", candidate.get("candidate_id"), target),
+            "source_candidate_id": candidate.get("candidate_id"),
+            "recommended_target": target,
+            "target_memory_space": classification.get("target_memory_space"),
+            "knowledge_type": classification.get("knowledge_type"),
+            "normalized_statement": normalized.get("normalized_statement") or candidate.get("interpreted_statement") or candidate.get("raw_statement"),
+            "deduplication_group_id": (group_by_primary.get(candidate.get("candidate_id")) or {}).get("deduplication_group_id"),
+            "consolidation_status": "STANDARD_CANDIDATE",
+            "requires_product_owner_acceptance": True,
+            "capitalized": False,
+        }
+        recommendations.append(recommendation)
+    return recommendations
+
+
+def build_knowledge_consolidation_report(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build Deduplication + Professional Standards Consolidation report.
+
+    PI-IMPL-0008 groups duplicate processed candidates without destructive merge.
+    PI-IMPL-0009 identifies candidates that should become professional standards
+    or product decisions. This layer does not build prepared_knowledge_package,
+    does not write to Runtime memory and does not capitalize knowledge.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+    processing_report = _as_knowledge_processing_report(payload)
+    session_id = _safe_str(processing_report.get("session_id") or payload.get("session_id") or _stable_id("SESSION", _utc_now()))
+    processed_candidates = processing_report.get("processed_candidates") if isinstance(processing_report.get("processed_candidates"), list) else []
+    processed_candidates = [c for c in processed_candidates if isinstance(c, dict)]
+    groups = _build_deduplication_groups(processed_candidates)
+    standards = _build_standards_recommendations(processed_candidates, groups)
+    duplicate_groups = [group for group in groups if group.get("duplicate_count", 0) > 0]
+    unique_groups = [group for group in groups if group.get("duplicate_count", 0) == 0]
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_knowledge_consolidation_report",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0008+PI-IMPL-0009",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_id": session_id,
+        "deduplication_report": {
+            "deduplication_report_id": _stable_id("DEDUP-REPORT", session_id, len(groups)),
+            "input_processed_candidates_count": len(processed_candidates),
+            "deduplication_groups_count": len(groups),
+            "duplicate_groups_count": len(duplicate_groups),
+            "unique_groups_count": len(unique_groups),
+            "destructive_merge_performed": False,
+            "groups": groups,
+        },
+        "standards_consolidation_report": {
+            "standards_report_id": _stable_id("STD-REPORT", session_id, len(standards)),
+            "standard_candidates_count": len(standards),
+            "recommendations": standards,
+            "writes_to_standards": False,
+            "requires_product_owner_acceptance": True,
+        },
+        "statistics": {
+            "processed_candidates_count": len(processed_candidates),
+            "deduplication_groups_count": len(groups),
+            "duplicate_groups_count": len(duplicate_groups),
+            "standard_candidates_count": len(standards),
+        },
+        "boundaries": {
+            "deduplicates_knowledge": True,
+            "performs_destructive_merge": False,
+            "consolidates_professional_standards": True,
+            "builds_prepared_knowledge_package": False,
+            "writes_to_runtime_memory": False,
+            "capitalizes_knowledge": False,
+        },
+        "next_increment": "PI-IMPL-0010 — Prepared Knowledge Package Builder",
+    }
+
+
+def verify_knowledge_consolidation_runtime() -> dict[str, Any]:
+    sample_context = build_session_context({
+        "session_id": "PI-IMPL-0008-0009-VERIFY",
+        "project_id": "vectra",
+        "program_id": "professional_intelligence",
+        "business_domain": "bonboason",
+        "messages": [
+            {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
+            {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную!"},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "Engineering Team обязана выполнять Facade Readiness Check перед Release Brief."},
+            {"role": "VECTRA Laboratory", "author": "Laboratory", "content": "Product Verification подтверждает дедупликацию и Standards Consolidation без prepared_knowledge_package."},
+        ],
+        "artifacts": [
+            {"artifact_type": "Product Verification", "title": "PI-IMPL-0005+0006+0007 Product Verification PASS", "status": "PASS"}
+        ],
+        "final_outputs": [
+            {"output_type": "IMPLEMENTATION_AUTHORIZED", "title": "PI-IMPL-0008+0009 authorized", "status": "APPROVED"}
+        ],
+    })
+    candidate_report = build_knowledge_candidate_report(sample_context)
+    processing_report = build_knowledge_processing_report(candidate_report)
+    report = build_knowledge_consolidation_report(processing_report)
+    dedup = report.get("deduplication_report") if isinstance(report.get("deduplication_report"), dict) else {}
+    standards = report.get("standards_consolidation_report") if isinstance(report.get("standards_consolidation_report"), dict) else {}
+    boundaries = report.get("boundaries") if isinstance(report.get("boundaries"), dict) else {}
+    boundary_ok = (
+        boundaries.get("deduplicates_knowledge") is True
+        and boundaries.get("performs_destructive_merge") is False
+        and boundaries.get("consolidates_professional_standards") is True
+        and boundaries.get("builds_prepared_knowledge_package") is False
+        and boundaries.get("writes_to_runtime_memory") is False
+        and boundaries.get("capitalizes_knowledge") is False
+    )
+    checks = {
+        "deduplication_engine": "PASS" if dedup.get("deduplication_groups_count", 0) >= 1 else "FAIL",
+        "duplicate_grouping": "PASS" if dedup.get("duplicate_groups_count", 0) >= 1 else "FAIL",
+        "no_destructive_merge": "PASS" if dedup.get("destructive_merge_performed") is False else "FAIL",
+        "professional_standards_consolidation": "PASS" if standards.get("standard_candidates_count", 0) >= 1 else "FAIL",
+        "target_recommendations": "PASS" if all(r.get("recommended_target") for r in standards.get("recommendations", [])) and standards.get("standard_candidates_count", 0) >= 1 else "FAIL",
+        "architecture_boundary_no_package_capitalization": "PASS" if boundary_ok else "FAIL",
+    }
+    pass_status = all(value == "PASS" for value in checks.values())
+    return {
+        "status": "ok" if pass_status else "error",
+        "render_mode": "professional_intelligence_knowledge_consolidation_verification",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0008+PI-IMPL-0009",
+        "verification_status": "PASS" if pass_status else "FAIL",
+        "checks": checks,
+        "sample_statistics": report.get("statistics"),
+        "next_increment": "PI-IMPL-0010 — Prepared Knowledge Package Builder" if pass_status else "Fix PI-IMPL-0008/0009 before continuing.",
+    }
+
 def get_professional_intelligence_status() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -1358,9 +1623,9 @@ def get_professional_intelligence_status() -> dict[str, Any]:
         "program": "Professional Intelligence",
         "architecture_status": "APPROVED_FOR_IMPLEMENTATION",
         "architecture_freeze": True,
-        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004", "PI-IMPL-0005", "PI-IMPL-0006", "PI-IMPL-0007"],
-        "current_increment": "PI-IMPL-0005+PI-IMPL-0006+PI-IMPL-0007 — Knowledge Validation + Classification + Normalization",
-        "next_increment": "PI-IMPL-0008 — Deduplication Engine",
+        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004", "PI-IMPL-0005", "PI-IMPL-0006", "PI-IMPL-0007", "PI-IMPL-0008", "PI-IMPL-0009"],
+        "current_increment": "PI-IMPL-0008+PI-IMPL-0009 — Deduplication Engine + Professional Standards Consolidation",
+        "next_increment": "PI-IMPL-0010 — Prepared Knowledge Package Builder",
         "implementation_boundaries": {
             "session_context_foundation": "implemented",
             "session_audit": "implemented",
