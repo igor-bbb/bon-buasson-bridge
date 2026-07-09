@@ -9347,6 +9347,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_knowledge_candidate_report', '/vectra/professional-intelligence/knowledge-candidates', build_vectra_professional_intelligence_knowledge_candidates(payload), next_action='Run verify_knowledge_candidates. PI-IMPL-0005 starts only after Product Verification PASS.'))
         if operation_type in {'verify_knowledge_candidates', 'verify_knowledge_candidate_runtime', 'knowledge_candidates_verify'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.verify_knowledge_candidate_runtime', '/vectra/professional-intelligence/knowledge-candidates/verify', verify_vectra_professional_intelligence_knowledge_candidates()))
+        if operation_type in {'build_knowledge_processing', 'knowledge_processing', 'process_knowledge_candidates', 'professional_intelligence_knowledge_processing'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_knowledge_processing_report', '/vectra/professional-intelligence/knowledge-processing', build_vectra_professional_intelligence_knowledge_processing(payload), next_action='Run verify_knowledge_processing. PI-IMPL-0008 starts only after Product Verification PASS.'))
+        if operation_type in {'verify_knowledge_processing', 'verify_knowledge_processing_runtime', 'knowledge_processing_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.verify_knowledge_processing_runtime', '/vectra/professional-intelligence/knowledge-processing/verify', verify_vectra_professional_intelligence_knowledge_processing()))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
