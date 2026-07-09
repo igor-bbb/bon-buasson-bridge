@@ -4,14 +4,18 @@ PI-IMPL-0001 — Session Context Foundation.
 PI-IMPL-0002 — Session Audit Runtime.
 PI-IMPL-0003 — Knowledge Candidate Extraction.
 PI-IMPL-0004 — Evidence Mapping.
+PI-IMPL-0005 — Knowledge Validation.
+PI-IMPL-0006 — Knowledge Classification.
+PI-IMPL-0007 — Normalization.
 
-This module implements the approved early Professional Intelligence increments.
+This module implements the approved Professional Intelligence increments.
 PI-IMPL-0001 converts working session input into a stable SessionContext object.
 PI-IMPL-0002 performs structural audit of that SessionContext. PI-IMPL-0003 and
-PI-IMPL-0004 extract Knowledge Candidates with required Evidence Mapping. The
-module still intentionally does not validate, classify into Memory Spaces,
-normalize, deduplicate, build prepared_knowledge_package, or capitalize
-knowledge.
+PI-IMPL-0004 extract Knowledge Candidates with required Evidence Mapping.
+PI-IMPL-0005, PI-IMPL-0006 and PI-IMPL-0007 validate candidates, classify them
+for target memory handling and normalize their wording. The module still
+intentionally does not deduplicate, build prepared_knowledge_package, write to
+Professional Memory, or capitalize knowledge.
 """
 
 from __future__ import annotations
@@ -141,6 +145,43 @@ EVIDENCE_STRENGTH_ORDER = {
     "ARTIFACT": 4,
     "PRODUCT_VERIFICATION": 5,
 }
+
+VALIDATION_STATUSES = {
+    "APPROVED_FOR_PACKAGE",
+    "NEEDS_REVIEW",
+    "REJECTED_HYPOTHESIS",
+    "REJECTED_DRAFT",
+    "REJECTED_DUPLICATE",
+    "REJECTED_NO_EVIDENCE",
+    "REJECTED_CONFLICT",
+}
+
+MEMORY_SPACE_BY_CANDIDATE_TYPE = {
+    "proposed_professional": "professional_memory",
+    "proposed_business": "business_domain_memory",
+    "proposed_product": "product_memory",
+    "proposed_decision": "product_decisions",
+    "proposed_general": "general_memory",
+    "unknown": "needs_review",
+}
+
+KNOWLEDGE_TYPE_BY_CANDIDATE_TYPE = {
+    "proposed_professional": "Professional Knowledge",
+    "proposed_business": "Business Domain Knowledge",
+    "proposed_product": "Product Knowledge",
+    "proposed_decision": "Product Decision",
+    "proposed_general": "General Knowledge",
+    "unknown": "Needs Review",
+}
+
+HYPOTHESIS_KEYWORDS = [
+    "гипотез", "возможно", "может быть", "предполож", "не факт", "надо проверить",
+    "hypothesis", "maybe", "assumption", "possible", "proposal",
+]
+
+CONFLICT_KEYWORDS = [
+    "противореч", "конфликт", "не совпадает", "несовмест", "conflict", "contradiction", "incompatible",
+]
 
 
 DRAFT_KEYWORDS = [
@@ -980,6 +1021,336 @@ def verify_knowledge_candidate_runtime() -> dict[str, Any]:
     }
 
 
+
+def _candidate_signal_types(candidate: dict[str, Any]) -> set[str]:
+    evidence = candidate.get("evidence") if isinstance(candidate.get("evidence"), dict) else {}
+    signals = evidence.get("signals") if isinstance(evidence.get("signals"), list) else []
+    return {
+        _safe_str(signal.get("signal_type"))
+        for signal in signals
+        if isinstance(signal, dict) and signal.get("signal_type")
+    }
+
+
+def _candidate_evidence_strength(candidate: dict[str, Any]) -> str:
+    evidence = candidate.get("evidence") if isinstance(candidate.get("evidence"), dict) else {}
+    return _safe_str(evidence.get("evidence_strength") or "NONE")
+
+
+def _candidate_has_confirmation(candidate: dict[str, Any]) -> bool:
+    return bool({"CONFIRMATION", "FINAL_OUTPUT", "ARTIFACT", "PRODUCT_VERIFICATION"} & _candidate_signal_types(candidate))
+
+
+def _validate_candidate(candidate: dict[str, Any], duplicate_ids: set[str]) -> dict[str, Any]:
+    """Validate a Knowledge Candidate for PI-IMPL-0005.
+
+    Validation decides whether a candidate may continue toward package building.
+    It still does not write or capitalize knowledge.
+    """
+    candidate_id = _safe_str(candidate.get("candidate_id"))
+    text = _safe_str(candidate.get("interpreted_statement") or candidate.get("raw_statement")).lower()
+    proposed_type = _safe_str(candidate.get("proposed_candidate_type") or "unknown")
+    evidence = candidate.get("evidence") if isinstance(candidate.get("evidence"), dict) else None
+    evidence_strength = _candidate_evidence_strength(candidate)
+    evidence_rank = EVIDENCE_STRENGTH_ORDER.get(evidence_strength, 0)
+    signal_types = _candidate_signal_types(candidate)
+    reasons: list[str] = []
+
+    if not evidence or evidence_strength == "NONE":
+        return {
+            "validation_status": "REJECTED_NO_EVIDENCE",
+            "validation_reasons": ["No evidence object or evidence strength is NONE."],
+            "approved_for_package": False,
+        }
+    if candidate_id in duplicate_ids:
+        return {
+            "validation_status": "REJECTED_DUPLICATE",
+            "validation_reasons": ["Candidate duplicates another extracted candidate by normalized statement."],
+            "approved_for_package": False,
+        }
+    if _keyword_hit(text, CONFLICT_KEYWORDS):
+        return {
+            "validation_status": "REJECTED_CONFLICT",
+            "validation_reasons": ["Candidate contains conflict or contradiction signals."],
+            "approved_for_package": False,
+        }
+    if _keyword_hit(text, HYPOTHESIS_KEYWORDS):
+        return {
+            "validation_status": "REJECTED_HYPOTHESIS",
+            "validation_reasons": ["Candidate contains hypothesis or assumption signals."],
+            "approved_for_package": False,
+        }
+    if "DRAFT" in signal_types and not _candidate_has_confirmation(candidate):
+        return {
+            "validation_status": "REJECTED_DRAFT",
+            "validation_reasons": ["Candidate is a draft without confirmation, artifact, final output, or Product Verification evidence."],
+            "approved_for_package": False,
+        }
+    if proposed_type == "unknown":
+        return {
+            "validation_status": "NEEDS_REVIEW",
+            "validation_reasons": ["Candidate type is unknown and requires review before package building."],
+            "approved_for_package": False,
+        }
+    if "UNRESOLVED_ISSUE" in signal_types:
+        return {
+            "validation_status": "NEEDS_REVIEW",
+            "validation_reasons": ["Candidate is connected to unresolved issue signals."],
+            "approved_for_package": False,
+        }
+    if evidence_rank < EVIDENCE_STRENGTH_ORDER["CONFIRMATION"]:
+        return {
+            "validation_status": "NEEDS_REVIEW",
+            "validation_reasons": ["Evidence exists but is not strong enough for automatic approval."],
+            "approved_for_package": False,
+        }
+
+    reasons.append(f"Evidence strength {evidence_strength} is sufficient.")
+    reasons.append(f"Proposed candidate type {proposed_type} is supported.")
+    reasons.append("No hypothesis, draft-only, conflict, unresolved issue, or duplicate rejection was detected.")
+    return {
+        "validation_status": "APPROVED_FOR_PACKAGE",
+        "validation_reasons": reasons,
+        "approved_for_package": True,
+    }
+
+
+def _classify_candidate(candidate: dict[str, Any], validation_result: dict[str, Any]) -> dict[str, Any]:
+    """Classify a candidate for PI-IMPL-0006.
+
+    This is logical classification only. It does not write to a Memory Space.
+    """
+    proposed_type = _safe_str(candidate.get("proposed_candidate_type") or "unknown")
+    target_memory_space = MEMORY_SPACE_BY_CANDIDATE_TYPE.get(proposed_type, "needs_review")
+    target_knowledge_type = KNOWLEDGE_TYPE_BY_CANDIDATE_TYPE.get(proposed_type, "Needs Review")
+    classification_status = "CLASSIFIED" if validation_result.get("validation_status") == "APPROVED_FOR_PACKAGE" and target_memory_space != "needs_review" else "NEEDS_REVIEW"
+    return {
+        "classification_status": classification_status,
+        "proposed_candidate_type": proposed_type,
+        "target_memory_space": target_memory_space,
+        "target_knowledge_type": target_knowledge_type,
+        "writes_to_memory": False,
+    }
+
+
+def _normalize_statement_text(value: Any) -> str:
+    text = _normalize_content(value)
+    if not text:
+        return ""
+    replacements = {
+        "давай ": "",
+        "я думаю, ": "",
+        "мне кажется, ": "",
+        "как бы ": "",
+        "ну ": "",
+        "то есть ": "",
+    }
+    normalized = text
+    lowered = normalized.lower()
+    for source, target in replacements.items():
+        if lowered.startswith(source):
+            normalized = target + normalized[len(source):]
+            lowered = normalized.lower()
+    normalized = " ".join(normalized.split())
+    if normalized:
+        normalized = normalized[0].upper() + normalized[1:]
+    if normalized and normalized[-1] not in ".!?":
+        normalized += "."
+    return normalized
+
+
+def _normalize_candidate(candidate: dict[str, Any], validation_result: dict[str, Any], classification_result: dict[str, Any]) -> dict[str, Any]:
+    """Normalize candidate wording for PI-IMPL-0007."""
+    source = candidate.get("interpreted_statement") or candidate.get("raw_statement")
+    normalized = _normalize_statement_text(source)
+    return {
+        "normalization_status": "NORMALIZED" if normalized and validation_result.get("validation_status") == "APPROVED_FOR_PACKAGE" else "NOT_NORMALIZED",
+        "normalized_statement": normalized if validation_result.get("validation_status") == "APPROVED_FOR_PACKAGE" else None,
+        "language_policy": "RUSSIAN_FIRST_WITH_TECHNICAL_TERMS_WHEN_NEEDED",
+        "preserves_meaning": bool(normalized),
+        "target_knowledge_type": classification_result.get("target_knowledge_type"),
+    }
+
+
+def _duplicate_candidate_ids(candidates: list[dict[str, Any]]) -> set[str]:
+    seen: dict[str, str] = {}
+    duplicates: set[str] = set()
+    for candidate in candidates:
+        key = _normalize_content(candidate.get("interpreted_statement") or candidate.get("raw_statement")).lower()
+        candidate_id = _safe_str(candidate.get("candidate_id"))
+        if not key or not candidate_id:
+            continue
+        if key in seen:
+            duplicates.add(candidate_id)
+        else:
+            seen[key] = candidate_id
+    return duplicates
+
+
+def _as_knowledge_candidate_report(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("knowledge_candidate_report"), dict):
+        return value["knowledge_candidate_report"]
+    if isinstance(value.get("knowledge_candidates"), list):
+        return value
+    built = build_knowledge_candidate_report(value)
+    return built if isinstance(built, dict) else {}
+
+
+def build_knowledge_processing_report(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build Validation + Classification + Normalization report for PI-IMPL-0005/0006/0007.
+
+    The report turns extracted candidates into validated, classified and normalized
+    candidate records. It does not deduplicate beyond duplicate detection, does not
+    build prepared_knowledge_package and does not write to Professional Memory.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+    candidate_report = _as_knowledge_candidate_report(payload)
+    session_id = _safe_str(candidate_report.get("session_id") or payload.get("session_id") or _stable_id("SESSION", _utc_now()))
+    candidates = candidate_report.get("knowledge_candidates") if isinstance(candidate_report.get("knowledge_candidates"), list) else []
+    duplicate_ids = _duplicate_candidate_ids([c for c in candidates if isinstance(c, dict)])
+    processed_candidates: list[dict[str, Any]] = []
+    validation_distribution: dict[str, int] = {}
+    memory_space_distribution: dict[str, int] = {}
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        validation_result = _validate_candidate(candidate, duplicate_ids)
+        classification_result = _classify_candidate(candidate, validation_result)
+        normalization_result = _normalize_candidate(candidate, validation_result, classification_result)
+        validation_status = _safe_str(validation_result.get("validation_status"))
+        target_memory_space = _safe_str(classification_result.get("target_memory_space"))
+        validation_distribution[validation_status] = validation_distribution.get(validation_status, 0) + 1
+        memory_space_distribution[target_memory_space] = memory_space_distribution.get(target_memory_space, 0) + 1
+        processed = dict(candidate)
+        processed.update({
+            "status": validation_status,
+            "validation_result": validation_result,
+            "classification_result": classification_result,
+            "normalization_result": normalization_result,
+            "architecture_boundary": {
+                "validated": True,
+                "classified_to_memory_space": True,
+                "normalized": normalization_result.get("normalization_status") == "NORMALIZED",
+                "deduplicated": False,
+                "included_in_prepared_package": False,
+                "capitalized": False,
+            },
+        })
+        processed_candidates.append(processed)
+
+    approved = [c for c in processed_candidates if (c.get("validation_result") or {}).get("approved_for_package") is True]
+    rejected = [c for c in processed_candidates if _safe_str(c.get("status")).startswith("REJECTED")]
+    needs_review = [c for c in processed_candidates if c.get("status") == "NEEDS_REVIEW"]
+    normalized_count = sum(1 for c in processed_candidates if (c.get("normalization_result") or {}).get("normalization_status") == "NORMALIZED")
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_knowledge_processing_report",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0005+PI-IMPL-0006+PI-IMPL-0007",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_id": session_id,
+        "processed_candidates": processed_candidates,
+        "validation_report": {
+            "validation_report_id": _stable_id("VAL-REPORT", session_id, len(processed_candidates)),
+            "candidate_count": len(processed_candidates),
+            "approved_count": len(approved),
+            "needs_review_count": len(needs_review),
+            "rejected_count": len(rejected),
+            "duplicate_detection_count": len(duplicate_ids),
+            "status_distribution": validation_distribution,
+            "allowed_statuses": sorted(VALIDATION_STATUSES),
+        },
+        "classification_report": {
+            "classification_report_id": _stable_id("CLASS-REPORT", session_id, len(processed_candidates)),
+            "classified_count": sum(1 for c in processed_candidates if (c.get("classification_result") or {}).get("classification_status") == "CLASSIFIED"),
+            "memory_space_distribution": memory_space_distribution,
+            "writes_to_memory": False,
+        },
+        "normalization_report": {
+            "normalization_report_id": _stable_id("NORM-REPORT", session_id, len(processed_candidates)),
+            "normalized_count": normalized_count,
+            "normalization_policy": "stable_professional_wording_without_runtime_write",
+        },
+        "statistics": {
+            "input_candidates_count": len(candidates),
+            "processed_candidates_count": len(processed_candidates),
+            "approved_for_package_count": len(approved),
+            "needs_review_count": len(needs_review),
+            "rejected_count": len(rejected),
+            "normalized_count": normalized_count,
+        },
+        "boundaries": {
+            "validates_knowledge": True,
+            "classifies_to_memory_space": True,
+            "normalizes_knowledge": True,
+            "deduplicates_knowledge": False,
+            "builds_prepared_knowledge_package": False,
+            "writes_to_runtime_memory": False,
+            "capitalizes_knowledge": False,
+        },
+        "next_increment": "PI-IMPL-0008 — Deduplication Engine",
+    }
+
+
+def verify_knowledge_processing_runtime() -> dict[str, Any]:
+    sample_context = build_session_context({
+        "session_id": "PI-IMPL-0005-0007-VERIFY",
+        "project_id": "vectra",
+        "program_id": "professional_intelligence",
+        "business_domain": "bonboason",
+        "messages": [
+            {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "Architecture Freeze запрещает менять утверждённую архитектуру во время реализации."},
+            {"role": "VECTRA Laboratory", "author": "Laboratory", "content": "Product Verification подтвердит Validation, Classification и Normalization без prepared_knowledge_package."},
+            {"role": "Product Owner", "author": "Product Owner", "content": "Возможно, потом добавим отдельный стратегический Roadmap, но это гипотеза."},
+        ],
+        "artifacts": [
+            {"artifact_type": "Product Verification", "title": "PI-IMPL-0003+0004 Product Verification PASS", "status": "PASS"}
+        ],
+        "final_outputs": [
+            {"output_type": "IMPLEMENTATION_AUTHORIZED", "title": "PI-IMPL-0005+0006+0007 authorized", "status": "APPROVED"}
+        ],
+    })
+    candidate_report = build_knowledge_candidate_report(sample_context)
+    report = build_knowledge_processing_report(candidate_report)
+    processed = report.get("processed_candidates") if isinstance(report.get("processed_candidates"), list) else []
+    validation_report = report.get("validation_report") if isinstance(report.get("validation_report"), dict) else {}
+    classification_report = report.get("classification_report") if isinstance(report.get("classification_report"), dict) else {}
+    normalization_report = report.get("normalization_report") if isinstance(report.get("normalization_report"), dict) else {}
+    boundaries = report.get("boundaries") if isinstance(report.get("boundaries"), dict) else {}
+    boundary_ok = (
+        boundaries.get("validates_knowledge") is True
+        and boundaries.get("classifies_to_memory_space") is True
+        and boundaries.get("normalizes_knowledge") is True
+        and boundaries.get("deduplicates_knowledge") is False
+        and boundaries.get("builds_prepared_knowledge_package") is False
+        and boundaries.get("writes_to_runtime_memory") is False
+        and boundaries.get("capitalizes_knowledge") is False
+    )
+    checks = {
+        "validation_engine": "PASS" if validation_report.get("candidate_count", 0) >= 3 and validation_report.get("approved_count", 0) >= 1 else "FAIL",
+        "hypothesis_rejection": "PASS" if validation_report.get("status_distribution", {}).get("REJECTED_HYPOTHESIS", 0) >= 1 else "FAIL",
+        "classification_engine": "PASS" if classification_report.get("classified_count", 0) >= 1 and classification_report.get("writes_to_memory") is False else "FAIL",
+        "normalization_engine": "PASS" if normalization_report.get("normalized_count", 0) >= 1 else "FAIL",
+        "approved_for_package_status": "PASS" if any(c.get("status") == "APPROVED_FOR_PACKAGE" for c in processed) else "FAIL",
+        "architecture_boundary_no_dedup_package_capitalization": "PASS" if boundary_ok else "FAIL",
+    }
+    pass_status = all(value == "PASS" for value in checks.values())
+    return {
+        "status": "ok" if pass_status else "error",
+        "render_mode": "professional_intelligence_knowledge_processing_verification",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0005+PI-IMPL-0006+PI-IMPL-0007",
+        "verification_status": "PASS" if pass_status else "FAIL",
+        "checks": checks,
+        "sample_statistics": report.get("statistics"),
+        "next_increment": "PI-IMPL-0008 — Deduplication Engine" if pass_status else "Fix PI-IMPL-0005/0006/0007 before continuing.",
+    }
+
 def get_professional_intelligence_status() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -987,17 +1358,17 @@ def get_professional_intelligence_status() -> dict[str, Any]:
         "program": "Professional Intelligence",
         "architecture_status": "APPROVED_FOR_IMPLEMENTATION",
         "architecture_freeze": True,
-        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004"],
-        "current_increment": "PI-IMPL-0003+PI-IMPL-0004 — Knowledge Candidate Extraction + Evidence Mapping",
-        "next_increment": "PI-IMPL-0005 — Knowledge Validation Engine",
+        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004", "PI-IMPL-0005", "PI-IMPL-0006", "PI-IMPL-0007"],
+        "current_increment": "PI-IMPL-0005+PI-IMPL-0006+PI-IMPL-0007 — Knowledge Validation + Classification + Normalization",
+        "next_increment": "PI-IMPL-0008 — Deduplication Engine",
         "implementation_boundaries": {
             "session_context_foundation": "implemented",
             "session_audit": "implemented",
             "knowledge_extraction": "implemented",
             "evidence_mapping": "implemented",
-            "validation": "not_implemented",
-            "classification": "not_implemented",
-            "normalization": "not_implemented",
+            "validation": "implemented",
+            "classification": "implemented",
+            "normalization": "implemented",
             "deduplication": "not_implemented",
             "prepared_knowledge_package_builder": "not_implemented",
             "runtime_capitalization_integration": "not_implemented",

@@ -296,6 +296,8 @@ from app.assistant_runtime.professional_intelligence import (
     verify_session_audit_runtime as verify_vectra_professional_intelligence_session_audit,
     build_knowledge_candidate_report as build_vectra_professional_intelligence_knowledge_candidates,
     verify_knowledge_candidate_runtime as verify_vectra_professional_intelligence_knowledge_candidates,
+    build_knowledge_processing_report as build_vectra_professional_intelligence_knowledge_processing,
+    verify_knowledge_processing_runtime as verify_vectra_professional_intelligence_knowledge_processing,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9462,6 +9464,19 @@ def vectra_professional_intelligence_knowledge_candidates(request: dict = None, 
 def vectra_professional_intelligence_knowledge_candidates_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_professional_intelligence_knowledge_candidates())
+
+
+@router.post('/vectra/professional-intelligence/knowledge-processing', summary='Build Professional Intelligence Knowledge Processing Report')
+def vectra_professional_intelligence_knowledge_processing(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    return json_response(build_vectra_professional_intelligence_knowledge_processing(payload))
+
+
+@router.get('/vectra/professional-intelligence/knowledge-processing/verify', summary='Verify Professional Intelligence Knowledge Validation, Classification and Normalization')
+def vectra_professional_intelligence_knowledge_processing_verify(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(verify_vectra_professional_intelligence_knowledge_processing())
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
 def vectra_memory_architecture_conformance(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
