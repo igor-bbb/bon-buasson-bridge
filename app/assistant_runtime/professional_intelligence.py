@@ -9,6 +9,8 @@ PI-IMPL-0006 — Knowledge Classification.
 PI-IMPL-0007 — Normalization.
 PI-IMPL-0008 — Deduplication Engine.
 PI-IMPL-0009 — Professional Standards Consolidation.
+PI-IMPL-0010 — Prepared Knowledge Package Builder.
+PI-IMPL-0011 — Completeness & Risk Diagnostics.
 
 This module implements the approved Professional Intelligence increments.
 PI-IMPL-0001 converts working session input into a stable SessionContext object.
@@ -17,9 +19,10 @@ PI-IMPL-0004 extract Knowledge Candidates with required Evidence Mapping.
 PI-IMPL-0005, PI-IMPL-0006 and PI-IMPL-0007 validate candidates, classify them
 for target memory handling and normalize their wording. PI-IMPL-0008 and
 PI-IMPL-0009 consolidate processed candidates by grouping duplicates and
-identifying candidates for professional standards. The module still intentionally
-does not build prepared_knowledge_package, write to Professional Memory, or
-capitalize knowledge.
+identifying candidates for professional standards. PI-IMPL-0010 and PI-IMPL-0011
+build a prepared_knowledge_package with completeness and risk diagnostics. The
+module still intentionally does not write to Professional Memory or capitalize
+knowledge.
 """
 
 from __future__ import annotations
@@ -1538,6 +1541,7 @@ def build_knowledge_consolidation_report(payload: dict[str, Any] | None = None) 
             "destructive_merge_performed": False,
             "groups": groups,
         },
+        "processed_candidates": processed_candidates,
         "standards_consolidation_report": {
             "standards_report_id": _stable_id("STD-REPORT", session_id, len(standards)),
             "standard_candidates_count": len(standards),
@@ -1616,6 +1620,366 @@ def verify_knowledge_consolidation_runtime() -> dict[str, Any]:
         "next_increment": "PI-IMPL-0010 — Prepared Knowledge Package Builder" if pass_status else "Fix PI-IMPL-0008/0009 before continuing.",
     }
 
+
+
+def _as_knowledge_consolidation_report(value: dict[str, Any] | None) -> dict[str, Any]:
+    """Coerce payload to PI-IMPL-0008/0009 consolidation report."""
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("knowledge_consolidation_report"), dict):
+        return value["knowledge_consolidation_report"]
+    if isinstance(value.get("deduplication_report"), dict) and isinstance(value.get("standards_consolidation_report"), dict):
+        return value
+    return build_knowledge_consolidation_report(value)
+
+
+def _safe_slug(value: Any, default: str = "knowledge") -> str:
+    text = _normalize_content(value).lower()
+    text = re.sub(r"[^a-zа-яё0-9]+", "-", text, flags=re.IGNORECASE).strip("-")
+    return text[:64] or default
+
+
+def _draft_knowledge_object_from_group(
+    *,
+    session_id: str,
+    group: dict[str, Any],
+    candidate_by_id: dict[str, dict[str, Any]],
+    standard_by_candidate_id: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    primary_id = _safe_str(group.get("primary_candidate_id"))
+    candidate = candidate_by_id.get(primary_id)
+    if not candidate:
+        return None
+    validation = candidate.get("validation_result") if isinstance(candidate.get("validation_result"), dict) else {}
+    classification = candidate.get("classification_result") if isinstance(candidate.get("classification_result"), dict) else {}
+    normalization = candidate.get("normalization_result") if isinstance(candidate.get("normalization_result"), dict) else {}
+    evidence = candidate.get("evidence") if isinstance(candidate.get("evidence"), dict) else {}
+    normalized_statement = _safe_str(
+        group.get("canonical_statement")
+        or normalization.get("normalized_statement")
+        or candidate.get("interpreted_statement")
+        or candidate.get("raw_statement")
+    )
+    memory_space = _safe_str(classification.get("target_memory_space") or group.get("target_memory_space") or "needs_review")
+    knowledge_type = _safe_str(classification.get("target_knowledge_type") or classification.get("knowledge_type") or "Needs Review")
+    if not normalized_statement or memory_space == "needs_review":
+        return None
+    standard = standard_by_candidate_id.get(primary_id)
+    object_id = _stable_id("PKO", session_id, primary_id, memory_space, normalized_statement)
+    return {
+        "object_id": object_id,
+        "knowledge_id": object_id,
+        "source_candidate_id": primary_id,
+        "source_candidate_ids": group.get("member_candidate_ids") or [primary_id],
+        "deduplication_group_id": group.get("deduplication_group_id"),
+        "title": normalized_statement[:96].rstrip(" .") or _safe_slug(normalized_statement),
+        "memory_space": memory_space,
+        "knowledge_type": knowledge_type,
+        "status": "PREPARED_FOR_RUNTIME_WRITE",
+        "normalized_content": normalized_statement,
+        "evidence": evidence,
+        "validation_status": validation.get("validation_status"),
+        "classification_status": classification.get("classification_status"),
+        "standard_recommendation": standard,
+        "version_policy": "NO_DESTRUCTIVE_OVERWRITE",
+        "prepared_by": "Professional Intelligence",
+        "writes_to_runtime_memory": False,
+    }
+
+
+def _split_package_objects(knowledge_objects: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    product_decisions: list[dict[str, Any]] = []
+    regular_objects: list[dict[str, Any]] = []
+    for item in knowledge_objects:
+        if item.get("memory_space") == "product_decisions" or item.get("knowledge_type") == "Product Decision":
+            product_decisions.append(item)
+        else:
+            regular_objects.append(item)
+    return regular_objects, product_decisions
+
+
+def _build_runtime_write_plan(knowledge_objects: list[dict[str, Any]], product_decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    memory_space_distribution: dict[str, int] = {}
+    for item in knowledge_objects + product_decisions:
+        space = _safe_str(item.get("memory_space") or "needs_review")
+        memory_space_distribution[space] = memory_space_distribution.get(space, 0) + 1
+    write_steps: list[dict[str, Any]] = []
+    for memory_space, count in sorted(memory_space_distribution.items()):
+        write_steps.append({
+            "memory_space": memory_space,
+            "objects_count": count,
+            "operation": "runtime_write_after_product_owner_capitalization_command",
+            "executed": False,
+        })
+    return {
+        "runtime_write_plan_id": _stable_id("WRITE-PLAN", memory_space_distribution),
+        "target_runtime": "Professional Memory Runtime",
+        "write_steps": write_steps,
+        "total_objects_planned": len(knowledge_objects) + len(product_decisions),
+        "executes_write": False,
+        "requires_runtime_capitalization_increment": "PI-IMPL-0012",
+    }
+
+
+def build_prepared_knowledge_package(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build prepared_knowledge_package for PI-IMPL-0010.
+
+    The package is the final Professional Intelligence output before Runtime
+    integration. It is prepared for Runtime, but no Runtime write, readback,
+    recovery snapshot or capitalization report is executed here.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+    consolidation_report = _as_knowledge_consolidation_report(payload)
+    session_id = _safe_str(consolidation_report.get("session_id") or payload.get("session_id") or _stable_id("SESSION", _utc_now()))
+    # Rebuild upstream processing when only raw session/context payload is supplied.
+    processing_report = _as_knowledge_processing_report(payload)
+    processed_candidates = processing_report.get("processed_candidates") if isinstance(processing_report.get("processed_candidates"), list) else []
+    candidate_by_id = { _safe_str(c.get("candidate_id")): c for c in processed_candidates if isinstance(c, dict) and c.get("candidate_id") }
+
+    dedup_report = consolidation_report.get("deduplication_report") if isinstance(consolidation_report.get("deduplication_report"), dict) else {}
+    standards_report = consolidation_report.get("standards_consolidation_report") if isinstance(consolidation_report.get("standards_consolidation_report"), dict) else {}
+    groups = dedup_report.get("groups") if isinstance(dedup_report.get("groups"), list) else []
+    recommendations = standards_report.get("recommendations") if isinstance(standards_report.get("recommendations"), list) else []
+    standard_by_candidate_id = {
+        _safe_str(r.get("source_candidate_id")): r for r in recommendations if isinstance(r, dict) and r.get("source_candidate_id")
+    }
+
+    all_prepared_objects: list[dict[str, Any]] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        prepared = _draft_knowledge_object_from_group(
+            session_id=session_id,
+            group=group,
+            candidate_by_id=candidate_by_id,
+            standard_by_candidate_id=standard_by_candidate_id,
+        )
+        if prepared:
+            all_prepared_objects.append(prepared)
+
+    knowledge_objects, product_decisions = _split_package_objects(all_prepared_objects)
+    runtime_write_plan = _build_runtime_write_plan(knowledge_objects, product_decisions)
+    validation_report = processing_report.get("validation_report") if isinstance(processing_report.get("validation_report"), dict) else {}
+    classification_report = processing_report.get("classification_report") if isinstance(processing_report.get("classification_report"), dict) else {}
+    normalization_report = processing_report.get("normalization_report") if isinstance(processing_report.get("normalization_report"), dict) else {}
+    package_id = _stable_id("PKG", session_id, len(knowledge_objects), len(product_decisions), len(groups))
+    prepared_package = {
+        "package_id": package_id,
+        "package_type": "prepared_knowledge_package",
+        "source_session_id": session_id,
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0010",
+        "prepared_at": _utc_now(),
+        "prepared_by": "Professional Intelligence",
+        "knowledge_objects": knowledge_objects,
+        "product_decisions": product_decisions,
+        "validation_report": validation_report,
+        "classification_report": classification_report,
+        "normalization_report": normalization_report,
+        "deduplication_report": dedup_report,
+        "standards_report": standards_report,
+        "runtime_write_plan": runtime_write_plan,
+        "capitalization_executed": False,
+    }
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_prepared_knowledge_package",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0010",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_id": session_id,
+        "prepared_knowledge_package": prepared_package,
+        "statistics": {
+            "knowledge_objects_count": len(knowledge_objects),
+            "product_decisions_count": len(product_decisions),
+            "runtime_write_plan_steps_count": len(runtime_write_plan.get("write_steps", [])),
+            "deduplication_groups_count": len(groups),
+        },
+        "boundaries": {
+            "builds_prepared_knowledge_package": True,
+            "runs_completeness_diagnostics": False,
+            "writes_to_runtime_memory": False,
+            "runs_readback_verification": False,
+            "updates_recovery_snapshot": False,
+            "creates_capitalization_report": False,
+            "capitalizes_knowledge": False,
+        },
+        "next_increment": "PI-IMPL-0011 — Completeness & Risk Diagnostics",
+    }
+
+
+def _as_prepared_package_result(value: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(value.get("prepared_knowledge_package"), dict):
+        return value
+    return build_prepared_knowledge_package(value)
+
+
+def build_package_diagnostics(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build Completeness & Risk Diagnostics for PI-IMPL-0011."""
+    if not isinstance(payload, dict):
+        payload = {}
+    package_result = _as_prepared_package_result(payload)
+    package = package_result.get("prepared_knowledge_package") if isinstance(package_result.get("prepared_knowledge_package"), dict) else {}
+    session_id = _safe_str(package.get("source_session_id") or package_result.get("session_id") or payload.get("session_id") or _stable_id("SESSION", _utc_now()))
+    knowledge_objects = package.get("knowledge_objects") if isinstance(package.get("knowledge_objects"), list) else []
+    product_decisions = package.get("product_decisions") if isinstance(package.get("product_decisions"), list) else []
+    validation_report = package.get("validation_report") if isinstance(package.get("validation_report"), dict) else {}
+    dedup_report = package.get("deduplication_report") if isinstance(package.get("deduplication_report"), dict) else {}
+    standards_report = package.get("standards_report") if isinstance(package.get("standards_report"), dict) else {}
+    source_candidates_count = int(validation_report.get("candidate_count") or dedup_report.get("input_processed_candidates_count") or 0)
+    approved_count = int(validation_report.get("approved_count") or 0)
+    prepared_count = len(knowledge_objects) + len(product_decisions)
+    coverage_ratio = round((prepared_count / approved_count), 4) if approved_count else (1.0 if prepared_count == 0 else 0.0)
+    source_to_package_ratio = round((prepared_count / source_candidates_count), 4) if source_candidates_count else 0.0
+    warnings: list[str] = []
+    if source_candidates_count > 0 and prepared_count == 0:
+        warnings.append("Prepared package is empty while source candidates exist.")
+    if approved_count > 0 and coverage_ratio < 0.5:
+        warnings.append("Prepared package covers less than half of approved candidates.")
+    if source_candidates_count >= 5 and prepared_count <= 1:
+        warnings.append("Prepared package may be suspiciously small relative to session candidate volume.")
+    if validation_report.get("needs_review_count", 0):
+        warnings.append("Some candidates still require review and are not package-ready.")
+    if validation_report.get("rejected_count", 0):
+        warnings.append("Rejected candidates exist; see validation_report before capitalization.")
+
+    risk_items: list[dict[str, Any]] = []
+    for item in knowledge_objects + product_decisions:
+        evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+        if not evidence or evidence.get("evidence_strength") in {None, "", "NONE"}:
+            risk_items.append({
+                "risk_type": "MISSING_OR_WEAK_EVIDENCE",
+                "object_id": item.get("object_id"),
+                "severity": "HIGH",
+                "message": "Prepared object has no sufficient evidence.",
+            })
+        if item.get("memory_space") == "needs_review":
+            risk_items.append({
+                "risk_type": "UNRESOLVED_MEMORY_SPACE",
+                "object_id": item.get("object_id"),
+                "severity": "HIGH",
+                "message": "Prepared object target memory space requires review.",
+            })
+    if warnings:
+        risk_items.append({
+            "risk_type": "COMPLETENESS_WARNING",
+            "severity": "MEDIUM",
+            "message": "; ".join(warnings),
+        })
+
+    readiness_status = "READY_FOR_RUNTIME_CAPITALIZATION" if prepared_count > 0 and not any(r.get("severity") == "HIGH" for r in risk_items) else "NEEDS_REVIEW_BEFORE_RUNTIME"
+    completeness_report = {
+        "completeness_report_id": _stable_id("COMPLETE", session_id, prepared_count, source_candidates_count),
+        "source_candidates_count": source_candidates_count,
+        "approved_candidates_count": approved_count,
+        "prepared_objects_count": prepared_count,
+        "knowledge_objects_count": len(knowledge_objects),
+        "product_decisions_count": len(product_decisions),
+        "standards_recommendations_count": int(standards_report.get("standard_candidates_count") or 0),
+        "coverage_ratio_vs_approved": coverage_ratio,
+        "coverage_ratio_vs_source_candidates": source_to_package_ratio,
+        "warnings": warnings,
+        "completeness_status": "PASS" if not warnings and prepared_count > 0 else "WARNING",
+    }
+    risk_report = {
+        "risk_report_id": _stable_id("RISK", session_id, len(risk_items)),
+        "risk_count": len(risk_items),
+        "risks": risk_items,
+        "risk_status": "PASS" if not any(r.get("severity") == "HIGH" for r in risk_items) else "NEEDS_REVIEW",
+    }
+    return {
+        "status": "ok",
+        "render_mode": "professional_intelligence_package_diagnostics",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0011",
+        "architecture_status": "ARCHITECTURE_FREEZE_V1",
+        "session_id": session_id,
+        "prepared_knowledge_package": package,
+        "completeness_report": completeness_report,
+        "risk_report": risk_report,
+        "runtime_write_plan": package.get("runtime_write_plan"),
+        "readiness_status": readiness_status,
+        "boundaries": {
+            "builds_prepared_knowledge_package": True,
+            "runs_completeness_diagnostics": True,
+            "runs_risk_diagnostics": True,
+            "writes_to_runtime_memory": False,
+            "runs_readback_verification": False,
+            "updates_recovery_snapshot": False,
+            "creates_capitalization_report": False,
+            "capitalizes_knowledge": False,
+        },
+        "next_increment": "PI-IMPL-0012 — Runtime Capitalization Integration",
+    }
+
+
+def verify_prepared_knowledge_package_runtime() -> dict[str, Any]:
+    sample_context = build_session_context({
+        "session_id": "PI-IMPL-0010-0011-VERIFY",
+        "project_id": "vectra",
+        "program_id": "professional_intelligence",
+        "business_domain": "bonboason",
+        "messages": [
+            {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
+            {"role": "Engineering Team", "author": "Engineering Team", "content": "Engineering Team обязана выполнять Facade Readiness Check перед Release Brief."},
+            {"role": "VECTRA Laboratory", "author": "Laboratory", "content": "Product Verification подтверждает Package Builder и Completeness Diagnostics без Runtime Capitalization."},
+            {"role": "Product Owner", "author": "Product Owner", "content": "Решение принято: prepared_knowledge_package формируется до записи в Professional Memory Runtime."},
+        ],
+        "artifacts": [
+            {"artifact_type": "Product Verification", "title": "PI-IMPL-0008+0009 Product Verification PASS", "status": "PASS"}
+        ],
+        "final_outputs": [
+            {"output_type": "IMPLEMENTATION_AUTHORIZED", "title": "PI-IMPL-0010+0011 authorized", "status": "APPROVED"}
+        ],
+    })
+    candidate_report = build_knowledge_candidate_report(sample_context)
+    processing_report = build_knowledge_processing_report(candidate_report)
+    consolidation_report = build_knowledge_consolidation_report(processing_report)
+    package_result = build_prepared_knowledge_package(processing_report)
+    diagnostics = build_package_diagnostics(package_result)
+    package = package_result.get("prepared_knowledge_package") if isinstance(package_result.get("prepared_knowledge_package"), dict) else {}
+    completeness = diagnostics.get("completeness_report") if isinstance(diagnostics.get("completeness_report"), dict) else {}
+    risk = diagnostics.get("risk_report") if isinstance(diagnostics.get("risk_report"), dict) else {}
+    runtime_write_plan = package.get("runtime_write_plan") if isinstance(package.get("runtime_write_plan"), dict) else {}
+    boundaries = diagnostics.get("boundaries") if isinstance(diagnostics.get("boundaries"), dict) else {}
+    boundary_ok = (
+        boundaries.get("builds_prepared_knowledge_package") is True
+        and boundaries.get("runs_completeness_diagnostics") is True
+        and boundaries.get("runs_risk_diagnostics") is True
+        and boundaries.get("writes_to_runtime_memory") is False
+        and boundaries.get("runs_readback_verification") is False
+        and boundaries.get("updates_recovery_snapshot") is False
+        and boundaries.get("creates_capitalization_report") is False
+        and boundaries.get("capitalizes_knowledge") is False
+    )
+    checks = {
+        "prepared_knowledge_package_builder": "PASS" if package.get("package_type") == "prepared_knowledge_package" and package.get("package_id") else "FAIL",
+        "knowledge_objects_prepared": "PASS" if (len(package.get("knowledge_objects", [])) + len(package.get("product_decisions", []))) >= 1 else "FAIL",
+        "runtime_write_plan": "PASS" if runtime_write_plan.get("executes_write") is False and runtime_write_plan.get("total_objects_planned", 0) >= 1 else "FAIL",
+        "completeness_report": "PASS" if completeness.get("prepared_objects_count", 0) >= 1 and completeness.get("coverage_ratio_vs_approved") is not None else "FAIL",
+        "risk_report": "PASS" if risk.get("risk_status") in {"PASS", "NEEDS_REVIEW"} and isinstance(risk.get("risks"), list) else "FAIL",
+        "architecture_boundary_no_runtime_capitalization": "PASS" if boundary_ok else "FAIL",
+    }
+    pass_status = all(value == "PASS" for value in checks.values())
+    return {
+        "status": "ok" if pass_status else "error",
+        "render_mode": "professional_intelligence_prepared_package_verification",
+        "program": "Professional Intelligence",
+        "increment_id": "PI-IMPL-0010+PI-IMPL-0011",
+        "verification_status": "PASS" if pass_status else "FAIL",
+        "checks": checks,
+        "sample_statistics": {
+            "knowledge_objects_count": len(package.get("knowledge_objects", [])),
+            "product_decisions_count": len(package.get("product_decisions", [])),
+            "prepared_objects_count": completeness.get("prepared_objects_count"),
+            "risk_count": risk.get("risk_count"),
+        },
+        "next_increment": "PI-IMPL-0012 — Runtime Capitalization Integration" if pass_status else "Fix PI-IMPL-0010/0011 before continuing.",
+    }
+
 def get_professional_intelligence_status() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -1623,9 +1987,9 @@ def get_professional_intelligence_status() -> dict[str, Any]:
         "program": "Professional Intelligence",
         "architecture_status": "APPROVED_FOR_IMPLEMENTATION",
         "architecture_freeze": True,
-        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004", "PI-IMPL-0005", "PI-IMPL-0006", "PI-IMPL-0007", "PI-IMPL-0008", "PI-IMPL-0009"],
-        "current_increment": "PI-IMPL-0008+PI-IMPL-0009 — Deduplication Engine + Professional Standards Consolidation",
-        "next_increment": "PI-IMPL-0010 — Prepared Knowledge Package Builder",
+        "implemented_increments": ["PI-IMPL-0001", "PI-IMPL-0002", "PI-IMPL-0003", "PI-IMPL-0004", "PI-IMPL-0005", "PI-IMPL-0006", "PI-IMPL-0007", "PI-IMPL-0008", "PI-IMPL-0009", "PI-IMPL-0010", "PI-IMPL-0011"],
+        "current_increment": "PI-IMPL-0010+PI-IMPL-0011 — Prepared Knowledge Package Builder + Completeness & Risk Diagnostics",
+        "next_increment": "PI-IMPL-0012 — Runtime Capitalization Integration",
         "implementation_boundaries": {
             "session_context_foundation": "implemented",
             "session_audit": "implemented",
@@ -1634,8 +1998,9 @@ def get_professional_intelligence_status() -> dict[str, Any]:
             "validation": "implemented",
             "classification": "implemented",
             "normalization": "implemented",
-            "deduplication": "not_implemented",
-            "prepared_knowledge_package_builder": "not_implemented",
+            "deduplication": "implemented",
+            "prepared_knowledge_package_builder": "implemented",
+            "completeness_risk_diagnostics": "implemented",
             "runtime_capitalization_integration": "not_implemented",
         },
     }

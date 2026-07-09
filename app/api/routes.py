@@ -300,6 +300,9 @@ from app.assistant_runtime.professional_intelligence import (
     verify_knowledge_processing_runtime as verify_vectra_professional_intelligence_knowledge_processing,
     build_knowledge_consolidation_report as build_vectra_professional_intelligence_knowledge_consolidation,
     verify_knowledge_consolidation_runtime as verify_vectra_professional_intelligence_knowledge_consolidation,
+    build_prepared_knowledge_package as build_vectra_professional_intelligence_prepared_package,
+    build_package_diagnostics as build_vectra_professional_intelligence_package_diagnostics,
+    verify_prepared_knowledge_package_runtime as verify_vectra_professional_intelligence_prepared_package,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9357,6 +9360,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_knowledge_consolidation_report', '/vectra/professional-intelligence/knowledge-consolidation', build_vectra_professional_intelligence_knowledge_consolidation(payload), next_action='Run verify_knowledge_consolidation. PI-IMPL-0010 starts only after Product Verification PASS.'))
         if operation_type in {'verify_knowledge_consolidation', 'verify_knowledge_consolidation_runtime', 'knowledge_consolidation_verify'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.verify_knowledge_consolidation_runtime', '/vectra/professional-intelligence/knowledge-consolidation/verify', verify_vectra_professional_intelligence_knowledge_consolidation()))
+        if operation_type in {'build_prepared_knowledge_package', 'prepared_knowledge_package', 'build_knowledge_package', 'professional_intelligence_prepared_package'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_prepared_knowledge_package', '/vectra/professional-intelligence/prepared-knowledge-package', build_vectra_professional_intelligence_prepared_package(payload), next_action='Run verify_prepared_knowledge_package. PI-IMPL-0012 starts only after Product Verification PASS.'))
+        if operation_type in {'build_package_diagnostics', 'package_diagnostics', 'knowledge_package_diagnostics', 'professional_intelligence_package_diagnostics'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.build_package_diagnostics', '/vectra/professional-intelligence/prepared-knowledge-package/diagnostics', build_vectra_professional_intelligence_package_diagnostics(payload), next_action='Review completeness_report and risk_report before Runtime Capitalization integration.'))
+        if operation_type in {'verify_prepared_knowledge_package', 'verify_prepared_knowledge_package_runtime', 'prepared_knowledge_package_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_intelligence.verify_prepared_knowledge_package_runtime', '/vectra/professional-intelligence/prepared-knowledge-package/verify', verify_vectra_professional_intelligence_prepared_package()))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
