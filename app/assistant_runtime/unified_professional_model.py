@@ -17,10 +17,12 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
+import json
 import re
 
-from app.assistant_runtime.session_archive import _read_store, get_session_replay_context
+from app.assistant_runtime.session_archive import _read_store, ARCHIVE_DIR
 
 
 MODEL_VERSION = "Unified Professional Model of VECTRA v1.0"
@@ -58,16 +60,194 @@ def _fingerprint(statement: str) -> str:
     return sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
+DISCOVERY_ID = "VPM-ARCHIVE-DISCOVERY-001"
+
+
+def _candidate_archive_paths() -> list[Path]:
+    """Return every repository path where historical archives may exist.
+
+    Earlier releases wrote archive data through Session Archive Runtime. In real
+    operations archives may appear either in the canonical Session Archive store
+    or in exported/imported historical-session folders. Consolidation must not
+    assume a single file path.
+    """
+    roots = [
+        ARCHIVE_DIR,
+        Path("assistant_repository/runtime/session_archive"),
+        Path("assistant_repository/runtime/historical_sessions"),
+        Path("assistant_repository/runtime/historical_session_exports"),
+        Path("assistant_repository/runtime/historical_archives"),
+        Path("assistant_repository/historical_sessions"),
+        Path("assistant_repository/historical_session_exports"),
+        Path("assistant_repository/imported_session_archives"),
+    ]
+    files: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        if root.is_file() and root.suffix.lower() == ".json":
+            candidates = [root]
+        elif root.exists():
+            candidates = sorted(root.rglob("*.json"))
+        else:
+            candidates = []
+        for candidate in candidates:
+            key = str(candidate.resolve()) if candidate.exists() else str(candidate)
+            if key not in seen:
+                seen.add(key)
+                files.append(candidate)
+    return files
+
+
+def _load_json_file(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _archive_from_record(record: dict[str, Any], source_path: str | None = None, fallback_session_id: str | None = None) -> dict[str, Any] | None:
+    events = record.get("events") or record.get("timeline") or record.get("messages") or record.get("session_events")
+    if not isinstance(events, list):
+        return None
+    session_id = _text(record.get("session_id") or record.get("archive_id") or fallback_session_id or _stable_id("SESSION", source_path or "archive", len(events)))
+    archive_id = _text(record.get("archive_id") or _stable_id("SA", session_id))
+    normalized_events: list[dict[str, Any]] = []
+    for index, event in enumerate(events, start=1):
+        if isinstance(event, dict):
+            item = dict(event)
+        else:
+            item = {"content": str(event), "event_type": "message"}
+        item.setdefault("event_id", _stable_id("SE", session_id, index, _text(item.get("content"))[:180]))
+        item.setdefault("chronological_index", index)
+        item.setdefault("event_type", item.get("type") or "message")
+        item.setdefault("actor", item.get("author") or item.get("role") or "historical_source")
+        item.setdefault("role", item.get("actor") or "historical_source")
+        item.setdefault("content", item.get("text") or item.get("message") or "")
+        item["source_session_id"] = session_id
+        item["source_archive_id"] = archive_id
+        item["source_archive_path"] = source_path
+        normalized_events.append(item)
+    return {
+        "session_id": session_id,
+        "archive_id": archive_id,
+        "status": record.get("status") or "IMPORTED",
+        "project_id": record.get("project_id") or "vectra",
+        "program_id": record.get("program_id") or record.get("program") or "historical_migration",
+        "business_domain": record.get("business_domain") or record.get("domain") or "bonboason",
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "statistics": record.get("statistics") if isinstance(record.get("statistics"), dict) else {"events_count": len(normalized_events)},
+        "events": normalized_events,
+        "source_path": source_path,
+    }
+
+
+def _extract_archives_from_json(data: Any, source_path: str | None = None) -> list[dict[str, Any]]:
+    archives: list[dict[str, Any]] = []
+    if isinstance(data, dict):
+        if isinstance(data.get("archives"), dict):
+            for session_id, archive in data["archives"].items():
+                if isinstance(archive, dict):
+                    parsed = _archive_from_record(archive, source_path=source_path, fallback_session_id=str(session_id))
+                    if parsed:
+                        archives.append(parsed)
+        elif isinstance(data.get("archives"), list):
+            for index, archive in enumerate(data["archives"], start=1):
+                if isinstance(archive, dict):
+                    parsed = _archive_from_record(archive, source_path=source_path, fallback_session_id=f"archive-{index}")
+                    if parsed:
+                        archives.append(parsed)
+        elif any(isinstance(data.get(key), list) for key in ("events", "timeline", "messages", "session_events")):
+            parsed = _archive_from_record(data, source_path=source_path)
+            if parsed:
+                archives.append(parsed)
+        elif isinstance(data.get("historical_session_exports"), list):
+            for index, archive in enumerate(data["historical_session_exports"], start=1):
+                if isinstance(archive, dict):
+                    parsed = _archive_from_record(archive, source_path=source_path, fallback_session_id=f"historical-export-{index}")
+                    if parsed:
+                        archives.append(parsed)
+    elif isinstance(data, list):
+        for index, archive in enumerate(data, start=1):
+            if isinstance(archive, dict):
+                parsed = _archive_from_record(archive, source_path=source_path, fallback_session_id=f"archive-{index}")
+                if parsed:
+                    archives.append(parsed)
+    return archives
+
+
+def discover_historical_session_archives(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Discover all historical session archives available to Runtime."""
+    canonical = _extract_archives_from_json(_read_store(), source_path=str(ARCHIVE_DIR / "session_archives.json"))
+    discovered: list[dict[str, Any]] = []
+    source_files: list[str] = []
+    format_mismatches: list[str] = []
+    for path in _candidate_archive_paths():
+        data = _load_json_file(path)
+        if data is None:
+            continue
+        parsed = _extract_archives_from_json(data, source_path=str(path))
+        if parsed:
+            discovered.extend(parsed)
+            source_files.append(str(path))
+        elif "session_archive" in str(path).lower() or "historical" in str(path).lower():
+            format_mismatches.append(str(path))
+    by_id: dict[str, dict[str, Any]] = {}
+    for archive in canonical + discovered:
+        archive_id = _text(archive.get("archive_id") or archive.get("session_id"))
+        if archive_id not in by_id:
+            by_id[archive_id] = archive
+        else:
+            existing_events = by_id[archive_id].setdefault("events", [])
+            existing_event_ids = {event.get("event_id") for event in existing_events if isinstance(event, dict)}
+            for event in archive.get("events") or []:
+                if isinstance(event, dict) and event.get("event_id") not in existing_event_ids:
+                    existing_events.append(event)
+    archives = list(by_id.values())
+    events_count = sum(len(archive.get("events") or []) for archive in archives)
+    if archives:
+        status_code = "ARCHIVES_AVAILABLE"
+        status = "ok"
+    elif format_mismatches:
+        status_code = "ARCHIVE_FORMAT_MISMATCH"
+        status = "warning"
+    else:
+        status_code = "NO_HISTORICAL_ARCHIVES_IMPORTED"
+        status = "warning"
+    return {
+        "status": status,
+        "render_mode": "historical_archive_discovery",
+        "release_id": RELEASE_ID,
+        "fix_id": DISCOVERY_ID,
+        "discovery_status": status_code,
+        "archives_available": "PASS" if archives else "FAIL",
+        "archives_count": len(archives),
+        "events_count": events_count,
+        "source_files": sorted(set(source_files)),
+        "format_mismatches": format_mismatches,
+        "archives": [
+            {
+                "session_id": archive.get("session_id"),
+                "archive_id": archive.get("archive_id"),
+                "status": archive.get("status"),
+                "business_domain": archive.get("business_domain"),
+                "events_count": len(archive.get("events") or []),
+                "source_path": archive.get("source_path"),
+            }
+            for archive in archives
+        ],
+        "_archives_full": archives,
+    }
+
+
 def _archive_events() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    store = _read_store()
-    archives = store.get("archives") if isinstance(store.get("archives"), dict) else {}
+    discovery = discover_historical_session_archives({})
+    archives_full = discovery.get("_archives_full") if isinstance(discovery.get("_archives_full"), list) else []
     archive_list: list[dict[str, Any]] = []
     events: list[dict[str, Any]] = []
-    for session_id, archive in archives.items():
-        if not isinstance(archive, dict):
-            continue
+    for archive in archives_full:
         archive_record = {
-            "session_id": session_id,
+            "session_id": archive.get("session_id"),
             "archive_id": archive.get("archive_id"),
             "status": archive.get("status"),
             "project_id": archive.get("project_id"),
@@ -75,14 +255,15 @@ def _archive_events() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             "business_domain": archive.get("business_domain"),
             "created_at": archive.get("created_at"),
             "updated_at": archive.get("updated_at"),
-            "statistics": archive.get("statistics") if isinstance(archive.get("statistics"), dict) else {},
+            "statistics": archive.get("statistics") if isinstance(archive.get("statistics"), dict) else {"events_count": len(archive.get("events") or [])},
+            "source_path": archive.get("source_path"),
         }
         archive_list.append(archive_record)
         for event in archive.get("events") or []:
             if isinstance(event, dict):
                 item = dict(event)
-                item["source_session_id"] = session_id
-                item["source_archive_id"] = archive.get("archive_id")
+                item.setdefault("source_session_id", archive.get("session_id"))
+                item.setdefault("source_archive_id", archive.get("archive_id"))
                 events.append(item)
     events.sort(key=lambda item: (_text(item.get("timestamp")), _text(item.get("source_session_id")), int(item.get("chronological_index") or 0)))
     return archive_list, events
