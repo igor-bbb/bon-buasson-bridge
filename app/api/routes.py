@@ -317,6 +317,18 @@ from app.assistant_runtime.session_archive import (
     run_archive_backed_extraction as run_vectra_archive_backed_extraction,
     capitalize_archived_session_knowledge as capitalize_vectra_archived_session_knowledge,
     verify_archive_backed_capitalization as verify_vectra_archive_backed_capitalization,
+    bootstrap_session_archive as bootstrap_vectra_session_archive,
+    import_historical_session as import_vectra_historical_session,
+    build_historical_timeline as build_vectra_historical_timeline,
+    replay_historical_session as replay_vectra_historical_session,
+    build_historical_migration_package as build_vectra_historical_migration_package,
+    classify_historical_knowledge as classify_vectra_historical_knowledge,
+    verify_business_domain_mapping as verify_vectra_business_domain_mapping,
+    capitalize_historical_migration as capitalize_vectra_historical_migration,
+    verify_session_bootstrap as verify_vectra_session_bootstrap,
+    verify_historical_replay as verify_vectra_historical_replay,
+    extract_archived_session_knowledge as extract_vectra_archived_session_knowledge,
+    verify_archived_session_extraction as verify_vectra_archived_session_extraction,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -9371,6 +9383,31 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'session_archive.capitalize_archived_session_knowledge', '/vectra/laboratory/facade/memory', capitalize_vectra_archived_session_knowledge(payload), next_action='Run verify_archive_backed_capitalization.'))
         if operation_type in {'verify_archive_backed_capitalization', 'archive_backed_capitalization_verify'}:
             return json_response(_facade_response(operation_type, 'session_archive.verify_archive_backed_capitalization', '/vectra/laboratory/facade/memory', verify_vectra_archive_backed_capitalization(payload)))
+        if operation_type in {'bootstrap_session_archive', 'session_archive_bootstrap'}:
+            return json_response(_facade_response(operation_type, 'session_archive.bootstrap_session_archive', '/vectra/laboratory/facade/memory', bootstrap_vectra_session_archive(payload), next_action='Import remaining historical sessions or build_historical_migration_package.'))
+        if operation_type in {'import_historical_session', 'historical_session_import'}:
+            return json_response(_facade_response(operation_type, 'session_archive.import_historical_session', '/vectra/laboratory/facade/memory', import_vectra_historical_session(payload), next_action='Repeat for all historical chats; do not capitalize yet.'))
+        if operation_type in {'build_historical_timeline', 'historical_timeline'}:
+            return json_response(_facade_response(operation_type, 'session_archive.build_historical_timeline', '/vectra/laboratory/facade/memory', build_vectra_historical_timeline(payload), next_action='Run replay_historical_session.'))
+        if operation_type in {'replay_historical_session', 'historical_replay'}:
+            return json_response(_facade_response(operation_type, 'session_archive.replay_historical_session', '/vectra/laboratory/facade/memory', replay_vectra_historical_session(payload), next_action='Build historical migration package.'))
+        if operation_type in {'build_historical_migration_package', 'historical_migration_package'}:
+            return json_response(_facade_response(operation_type, 'session_archive.build_historical_migration_package', '/vectra/laboratory/facade/memory', build_vectra_historical_migration_package(payload), next_action='Review model, then capitalize_historical_migration with Product Owner approval.'))
+        if operation_type in {'classify_historical_knowledge', 'historical_knowledge_classification'}:
+            return json_response(_facade_response(operation_type, 'session_archive.classify_historical_knowledge', '/vectra/laboratory/facade/memory', classify_vectra_historical_knowledge(payload), next_action='Verify business domain mapping.'))
+        if operation_type in {'verify_business_domain_mapping', 'business_domain_mapping_verify'}:
+            return json_response(_facade_response(operation_type, 'session_archive.verify_business_domain_mapping', '/vectra/laboratory/facade/memory', verify_vectra_business_domain_mapping(payload)))
+        if operation_type in {'capitalize_historical_migration', 'historical_migration_capitalization'}:
+            payload['product_owner_approval'] = bool(payload.get('product_owner_approval') or approval)
+            return json_response(_facade_response(operation_type, 'session_archive.capitalize_historical_migration', '/vectra/laboratory/facade/memory', capitalize_vectra_historical_migration(payload), next_action='Run verify_session_bootstrap and verify_archived_session_extraction.'))
+        if operation_type in {'verify_session_bootstrap', 'session_bootstrap_verify'}:
+            return json_response(_facade_response(operation_type, 'session_archive.verify_session_bootstrap', '/vectra/laboratory/facade/memory', verify_vectra_session_bootstrap(payload)))
+        if operation_type in {'verify_historical_replay', 'historical_replay_verify'}:
+            return json_response(_facade_response(operation_type, 'session_archive.verify_historical_replay', '/vectra/laboratory/facade/memory', verify_vectra_historical_replay(payload)))
+        if operation_type in {'extract_archived_session_knowledge', 'archived_session_knowledge_extraction'}:
+            return json_response(_facade_response(operation_type, 'session_archive.extract_archived_session_knowledge', '/vectra/laboratory/facade/memory', extract_vectra_archived_session_knowledge(payload), next_action='Review historical_migration_knowledge_package before capitalization.'))
+        if operation_type in {'verify_archived_session_extraction', 'archived_session_extraction_verify'}:
+            return json_response(_facade_response(operation_type, 'session_archive.verify_archived_session_extraction', '/vectra/laboratory/facade/memory', verify_vectra_archived_session_extraction(payload)))
         if operation_type in {'build_session_context', 'session_context', 'professional_intelligence_session_context'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_session_context', '/vectra/professional-intelligence/session-context', build_vectra_professional_intelligence_session_context(payload), next_action='Run session_context_verify, then continue to PI-IMPL-0002 after Product Verification PASS.'))
         if operation_type in {'verify_session_context', 'verify_session_context_foundation', 'professional_intelligence_verify'}:
