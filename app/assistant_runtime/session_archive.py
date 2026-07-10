@@ -491,7 +491,14 @@ def _write_migration_store(data: dict[str, Any]) -> None:
 
 
 def _normalize_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    for key in ("messages", "chat_history", "history", "events", "transcript"):
+    """Accept common historical-chat payload shapes and normalize them to events.
+
+    The public facade receives different field names depending on whether the
+    source is a copied chat, a Historical Session Export, or a compact test
+    payload from Laboratory. This function deliberately accepts all supported
+    aliases without performing knowledge extraction or capitalization.
+    """
+    for key in ("messages", "chat_history", "history", "events", "transcript", "conversation"):
         value = payload.get(key)
         if isinstance(value, list):
             normalized = []
@@ -501,16 +508,42 @@ def _normalize_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, 
                 else:
                     normalized.append({"content": str(item), "actor": "unknown", "role": "unknown", "chronological_index": index})
             return normalized
-    raw_text = payload.get("raw_text") or payload.get("content") or payload.get("text")
+
+    nested_payload = payload.get("payload")
+    if isinstance(nested_payload, dict):
+        nested = _normalize_messages_from_payload(nested_payload)
+        if nested:
+            return nested
+
+    raw_text = (
+        payload.get("working_context")
+        or payload.get("source_text")
+        or payload.get("raw_text")
+        or payload.get("content")
+        or payload.get("text")
+        or payload.get("message")
+    )
     if raw_text:
-        return [{"content": str(raw_text), "actor": payload.get("actor") or "historical_chat", "role": "historical_source"}]
+        return [{
+            "content": str(raw_text),
+            "actor": payload.get("actor") or payload.get("source_actor") or "historical_chat",
+            "role": payload.get("role") or "historical_source",
+            "event_type": payload.get("event_type") or "message",
+            "metadata": {
+                "source_type": payload.get("source_type") or "historical_session_export",
+                "domain": payload.get("domain") or payload.get("business_domain") or "bonboason",
+            },
+        }]
     return []
 
 
 def import_historical_session(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Import a historical working chat into Session Archive without capitalization."""
     payload = payload if isinstance(payload, dict) else {}
-    session_id = _normalize_session_id(payload)
+    normalized_messages = _normalize_messages_from_payload(payload)
+    explicit_session_id = payload.get("session_id") or payload.get("archive_id")
+    source_fingerprint = sha256(json.dumps(normalized_messages, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:12] if normalized_messages else _stable_id("EMPTY", _now())
+    session_id = str(explicit_session_id or _stable_id("HIST", payload.get("source_type") or "historical_session_export", payload.get("domain") or payload.get("business_domain") or "bonboason", source_fingerprint))
     migration_id = str(payload.get("migration_id") or _stable_id("HM", "vectra", "historical-migration"))
     create_session_archive({
         "session_id": session_id,
@@ -520,7 +553,7 @@ def import_historical_session(payload: dict[str, Any] | None = None) -> dict[str
         "reset": bool(payload.get("reset")),
     })
     imported_count = 0
-    for index, message in enumerate(_normalize_messages_from_payload(payload), start=1):
+    for index, message in enumerate(normalized_messages, start=1):
         event_type = str(message.get("event_type") or message.get("type") or "message").lower()
         append_session_event({
             "session_id": session_id,
