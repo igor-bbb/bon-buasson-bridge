@@ -43,7 +43,7 @@ def _stable_checksum(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
-def _slug(value: str, fallback: str = "bonboason") -> str:
+def _slug(value: str, fallback: str = "bon_buasson") -> str:
     raw = str(value or "").strip().lower()
     raw = re.sub(r"[^a-z0-9а-яіїєґ_-]+", "-", raw, flags=re.IGNORECASE).strip("-")
     return raw[:90] or fallback
@@ -145,7 +145,7 @@ def _title(payload: Dict[str, Any], text: str, fallback: str) -> str:
     return (first[:177].rstrip() + "...") if len(first) > 180 else (first or fallback)
 
 
-def classify_knowledge_item(payload: Optional[Dict[str, Any]] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def classify_knowledge_item(payload: Optional[Dict[str, Any]] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     """Classify one potential knowledge item and return a normalized package item."""
     payload = payload if isinstance(payload, dict) else {}
     text = _text_from_payload(payload)
@@ -171,7 +171,7 @@ def classify_knowledge_item(payload: Optional[Dict[str, Any]] = None, domain: st
     validation = validate_memory_space(memory_space, require_active=False)
     confirmed = _is_explicitly_confirmed(payload, text)
     knowledge_type = _knowledge_type_for_space(memory_space)
-    domain_key = _slug(str(payload.get("domain") or domain or "bonboason"), "bonboason")
+    domain_key = _slug(str(payload.get("domain") or domain or "bon_buasson"), "bon_buasson")
     fallback_id_prefix = {
         "professional": "PK",
         "business": "BK",
@@ -210,7 +210,7 @@ def classify_knowledge_item(payload: Optional[Dict[str, Any]] = None, domain: st
     }
 
 
-def classify_knowledge_package(payload: Optional[Dict[str, Any]] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def classify_knowledge_package(payload: Optional[Dict[str, Any]] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     """Classify a list or package of knowledge items without writing Repository data."""
     payload = payload if isinstance(payload, dict) else {}
     raw_items: List[Any] = []
@@ -258,7 +258,7 @@ def classify_knowledge_package(payload: Optional[Dict[str, Any]] = None, domain:
     }
 
 
-def verify_automatic_classification(payload: Optional[Dict[str, Any]] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def verify_automatic_classification(payload: Optional[Dict[str, Any]] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     """Run a deterministic classification verification used by Laboratory."""
     result = classify_knowledge_package(payload, domain=domain)
     failures = []

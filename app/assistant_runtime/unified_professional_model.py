@@ -112,8 +112,8 @@ def _knowledge_bucket(event: dict[str, Any]) -> str:
     event_type = _text(event.get("event_type")).lower()
     if event_type == "product_decision" or "product owner" in content or "решение" in content or "утвержда" in content:
         return "product_decisions"
-    if "бон буассон" in content or "bon buasson" in content or "bonboason" in content or "варус" in content or "атб" in content or "сеть" in content or "sku" in content or "маржа" in content or "оборот" in content:
-        return "business_domains.bonboason.business_knowledge"
+    if "бон буассон" in content or "bon buasson" in content or "bon_buasson" in content or "варус" in content or "атб" in content or "сеть" in content or "sku" in content or "маржа" in content or "оборот" in content:
+        return "business_domains.bon_buasson.business_knowledge"
     if "openapi" in content or "gpt" in content or "runtime" in content or "actions" in content or "экран" in content or "workspace" in content or "product" in content:
         return "product_knowledge"
     if "lesson" in content or "урок" in content or "lessons learned" in content:
@@ -255,7 +255,7 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
         "professional_knowledge": [],
         "product_knowledge": [],
         "product_decisions": [],
-        "business_domains": {"bonboason": {"title": "Бон Буассон", "business_knowledge": []}},
+        "business_domains": {"bon_buasson": {"title": "Бон Буассон", "business_knowledge": []}},
         "professional_standards": [],
         "business_standards": [],
         "lessons_learned": [],
@@ -267,7 +267,7 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
         "professional_knowledge": sections["professional_knowledge"],
         "product_knowledge": sections["product_knowledge"],
         "product_decisions": sections["product_decisions"],
-        "business_domains.bonboason.business_knowledge": sections["business_domains"]["bonboason"]["business_knowledge"],
+        "business_domains.bon_buasson.business_knowledge": sections["business_domains"]["bon_buasson"]["business_knowledge"],
         "professional_standards": sections["professional_standards"],
         "lessons_learned": sections["lessons_learned"],
         "architectural_invariants": sections["architectural_invariants"],
@@ -293,7 +293,7 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
         "product_knowledge": len(sections["product_knowledge"]),
         "product_decisions": len(sections["product_decisions"]),
         "business_domains": len(sections["business_domains"]),
-        "business_knowledge_bonboason": len(sections["business_domains"]["bonboason"]["business_knowledge"]),
+        "business_knowledge_bon_buasson": len(sections["business_domains"]["bon_buasson"]["business_knowledge"]),
         "professional_standards": len(sections["professional_standards"]),
         "lessons_learned": len(sections["lessons_learned"]),
         "architectural_invariants": len(sections["architectural_invariants"]),
@@ -301,7 +301,7 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
     }
     consistency_checks = {
         "archives_available": "PASS" if context.get("archives_count", 0) > 0 else "FAIL",
-        "business_domain_separated": "PASS" if "bonboason" in sections["business_domains"] else "FAIL",
+        "business_domain_separated": "PASS" if "bon_buasson" in sections["business_domains"] else "FAIL",
         "professional_memory_not_mutated": "PASS",
         "historical_exports_used_as_evidence": "PASS",
         "capitalization_not_executed": "PASS",
@@ -337,7 +337,7 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
         "duplicates_found_count": dedup_report.get("duplicates_found_count", 0),
         "conflicts_resolved_count": dedup_report.get("conflicts_resolved_count", 0),
         "section_counts": section_counts,
-        "business_domains": [{"domain_id": "bonboason", "title": "Бон Буассон", "business_knowledge_count": section_counts["business_knowledge_bonboason"]}],
+        "business_domains": [{"domain_id": "bon_buasson", "title": "Бон Буассон", "business_knowledge_count": section_counts["business_knowledge_bon_buasson"]}],
         "archived_sources": [
             {
                 "session_id": archive.get("session_id"),
@@ -416,7 +416,7 @@ def verify_historical_archive_discovery(payload: dict[str, Any] | None = None) -
         "reset": True,
         "working_context": sample_text,
         "source_type": "historical_session_export",
-        "domain": test_payload.get("domain") or "bonboason",
+        "domain": test_payload.get("domain") or "bon_buasson",
     })
     discovery = discover_historical_session_archives({"events_limit": 10000})
     model_result = build_unified_professional_model({"events_limit": 10000})
@@ -463,7 +463,7 @@ def verify_unified_professional_model(payload: dict[str, Any] | None = None) -> 
     from app.assistant_runtime.session_archive import create_session_archive, append_session_event
 
     session_id = "VPM-CONSOLIDATION-VERIFY"
-    create_session_archive({"session_id": session_id, "reset": True, "project_id": "vectra", "program_id": "professional_model_consolidation", "business_domain": "bonboason"})
+    create_session_archive({"session_id": session_id, "reset": True, "project_id": "vectra", "program_id": "professional_model_consolidation", "business_domain": "bon_buasson"})
     append_session_event({"session_id": session_id, "event_type": "engineering_directive", "actor": "Product Owner", "content": "Product Owner confirms VECTRA must separate Professional Knowledge, Product Knowledge, Product Decisions and Business Domain Бон Буассон."})
     append_session_event({"session_id": session_id, "event_type": "product_decision", "actor": "Product Owner", "content": "Решение Product Owner: Historical Session Export используются как Evidence, а не как новая рабочая модель."})
     append_session_event({"session_id": session_id, "event_type": "message", "actor": "Product Owner", "content": "Бон Буассон является отдельным Business Domain; бизнес-знания не смешиваются с профессиональными знаниями VECTRA."})
@@ -474,7 +474,7 @@ def verify_unified_professional_model(payload: dict[str, Any] | None = None) -> 
         "unified_professional_model_created": "PASS" if model.get("model_id") else "FAIL",
         "consolidation_report_created": "PASS" if report.get("report_id") else "FAIL",
         "all_archives_readable_as_context": "PASS" if report.get("historical_session_exports_processed", 0) >= 1 else "FAIL",
-        "business_domain_bonboason_present": "PASS" if report.get("section_counts", {}).get("business_knowledge_bonboason", 0) >= 1 else "FAIL",
+        "business_domain_bon_buasson_present": "PASS" if report.get("section_counts", {}).get("business_knowledge_bon_buasson", 0) >= 1 else "FAIL",
         "professional_sections_present": "PASS" if isinstance(model.get("sections"), dict) and "professional_identity" in model.get("sections", {}) else "FAIL",
         "capitalization_not_executed": "PASS" if result.get("capitalization_executed") is False else "FAIL",
         "historical_exports_used_as_evidence": report.get("self_consistency_checks", {}).get("historical_exports_used_as_evidence", "FAIL"),

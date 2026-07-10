@@ -119,7 +119,7 @@ TOPIC_KEYWORDS = {
     },
     "business_domain": {
         "title": "Business Domain",
-        "keywords": ["business domain", "бон буассон", "bonboason", "business", "бизнес"],
+        "keywords": ["business domain", "бон буассон", "bon_buasson", "business", "бизнес"],
     },
 }
 
@@ -324,7 +324,7 @@ def build_session_context(payload: dict[str, Any] | None = None) -> dict[str, An
     session_id = _safe_str(payload.get("session_id") or _stable_id("SESSION", now, payload.get("project_id"), payload.get("program_id")))
     project_id = _safe_str(payload.get("project_id") or "vectra")
     program_id = _safe_str(payload.get("program_id") or "professional_intelligence")
-    business_domain = _safe_str(payload.get("business_domain") or payload.get("domain") or "bonboason")
+    business_domain = _safe_str(payload.get("business_domain") or payload.get("domain") or "bon_buasson")
 
     raw_messages = _coerce_messages(payload)
     fragments: list[dict[str, Any]] = []
@@ -661,7 +661,7 @@ def verify_session_audit_runtime() -> dict[str, Any]:
         "session_id": "PI-IMPL-0002-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "Architecture PASS. Приступить к реализации PI-IMPL-0002."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "Предлагаю вариант Session Audit Runtime: topic map, confirmation map, draft map."},
@@ -970,7 +970,7 @@ def verify_knowledge_candidate_runtime() -> dict[str, Any]:
         "session_id": "PI-IMPL-0003-0004-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "Решение принято. Реализуем Knowledge Candidate Extraction вместе с Evidence Mapping."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "PI-IMPL-0003 создаёт Knowledge Candidate, но не выполняет Validation и не определяет Memory Space."},
@@ -1309,7 +1309,7 @@ def verify_knowledge_processing_runtime() -> dict[str, Any]:
         "session_id": "PI-IMPL-0005-0007-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "Architecture Freeze запрещает менять утверждённую архитектуру во время реализации."},
@@ -1572,7 +1572,7 @@ def verify_knowledge_consolidation_runtime() -> dict[str, Any]:
         "session_id": "PI-IMPL-0008-0009-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
             {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную!"},
@@ -1921,7 +1921,7 @@ def verify_prepared_knowledge_package_runtime() -> dict[str, Any]:
         "session_id": "PI-IMPL-0010-0011-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "PASS. Подтверждаю правило: Product Owner не выбирает знания вручную."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "Engineering Team обязана выполнять Facade Readiness Check перед Release Brief."},
@@ -2022,7 +2022,7 @@ def _runtime_payload_from_prepared_object(item: dict[str, Any], package: dict[st
         "prepared_item_status": item.get("status") or "APPROVED_FOR_PACKAGE",
         "recommended_memory_type": memory_space,
         "knowledge_subtype": item.get("knowledge_type"),
-        "domain": item.get("domain") or package.get("business_domain") or "bonboason",
+        "domain": item.get("domain") or package.get("business_domain") or "bon_buasson",
     }
     if memory_space == "business_domain_memory":
         payload["knowledge_type"] = "business"
@@ -2270,7 +2270,7 @@ def _sample_professional_intelligence_payload(session_id: str) -> dict[str, Any]
         "session_id": session_id,
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "Утверждаю правило: Professional Intelligence капитализирует только подтверждённые знания с evidence."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "Финальный результат: Runtime Capitalization Integration передаёт prepared_knowledge_package в Professional Memory Runtime и получает Readback, Recovery Snapshot и Capitalization Report."},
@@ -2317,7 +2317,7 @@ def verify_session_context_foundation() -> dict[str, Any]:
         "session_id": "PI-IMPL-0001-VERIFY",
         "project_id": "vectra",
         "program_id": "professional_intelligence",
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "author": "Product Owner", "content": "Архитектура Professional Intelligence подтверждена. Приступить к реализации PI-IMPL-0001."},
             {"role": "Engineering Team", "author": "Engineering Team", "content": "Готовим Session Context Foundation без извлечения знаний."},

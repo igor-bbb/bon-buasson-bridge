@@ -40,7 +40,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _slug(value: str, fallback: str = "bonboason") -> str:
+def _slug(value: str, fallback: str = "bon_buasson") -> str:
     raw = str(value or "").strip().lower()
     raw = re.sub(r"[^a-z0-9а-яіїєґ_-]+", "-", raw, flags=re.IGNORECASE).strip("-")
     return raw[:90] or fallback
@@ -66,8 +66,8 @@ def professional_knowledge_path() -> Path:
     return ensure_repository() / "knowledge" / "professional_knowledge.json"
 
 
-def business_knowledge_path(domain: str = "bonboason") -> Path:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def business_knowledge_path(domain: str = "bon_buasson") -> Path:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     path = ensure_repository() / "business_domains" / domain_key / "business_knowledge.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
@@ -75,8 +75,8 @@ def business_knowledge_path(domain: str = "bonboason") -> Path:
     return path
 
 
-def _business_profile_path(domain: str = "bonboason") -> Path:
-    return ensure_repository() / "runtime" / "business_domains" / _slug(domain or "bonboason", "bonboason") / "domain_profile.json"
+def _business_profile_path(domain: str = "bon_buasson") -> Path:
+    return ensure_repository() / "runtime" / "business_domains" / _slug(domain or "bon_buasson", "bon_buasson") / "domain_profile.json"
 
 
 def _first_present(record: Dict[str, Any], keys: Iterable[str], default: Any = None) -> Any:
@@ -148,10 +148,10 @@ def professional_record_to_knowledge_object(record: Dict[str, Any]) -> Dict[str,
     return knowledge_object
 
 
-def business_record_to_knowledge_object(record: Dict[str, Any], domain: str = "bonboason") -> Dict[str, Any]:
+def business_record_to_knowledge_object(record: Dict[str, Any], domain: str = "bon_buasson") -> Dict[str, Any]:
     """Map an existing Business Domain Knowledge record to internal Knowledge Object."""
     record = dict(record or {})
-    domain_key = _slug(str(record.get("domain") or domain or "bonboason"), "bonboason")
+    domain_key = _slug(str(record.get("domain") or domain or "bon_buasson"), "bon_buasson")
     knowledge_id = str(record.get("knowledge_id") or record.get("id") or "").strip()
     created = _first_present(record, ["created_at", "capitalized_at", "updated_at"], _now())
     updated = _first_present(record, ["updated_at", "capitalized_at", "created_at"], created)
@@ -179,8 +179,8 @@ def business_record_to_knowledge_object(record: Dict[str, Any], domain: str = "b
     return knowledge_object
 
 
-def _business_knowledge_items(domain: str = "bonboason") -> List[Dict[str, Any]]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def _business_knowledge_items(domain: str = "bon_buasson") -> List[Dict[str, Any]]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     repo_items = _read_list(business_knowledge_path(domain_key))
     profile_payload = get_business_domain_profile(domain_key)
     profile = profile_payload.get("domain_profile") if isinstance(profile_payload, dict) else None
@@ -199,8 +199,8 @@ def list_professional_knowledge_objects() -> List[Dict[str, Any]]:
     return [professional_record_to_knowledge_object(item) for item in _read_list(professional_knowledge_path()) if isinstance(item, dict)]
 
 
-def list_business_knowledge_objects(domain: str = "bonboason") -> List[Dict[str, Any]]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def list_business_knowledge_objects(domain: str = "bon_buasson") -> List[Dict[str, Any]]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     return [business_record_to_knowledge_object(item, domain_key) for item in _business_knowledge_items(domain_key) if isinstance(item, dict)]
 
 
@@ -212,7 +212,7 @@ def get_professional_knowledge_object(knowledge_id: str) -> Optional[Dict[str, A
 
 
 def get_business_knowledge_object(domain: str, knowledge_id: str) -> Optional[Dict[str, Any]]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     for item in _business_knowledge_items(domain_key):
         if isinstance(item, dict) and str(item.get("knowledge_id")) == str(knowledge_id):
             return business_record_to_knowledge_object(item, domain_key)
@@ -242,8 +242,8 @@ def verify_knowledge_object_mapping(knowledge_object: Optional[Dict[str, Any]]) 
     }
 
 
-def get_knowledge_object_overview(domain: str = "bonboason") -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def get_knowledge_object_overview(domain: str = "bon_buasson") -> Dict[str, Any]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     objects = list_professional_knowledge_objects() + list_business_knowledge_objects(domain_key)
     mapping_results = [verify_knowledge_object_mapping(obj) for obj in objects]
     errors = [result for result in mapping_results if result.get("status") != "PASS"]

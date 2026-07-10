@@ -49,8 +49,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _active_domain(domain: str = "bonboason") -> str:
-    return str(domain or "bonboason").strip().lower() or "bonboason"
+def _active_domain(domain: str = "bon_buasson") -> str:
+    return str(domain or "bon_buasson").strip().lower() or "bon_buasson"
 
 
 def _read_list(path):
@@ -74,7 +74,7 @@ def list_release_history_objects() -> List[Dict[str, Any]]:
     return [release_record_to_knowledge_object(item) for item in _read_list(release_history_path()) if isinstance(item, dict)]
 
 
-def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -> List[Dict[str, Any]]:
+def _objects_for_space(memory_space: Optional[str], domain: str = "bon_buasson") -> List[Dict[str, Any]]:
     space = normalize_memory_space(memory_space) if memory_space else ""
     domain_key = _active_domain(domain)
     if not space:
@@ -101,7 +101,7 @@ def _objects_for_space(memory_space: Optional[str], domain: str = "bonboason") -
     return []
 
 
-def list_memory_objects(memory_space: Optional[str] = None, domain: str = "bonboason", limit: int = 100) -> Dict[str, Any]:
+def list_memory_objects(memory_space: Optional[str] = None, domain: str = "bon_buasson", limit: int = 100) -> Dict[str, Any]:
     """List unified Knowledge Objects through repository adapters."""
     domain_key = _active_domain(domain)
     if memory_space:
@@ -136,7 +136,7 @@ def list_memory_objects(memory_space: Optional[str] = None, domain: str = "bonbo
     }
 
 
-def get_memory_object(object_id: str, domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_object(object_id: str, domain: str = "bon_buasson") -> Dict[str, Any]:
     """Read a single Knowledge Object by unified object_id."""
     oid = str(object_id or "").strip()
     if not oid:
@@ -162,7 +162,7 @@ def get_memory_object(object_id: str, domain: str = "bonboason") -> Dict[str, An
     }
 
 
-def find_memory_object_by_knowledge_id(knowledge_id: str, memory_space: Optional[str] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def find_memory_object_by_knowledge_id(knowledge_id: str, memory_space: Optional[str] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     kid = str(knowledge_id or "").strip()
     if not kid:
         return {"status": "FAIL", "readback_status": "FAIL", "reason": "knowledge_id_required"}
@@ -181,7 +181,7 @@ def find_memory_object_by_knowledge_id(knowledge_id: str, memory_space: Optional
     }
 
 
-def readback_memory_object(object_id: Optional[str] = None, knowledge_id: Optional[str] = None, memory_space: Optional[str] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def readback_memory_object(object_id: Optional[str] = None, knowledge_id: Optional[str] = None, memory_space: Optional[str] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     if object_id:
         return get_memory_object(object_id=object_id, domain=domain)
     result = find_memory_object_by_knowledge_id(knowledge_id=knowledge_id or "", memory_space=memory_space, domain=domain)
@@ -194,7 +194,7 @@ def readback_memory_object(object_id: Optional[str] = None, knowledge_id: Option
     return result
 
 
-def get_memory_overview(domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_overview(domain: str = "bon_buasson") -> Dict[str, Any]:
     domain_key = _active_domain(domain)
     overview = get_knowledge_object_overview(domain_key)
     registry = list_memory_spaces(include_prepared=True)
@@ -223,7 +223,7 @@ def get_memory_overview(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def verify_memory_repository_integrity(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_memory_repository_integrity(domain: str = "bon_buasson") -> Dict[str, Any]:
     domain_key = _active_domain(domain)
     repo = ensure_repository()
     overview = get_memory_overview(domain_key)

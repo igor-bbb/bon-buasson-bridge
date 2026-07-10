@@ -154,7 +154,7 @@ def create_knowledge_candidate(payload: Optional[Dict[str, Any]] = None) -> Dict
     if not content:
         return {"status": "error", "render_mode": "vectra_knowledge_candidate", "reason": "content_required"}
     active_domain = get_active_business_domain().get("active_domain") or {}
-    domain = str(payload.get("domain") or active_domain.get("domain_id") or "bonboason").strip().lower()
+    domain = str(payload.get("domain") or active_domain.get("domain_id") or "bon_buasson").strip().lower()
     now = _now()
     candidate = {
         "candidate_id": candidate_id,
@@ -203,12 +203,12 @@ def _professional_knowledge_readback(knowledge_id: str) -> Dict[str, Any]:
 
 
 def _domain_knowledge_path(domain: str) -> Path:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     return ensure_repository() / "runtime" / "business_domains" / domain_key / "domain_profile.json"
 
 
 def _business_knowledge_repository_path(domain: str) -> Path:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     path = ensure_repository() / "business_domains" / domain_key / "business_knowledge.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
@@ -217,10 +217,10 @@ def _business_knowledge_repository_path(domain: str) -> Path:
 
 
 def _business_repository_relative(domain: str) -> str:
-    return f"business_domains/{_slug(domain or 'bonboason', 'bonboason')}/business_knowledge.json"
+    return f"business_domains/{_slug(domain or 'bon_buasson', 'bon_buasson')}/business_knowledge.json"
 
 
-def _normalize_business_record(record: Dict[str, Any], domain: str = "bonboason") -> Dict[str, Any]:
+def _normalize_business_record(record: Dict[str, Any], domain: str = "bon_buasson") -> Dict[str, Any]:
     created = record.get("created_at") or record.get("capitalized_at")
     updated = record.get("updated_at") or record.get("capitalized_at") or created
     return {
@@ -239,7 +239,7 @@ def _normalize_business_record(record: Dict[str, Any], domain: str = "bonboason"
 
 
 def _business_knowledge_items(domain: str) -> List[Dict[str, Any]]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     repo_items = _read_list(_business_knowledge_repository_path(domain_key))
     profile_payload = get_business_domain_profile(domain_key)
     profile = profile_payload.get("domain_profile") if isinstance(profile_payload, dict) else None
@@ -255,7 +255,7 @@ def _business_knowledge_items(domain: str) -> List[Dict[str, Any]]:
 
 
 def _business_knowledge_readback(domain: str, knowledge_id: str) -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     items = _business_knowledge_items(domain_key)
     found = _find_by_id(items, "knowledge_id", knowledge_id)
     return {
@@ -320,7 +320,7 @@ def create_capitalization_package(payload: Optional[Dict[str, Any]] = None) -> D
     paths = _paths()
     knowledge_id = str(candidate.get("knowledge_id") or f"K-{uuid.uuid4().hex[:8]}")
     knowledge_type = str(candidate.get("knowledge_type") or "professional").lower()
-    domain = str(candidate.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bonboason").lower()
+    domain = str(candidate.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bon_buasson").lower()
     target_repository = candidate.get("target_repository") or ("knowledge/professional_knowledge.json" if knowledge_type == "professional" else _business_repository_relative(domain))
     package_id = str(payload.get("package_id") or f"KCAP-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}")
     now = _now()
@@ -393,7 +393,7 @@ def write_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None) -> Dict[
 
     knowledge_id = str(package.get("knowledge_id") or candidate.get("knowledge_id") or f"K-{uuid.uuid4().hex[:8]}")
     knowledge_type = str(package.get("knowledge_type") or candidate.get("knowledge_type") or "professional").lower()
-    domain = str(package.get("domain") or candidate.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bonboason").lower()
+    domain = str(package.get("domain") or candidate.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bon_buasson").lower()
     target_repository = package.get("target_repository") or candidate.get("target_repository")
     now = _now()
 
@@ -718,7 +718,7 @@ def _detect_knowledge_type_from_text(text: str, default: str = "business") -> st
     t = str(text or "").lower()
     if re.search(r"\bpk-\d{3,}\b|professional knowledge|professional model|runtime|laboratory|vectra|architecture|архитектур|профессиональн|лаборатор|капитализац|product owner|engineering", t, flags=re.IGNORECASE):
         return "professional"
-    if re.search(r"\bbk-\d{3,}\b|business knowledge|business domain|bon boisson|bonboason|бон буассон|бизнес|контракт|сеть|sku|категор", t, flags=re.IGNORECASE):
+    if re.search(r"\bbk-\d{3,}\b|business knowledge|business domain|bon boisson|bon_buasson|бон буассон|бизнес|контракт|сеть|sku|категор", t, flags=re.IGNORECASE):
         return "business"
     return default if default in KNOWLEDGE_TYPES else "business"
 
@@ -911,7 +911,7 @@ def _items_from_prepared_knowledge_package(package: Dict[str, Any], domain: str)
     if not isinstance(package, dict):
         return []
     items: List[Dict[str, Any]] = []
-    package_domain = str(package.get("domain") or package.get("business_domain") or domain or "bonboason")
+    package_domain = str(package.get("domain") or package.get("business_domain") or domain or "bon_buasson")
     package_source = str(package.get("source") or package.get("source_context") or "VECTRA prepared knowledge package")
 
     for key, knowledge_type in [
@@ -1045,7 +1045,7 @@ def _normalize_knowledge_item_for_builder(item: Dict[str, Any], domain: str, sou
         description = title
     if not title:
         title = description[:80]
-    item_domain = str(item.get("domain") or item.get("business_domain") or domain or "bonboason").strip().lower()
+    item_domain = str(item.get("domain") or item.get("business_domain") or domain or "bon_buasson").strip().lower()
     stable_basis = {
         "knowledge_type": raw_type,
         "title": title,
@@ -1085,7 +1085,7 @@ def _knowledge_package_builder(payload: Dict[str, Any], domain: str) -> Dict[str
     prepared = _prepared_package_from_payload(payload)
     source_package = prepared if prepared else payload
     source = str(source_package.get("source") or payload.get("source") or "VECTRA working session audit")
-    package_domain = str(source_package.get("business_domain") or source_package.get("domain") or domain or "bonboason").strip().lower()
+    package_domain = str(source_package.get("business_domain") or source_package.get("domain") or domain or "bon_buasson").strip().lower()
     raw_items: List[Any] = []
     if prepared:
         for key in [
@@ -1178,7 +1178,7 @@ def _knowledge_package_builder(payload: Dict[str, Any], domain: str) -> Dict[str
     }
 
 
-def _extract_auto_knowledge_items(payload: Optional[Dict[str, Any]] = None, domain: str = "bonboason") -> List[Dict[str, Any]]:
+def _extract_auto_knowledge_items(payload: Optional[Dict[str, Any]] = None, domain: str = "bon_buasson") -> List[Dict[str, Any]]:
     """Extract knowledge for autonomous capitalization.
 
     Priority order:
@@ -1245,7 +1245,7 @@ def _extract_auto_knowledge_items(payload: Optional[Dict[str, Any]] = None, doma
             "title": title,
             "content": description,
             "description": description,
-            "domain": str(item.get("domain") or domain or "bonboason"),
+            "domain": str(item.get("domain") or domain or "bon_buasson"),
             "source": str(item.get("source") or payload.get("source") or "VECTRA Laboratory working context"),
             "confidence_level": item.get("confidence_level") or item.get("confirmation_level") or ("confirmed_by_product_owner" if bool(payload.get("product_owner_approval")) else "requires_product_owner_approval"),
             "revision": item.get("revision") or 1,
@@ -1277,7 +1277,7 @@ def auto_capitalize_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None
     -> single final Capitalization Report.
     """
     payload = payload if isinstance(payload, dict) else {}
-    domain = str(payload.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bonboason")
+    domain = str(payload.get("domain") or (get_active_business_domain().get("active_domain") or {}).get("domain_id") or "bon_buasson")
     approval = bool(payload.get("product_owner_approval"))
     paths = _auto_pipeline_paths()
     prepared_package = _prepared_package_from_payload(payload)
@@ -1685,8 +1685,8 @@ def get_professional_knowledge_overview() -> Dict[str, Any]:
     }
 
 
-def get_domain_knowledge(domain: str = "bonboason") -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def get_domain_knowledge(domain: str = "bon_buasson") -> Dict[str, Any]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     profile_payload = get_business_domain_profile(domain_key)
     profile = profile_payload.get("domain_profile") if isinstance(profile_payload, dict) else None
     items = [_normalize_business_record(item, domain_key) for item in _business_knowledge_items(domain_key) if isinstance(item, dict)]
@@ -1703,8 +1703,8 @@ def get_domain_knowledge(domain: str = "bonboason") -> Dict[str, Any]:
     }, f"Business Knowledge Domain {domain_key}", {"knowledge": items})
 
 
-def get_domain_knowledge_overview(domain: str = "bonboason") -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def get_domain_knowledge_overview(domain: str = "bon_buasson") -> Dict[str, Any]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     repo_path = _business_knowledge_repository_path(domain_key)
     items = [_normalize_business_record(item, domain_key) for item in _business_knowledge_items(domain_key) if isinstance(item, dict)]
     last_updated = None
@@ -1726,8 +1726,8 @@ def get_domain_knowledge_overview(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def get_domain_knowledge_by_id(domain: str = "bonboason", knowledge_id: Optional[str] = None) -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def get_domain_knowledge_by_id(domain: str = "bon_buasson", knowledge_id: Optional[str] = None) -> Dict[str, Any]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     raw_items = _business_knowledge_items(domain_key)
     found = _find_by_id(raw_items, "knowledge_id", str(knowledge_id or ""))
     if not isinstance(found, dict):
@@ -1752,8 +1752,8 @@ def get_domain_knowledge_by_id(domain: str = "bonboason", knowledge_id: Optional
     }, f"Business Knowledge {knowledge_id}", normalized)
 
 
-def verify_domain_knowledge_readback(domain: str = "bonboason", knowledge_id: str = "") -> Dict[str, Any]:
-    domain_key = _slug(domain or "bonboason", "bonboason")
+def verify_domain_knowledge_readback(domain: str = "bon_buasson", knowledge_id: str = "") -> Dict[str, Any]:
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     readback = _business_knowledge_readback(domain_key, knowledge_id)
     found = readback.get("record") if isinstance(readback, dict) else None
     normalized = _normalize_business_record(found, domain_key) if isinstance(found, dict) else None
@@ -1787,31 +1787,31 @@ def verify_domain_knowledge_readback(domain: str = "bonboason", knowledge_id: st
 def create_business_knowledge_candidate(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = dict(payload or {})
     payload["knowledge_type"] = "business"
-    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bonboason")
+    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bon_buasson")
     return create_knowledge_candidate(payload)
 
 
 def create_business_knowledge_capitalization_package(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = dict(payload or {})
     payload["knowledge_type"] = "business"
-    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bonboason")
+    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bon_buasson")
     return create_capitalization_package(payload)
 
 
 def write_business_knowledge(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = dict(payload or {})
     payload["knowledge_type"] = "business"
-    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bonboason")
+    payload.setdefault("domain", (get_active_business_domain().get("active_domain") or {}).get("active_domain_id") or "bon_buasson")
     return write_confirmed_knowledge(payload)
 
 
 def verify_knowledge_capitalization() -> Dict[str, Any]:
     status = get_knowledge_capitalization_status()
     professional = get_professional_knowledge()
-    business_overview = get_domain_knowledge_overview("bonboason")
+    business_overview = get_domain_knowledge_overview("bon_buasson")
     reports = list_knowledge_capitalization_reports(limit=5)
     latest_report = (reports.get("reports") or [])[-1] if reports.get("reports") else None
-    knowledge_object_overview = get_knowledge_object_overview("bonboason")
+    knowledge_object_overview = get_knowledge_object_overview("bon_buasson")
     checks = {
         "runtime_ready": status.get("status") == "ok",
         "product_owner_approval_required": True,
@@ -1835,7 +1835,7 @@ def verify_knowledge_capitalization() -> Dict[str, Any]:
     }
 
 
-def verify_knowledge_memory_persistence(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_knowledge_memory_persistence(domain: str = "bon_buasson") -> Dict[str, Any]:
     """LABORATORY-KNOWLEDGE-0005 post-release memory integrity verification.
 
     Verifies that Professional Knowledge, Business Domain Knowledge, Recovery
@@ -1843,7 +1843,7 @@ def verify_knowledge_memory_persistence(domain: str = "bonboason") -> Dict[str, 
     read-only and never mutates knowledge memory.
     """
     paths = _paths()
-    domain_key = _slug(domain or "bonboason", "bonboason")
+    domain_key = _slug(domain or "bon_buasson", "bon_buasson")
     professional_items = _read_list(paths["professional"])
     business_items = _business_knowledge_items(domain_key)
     recovery = create_recovery_snapshot({"metadata": {"reason": "knowledge_memory_persistence_verification", "release": KNOWLEDGE_RELEASE}})

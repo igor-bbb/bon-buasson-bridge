@@ -22,11 +22,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _required_path_status(domain: str = "bonboason") -> Dict[str, Any]:
+def _required_path_status(domain: str = "bon_buasson") -> Dict[str, Any]:
     repo = ensure_repository()
     required = [
         "knowledge/professional_knowledge.json",
-        "business_domains/{}/business_knowledge.json".format(str(domain or "bonboason").strip().lower() or "bonboason"),
+        "business_domains/{}/business_knowledge.json".format(str(domain or "bon_buasson").strip().lower() or "bon_buasson"),
         "knowledge/product_knowledge.json",
         "knowledge/general_knowledge.json",
         "decisions/product_decisions.json",
@@ -44,7 +44,7 @@ def _required_path_status(domain: str = "bonboason") -> Dict[str, Any]:
     return {"required_paths": paths, "missing_required_paths": missing, "required_path_status": "PASS" if not missing else "FAIL"}
 
 
-def get_memory_health_status(domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_health_status(domain: str = "bon_buasson") -> Dict[str, Any]:
     overview = get_memory_overview(domain=domain)
     integrity = verify_memory_repository_integrity(domain=domain)
     statistics = get_memory_statistics(domain=domain)
@@ -81,7 +81,7 @@ def get_memory_health_status(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def get_memory_diagnostics_report(domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_diagnostics_report(domain: str = "bon_buasson") -> Dict[str, Any]:
     health = get_memory_health_status(domain=domain)
     overview = get_memory_overview(domain=domain)
     statistics = get_memory_statistics(domain=domain)
@@ -113,7 +113,7 @@ def get_memory_diagnostics_report(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def verify_memory_health(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_memory_health(domain: str = "bon_buasson") -> Dict[str, Any]:
     report = get_memory_diagnostics_report(domain=domain)
     status = "PASS" if report.get("health_status") == "PASS" else "FAIL"
     return {

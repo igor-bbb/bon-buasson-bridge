@@ -30,7 +30,7 @@ KEY_COMPONENTS = {
     "presentation": ["app/presentation/views.py", "app/presentation/contracts.py"],
     "self_evolution": ["app/self_evolution/evolution_engine.py", "app/self_evolution/repository.py"],
     "professional_knowledge_repository": ["assistant_repository/knowledge/professional_knowledge.json"],
-    "business_domain_knowledge_repository": ["assistant_repository/business_domains/bonboason/business_knowledge.json"],
+    "business_domain_knowledge_repository": ["assistant_repository/business_domains/bon_buasson/business_knowledge.json"],
 }
 EXPECTED_FOUNDATION_0009_ENDPOINTS = [
     "/vectra/laboratory/repository/status",
@@ -121,7 +121,7 @@ def get_repository_inspection_status() -> Dict[str, Any]:
     routes_text = (PROJECT_ROOT / "app" / "api" / "routes.py").read_text(encoding="utf-8", errors="replace") if (PROJECT_ROOT / "app" / "api" / "routes.py").exists() else ""
     endpoint_presence = {endpoint: endpoint.replace("{domain}", "") in routes_text or endpoint in routes_text for endpoint in EXPECTED_FOUNDATION_0009_ENDPOINTS}
     knowledge_path = PROJECT_ROOT / "assistant_repository" / "knowledge" / "professional_knowledge.json"
-    business_knowledge_path = PROJECT_ROOT / "assistant_repository" / "business_domains" / "bonboason" / "business_knowledge.json"
+    business_knowledge_path = PROJECT_ROOT / "assistant_repository" / "business_domains" / "bon_buasson" / "business_knowledge.json"
     knowledge_documents = []
     business_knowledge_documents = []
     if knowledge_path.exists():
@@ -155,7 +155,7 @@ def get_repository_inspection_status() -> Dict[str, Any]:
             "readable": knowledge_path.exists() and isinstance(knowledge_documents, list),
         },
         "business_domain_knowledge_repository": {
-            "path": "assistant_repository/business_domains/bonboason/business_knowledge.json",
+            "path": "assistant_repository/business_domains/bon_buasson/business_knowledge.json",
             "exists": business_knowledge_path.exists(),
             "documents_count": len(business_knowledge_documents),
             "readable": business_knowledge_path.exists() and isinstance(business_knowledge_documents, list),
@@ -260,7 +260,7 @@ def verify_repository_against_release_brief(release_brief_text: Optional[str] = 
     confirmed = {
         "repository_inspection_module_present": (PROJECT_ROOT / "app" / "assistant_runtime" / "repository_inspection.py").exists(),
         "knowledge_capitalization_module_present": (PROJECT_ROOT / "app" / "assistant_runtime" / "knowledge_capitalization.py").exists(),
-        "business_domain_knowledge_repository_present": (PROJECT_ROOT / "assistant_repository" / "business_domains" / "bonboason" / "business_knowledge.json").exists(),
+        "business_domain_knowledge_repository_present": (PROJECT_ROOT / "assistant_repository" / "business_domains" / "bon_buasson" / "business_knowledge.json").exists(),
         "laboratory_openapi_function_present": "_laboratory_public_openapi_schema" in routes_text,
         "split_openapi_functions_present": all(name in routes_text for name in ["_laboratory_core_openapi_schema", "_laboratory_business_data_openapi_schema", "_laboratory_knowledge_openapi_schema"]),
         "all_expected_endpoints_registered_in_routes": all(endpoint_presence.values()),

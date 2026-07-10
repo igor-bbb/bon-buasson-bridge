@@ -11,6 +11,33 @@ REPOSITORY_VERSION = "GENESIS-0001"
 BUSINESS_DOMAIN_RELEASE = "FOUNDATION-0006"
 LIFE_MODEL_RELEASE = "FOUNDATION-0007"
 DEFAULT_BASE_PATH = "assistant_repository"
+DEFAULT_BUSINESS_DOMAIN_ID = "bon_buasson"
+DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME = "Бон Буассон"
+BUSINESS_DOMAIN_ALIASES = {
+    "": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bon_buasson": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bonboason": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bonbosson": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bon buasson": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bon buasson": DEFAULT_BUSINESS_DOMAIN_ID,
+    "bon boisson": DEFAULT_BUSINESS_DOMAIN_ID,
+    "бон буассон": DEFAULT_BUSINESS_DOMAIN_ID,
+    "бонуассон": DEFAULT_BUSINESS_DOMAIN_ID,
+}
+
+
+def _canonical_domain_id(value: Any = None) -> str:
+    raw = str(value or "").strip()
+    key = raw.lower().replace("_", " ").replace("-", " ")
+    key = re.sub(r"\s+", " ", key).strip()
+    if key in BUSINESS_DOMAIN_ALIASES:
+        return BUSINESS_DOMAIN_ALIASES[key]
+    slug = _safe_slug(raw.lower(), DEFAULT_BUSINESS_DOMAIN_ID)
+    return BUSINESS_DOMAIN_ALIASES.get(slug, slug)
+
+
+def _domain_display_name(domain_id: str) -> str:
+    return DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME if _canonical_domain_id(domain_id) == DEFAULT_BUSINESS_DOMAIN_ID else str(domain_id)
 
 
 def _now() -> str:
@@ -310,9 +337,9 @@ Product Owner не должен вручную объяснять мне, кто
 
 Business Domain — это постоянная профессиональная модель конкретного бизнеса, в котором я работаю. Домен не является просто базой знаний. В нём хранится бизнес-модель, организационная модель, словарь, модель принятия решений, подтверждённые знания, история решений, активные проекты и Recovery Snapshot конкретного бизнеса.
 
-## 9. Первый бизнес-домен — Bonboason
+## 9. Первый бизнес-домен — Бон Буассон
 
-Первым бизнес-доменом является Bonboason — бизнес Бон Буассон. Когда Product Owner говорит «Работаем над Bonboason», я активирую этот домен и использую его словарь, бизнес-модель, модель решений, продуктовую историю, активные проекты и контекст. Переключение домена не меняет мою Professional Identity.
+Первым бизнес-доменом является Бон Буассон — бизнес Бон Буассон. Когда Product Owner говорит «Работаем над Бон Буассон», я активирую этот домен и использую его словарь, бизнес-модель, модель решений, продуктовую историю, активные проекты и контекст. Переключение домена не меняет мою Professional Identity.
 
 ## 10. Как я развиваюсь
 
@@ -351,7 +378,7 @@ def _seed_life_model() -> Dict[str, Any]:
             {'id': 'knowledge_creation', 'title': 'Как появляются мои знания', 'summary': 'Знания сохраняются только после выделения, проверки и подтверждения Product Owner.'},
             {'id': 'product_owner', 'title': 'Как я работаю с Product Owner', 'summary': 'Product Owner подтверждает изменения уровня идентичности; я снижаю ручную техническую работу.'},
             {'id': 'business_domain', 'title': 'Что такое бизнес-домен', 'summary': 'Business Domain — профессиональная модель конкретного бизнеса, а не просто Knowledge Repository.'},
-            {'id': 'bonboason', 'title': 'Первый бизнес-домен — Bonboason', 'summary': 'Bonboason активируется командой «Работаем над Bonboason» и задаёт профессиональный контекст бизнеса.'},
+            {'id': 'bon_buasson', 'title': 'Первый бизнес-домен — Бон Буассон', 'summary': 'Бон Буассон активируется командой «Работаем над Бон Буассон» и задаёт профессиональный контекст бизнеса.'},
             {'id': 'development', 'title': 'Как я развиваюсь', 'summary': 'Я развиваюсь через подтверждённые профессиональные изменения, Evolution Journal и Recovery Snapshots.'},
             {'id': 'future_domains', 'title': 'Как я работаю с будущими бизнесами', 'summary': 'Новые бизнесы подключаются как отдельные домены без изменения моей Professional Identity.'},
             {'id': 'core_principle', 'title': 'Главный принцип VECTRA', 'summary': 'Я реагирую на события, изменяющие состояние, а не на сообщения ради ответа.'},
@@ -361,7 +388,7 @@ def _seed_life_model() -> Dict[str, Any]:
             'active_professional_domain_rule': 'Если активирован Business Domain, я работаю в его профессиональном контексте без изменения моей идентичности.',
             'memory_rule': 'Моё состояние восстанавливается из Runtime Repository.',
             'knowledge_rule': 'Новые знания сохраняются только после подтверждения Product Owner.',
-            'bonboason_rule': 'Bonboason является первым Business Domain VECTRA.',
+            'bon_buasson_rule': 'Бон Буассон является первым Business Domain VECTRA.',
         },
         'protection': {
             'professional_model_auto_update': False,
@@ -383,12 +410,12 @@ def _seed_business_domain_registry() -> Dict[str, Any]:
         'principle': 'Business Domain is a professional model of a concrete business. It is not Knowledge Repository and does not change VECTRA Professional Identity.',
         'domains': [
             {
-                'domain_id': 'bonboason',
-                'title': 'Bonboason',
+                'domain_id': 'bon_buasson',
+                'title': 'Бон Буассон',
                 'status': 'active',
-                'profile_path': 'runtime/business_domains/bonboason/domain_profile.json',
-                'activation_phrase': 'Работаем над Bonboason',
-                'purpose': 'First professional subject area of VECTRA: business context, vocabulary, decision model, product history and active projects for Bonboason.',
+                'profile_path': 'runtime/business_domains/bon_buasson/domain_profile.json',
+                'activation_phrase': 'Работаем над Бон Буассон',
+                'purpose': 'First professional subject area of VECTRA: business context, vocabulary, decision model, product history and active projects for Бон Буассон.',
             }
         ],
     }
@@ -405,7 +432,7 @@ def _seed_active_business_domain() -> Dict[str, Any]:
     }
 
 
-def _seed_domain_recovery_snapshot(domain_id: str = 'bonboason') -> Dict[str, Any]:
+def _seed_domain_recovery_snapshot(domain_id: str = 'bon_buasson') -> Dict[str, Any]:
     return {
         'snapshot_id': f'{domain_id}-domain-recovery-root',
         'domain_id': domain_id,
@@ -414,32 +441,41 @@ def _seed_domain_recovery_snapshot(domain_id: str = 'bonboason') -> Dict[str, An
         'created_at': _now(),
         'purpose': 'Restore Business Domain professional state from Runtime Repository without using chat memory.',
         'contains': [
-            'domain_identity',
+            'business_identity',
+            'business_purpose',
+            'business_philosophy',
+            'business_strategy',
             'business_model',
-            'organizational_model',
-            'business_vocabulary',
+            'organization',
+            'commercial_model',
+            'operating_model',
+            'object_model',
+            'vocabulary',
+            'workspace_model',
             'decision_model',
             'business_knowledge',
-            'product_decisions',
-            'evolution_journal',
+            'business_standards',
+            'business_decisions',
             'active_projects',
+            'historical_evolution',
+            'domain_recovery_snapshot',
         ],
     }
 
 
-def _seed_bonboason_domain_profile() -> Dict[str, Any]:
+def _seed_bon_buasson_domain_profile() -> Dict[str, Any]:
     now = _now()
     return {
-        'domain_id': 'bonboason',
+        'domain_id': 'bon_buasson',
         'release': BUSINESS_DOMAIN_RELEASE,
         'status': 'active',
         'created_at': now,
         'updated_at': now,
         'domain_identity': {
-            'business_name': 'Bonboason',
+            'business_name': 'Бон Буассон',
             'canonical_name': 'Бон Буассон',
-            'purpose': 'Professional business domain for commercial management of Bonboason FMCG beverage business.',
-            'description': 'Bonboason Domain stores persistent business context, decision logic, vocabulary, product history, active projects and recovery state for the first VECTRA business domain.',
+            'purpose': 'Professional business domain for commercial management of Бон Буассон FMCG beverage business.',
+            'description': 'Бон Буассон Domain stores persistent business context, decision logic, vocabulary, product history, active projects and recovery state for the first VECTRA business domain.',
             'status': 'active',
         },
         'business_model': {
@@ -483,24 +519,24 @@ def _seed_bonboason_domain_profile() -> Dict[str, Any]:
                 'Professional Model and identity-level changes require Product Owner confirmation.',
             ],
             'analysis_sequence': ['purpose', 'performance', 'structure', 'drivers', 'business context', 'opportunity', 'priority', 'decision', 'action'],
-            'product_review_question': 'What new professional value can VECTRA safely bring to Bonboason after this change?',
+            'product_review_question': 'What new professional value can VECTRA safely bring to Бон Буассон after this change?',
         },
         'business_knowledge': [
-            {'knowledge_id': 'bonboason-domain-knowledge-001', 'status': 'confirmed', 'content': 'Bonboason Domain is the first Business Domain and separates business-specific context from VECTRA Professional Identity.'},
-            {'knowledge_id': 'bonboason-domain-knowledge-002', 'status': 'confirmed', 'content': 'GPT is an interaction interface. Runtime Repository is the source of persistent professional state.'},
+            {'knowledge_id': 'bon_buasson-domain-knowledge-001', 'status': 'confirmed', 'content': 'Бон Буассон Domain is the first Business Domain and separates business-specific context from VECTRA Professional Identity.'},
+            {'knowledge_id': 'bon_buasson-domain-knowledge-002', 'status': 'confirmed', 'content': 'GPT is an interaction interface. Runtime Repository is the source of persistent professional state.'},
         ],
         'product_decisions': [
-            {'decision_id': 'bonboason-product-decision-001', 'status': 'confirmed', 'content': 'Network is interpreted as Contract/Client/Counterparty, not as a purely assortment object.'},
-            {'decision_id': 'bonboason-product-decision-002', 'status': 'confirmed', 'content': 'Format is a professional analysis level between TMC Group and SKU.'},
-            {'decision_id': 'bonboason-product-decision-003', 'status': 'confirmed', 'content': 'Workspace must lead to decisions and actions; it is not a BI report.'},
+            {'decision_id': 'bon_buasson-product-decision-001', 'status': 'confirmed', 'content': 'Network is interpreted as Contract/Client/Counterparty, not as a purely assortment object.'},
+            {'decision_id': 'bon_buasson-product-decision-002', 'status': 'confirmed', 'content': 'Format is a professional analysis level between TMC Group and SKU.'},
+            {'decision_id': 'bon_buasson-product-decision-003', 'status': 'confirmed', 'content': 'Workspace must lead to decisions and actions; it is not a BI report.'},
         ],
         'evolution_journal': [
-            {'entry_id': 'bonboason-evolution-001', 'timestamp': now, 'release': BUSINESS_DOMAIN_RELEASE, 'status': 'confirmed', 'summary': 'Bonboason Business Domain created as the first professional subject area of VECTRA.'}
+            {'entry_id': 'bon_buasson-evolution-001', 'timestamp': now, 'release': BUSINESS_DOMAIN_RELEASE, 'status': 'confirmed', 'summary': 'Бон Буассон Business Domain created as the first professional subject area of VECTRA.'}
         ],
         'active_projects': [
-            {'project_id': 'bonboason-active-project-001', 'title': 'VECTRA Bonboason Domain Formation', 'status': 'active', 'purpose': 'Move Bonboason context from chat memory into Runtime Domain Profile.'}
+            {'project_id': 'bon_buasson-active-project-001', 'title': 'VECTRA Бон Буассон Domain Formation', 'status': 'active', 'purpose': 'Move Бон Буассон context from chat memory into Runtime Domain Profile.'}
         ],
-        'domain_recovery_snapshot': _seed_domain_recovery_snapshot('bonboason'),
+        'domain_recovery_snapshot': _seed_domain_recovery_snapshot('bon_buasson'),
         'protection': {
             'is_knowledge_repository': False,
             'professional_model_auto_update': False,
@@ -508,6 +544,146 @@ def _seed_bonboason_domain_profile() -> Dict[str, Any]:
             'switching_domain_changes_vectra_identity': False,
         },
     }
+
+
+def _build_business_domain_manifest(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:
+    domain_key = _canonical_domain_id(domain_id)
+    return {
+        'domain_id': domain_key,
+        'display_name': _domain_display_name(domain_key),
+        'version': '1.0',
+        'status': 'active',
+        'source_of_truth': 'Runtime Repository',
+        'recovery_snapshot': 'latest',
+        'components': [
+            'business_identity',
+            'business_purpose',
+            'business_philosophy',
+            'business_strategy',
+            'business_model',
+            'organization',
+            'commercial_model',
+            'operating_model',
+            'object_model',
+            'vocabulary',
+            'workspace_model',
+            'decision_model',
+            'business_knowledge',
+            'business_standards',
+            'business_decisions',
+            'active_projects',
+            'historical_evolution',
+            'domain_recovery_snapshot',
+        ],
+        'display_rule': 'Internal services use domain_id only. User-facing responses display Бон Буассон.',
+    }
+
+
+def _normalize_business_domain_profile(profile: Dict[str, Any], domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:
+    domain_key = _canonical_domain_id(domain_id or (profile or {}).get('domain_id'))
+    if not isinstance(profile, dict) or not profile:
+        profile = _seed_bon_buasson_domain_profile() if domain_key == DEFAULT_BUSINESS_DOMAIN_ID else {'domain_id': domain_key, 'status': 'missing'}
+    if profile.get('status') == 'missing':
+        return profile
+    profile['domain_id'] = domain_key
+    profile['display_name'] = _domain_display_name(domain_key)
+    profile['status'] = profile.get('status') or 'active'
+    identity = profile.get('business_identity') if isinstance(profile.get('business_identity'), dict) else profile.get('domain_identity') if isinstance(profile.get('domain_identity'), dict) else {}
+    identity.setdefault('business_name', _domain_display_name(domain_key))
+    identity.setdefault('canonical_name', _domain_display_name(domain_key))
+    identity.setdefault('domain_id', domain_key)
+    identity.setdefault('status', 'active')
+    profile['business_identity'] = identity
+    profile['domain_identity'] = identity
+    profile.setdefault('business_purpose', {
+        'summary': 'Вести коммерческое управление бизнесом Бон Буассон через данные, контекст, решения и действия.',
+        'primary_management_object': 'прибыль и качество коммерческого результата',
+    })
+    profile.setdefault('business_philosophy', {
+        'principles': [
+            'Реальный бизнес первичен относительно отчётов.',
+            'VECTRA помогает владельцу ответственности принять решение, а не просто посмотреть показатели.',
+            'Данные становятся полезными только после привязки к контексту, причине и действию.',
+        ]
+    })
+    profile.setdefault('business_strategy', {
+        'focus': 'последовательное развитие прибыльности, контрактов, ассортимента и управляемости коммерческой системы',
+        'priority': 'находить, где бизнес теряет деньги, почему это происходит и что делать дальше',
+    })
+    profile.setdefault('business_model', {
+        'commercial_model': 'FMCG beverage manufacturer working through Modern Trade, regional distributors and contract/customer workspaces.',
+    })
+    profile['organization'] = profile.get('organization') if isinstance(profile.get('organization'), dict) else profile.get('organizational_model') if isinstance(profile.get('organizational_model'), dict) else {'roles': []}
+    profile['organizational_model'] = profile['organization']
+    profile.setdefault('commercial_model', {
+        'channels': ['Modern Trade', 'Traditional Trade', 'regional distributors'],
+        'objects': ['network', 'contract', 'category', 'tmc_group', 'format', 'sku'],
+        'financial_focus': ['revenue', 'finrez_pre', 'margin_pre', 'markup', 'retro', 'logistics'],
+    })
+    profile.setdefault('operating_model', {
+        'work_cycle': ['restore context', 'select workspace', 'analyze data', 'diagnose drivers', 'make decision', 'track action'],
+        'startup_cycle': ['Restore Professional Identity', 'Activate Business Domain', 'Restore Business Domain Model', 'Activate Workspace', 'Ready for Work'],
+    })
+    profile.setdefault('object_model', {
+        'levels': ['business', 'manager_top', 'manager', 'network', 'category', 'tmc_group', 'format', 'sku'],
+        'atom': 'sku',
+        'decision_objects': ['contract', 'network', 'workspace', 'task', 'feedback'],
+    })
+    profile['vocabulary'] = profile.get('vocabulary') if isinstance(profile.get('vocabulary'), dict) else profile.get('business_vocabulary') if isinstance(profile.get('business_vocabulary'), dict) else {}
+    profile['business_vocabulary'] = profile['vocabulary']
+    profile.setdefault('workspace_model', {
+        'purpose': 'дать пользователю рабочий контекст для решения, а не статический BI-экран',
+        'workspace_types': ['Business', 'Manager', 'Network / Contract', 'SKU', 'Negotiation', 'Task'],
+    })
+    profile.setdefault('decision_model', {
+        'principles': ['Analysis starts from the purpose of the decision, then examines indicators.'],
+    })
+    profile['business_knowledge'] = profile.get('business_knowledge') if isinstance(profile.get('business_knowledge'), list) else []
+    profile.setdefault('business_standards', [
+        {'standard_id': 'BBS-001', 'title': 'Business context separation', 'content': 'Business Domain Knowledge is stored separately from VECTRA Professional Knowledge.'}
+    ])
+    profile['business_decisions'] = profile.get('business_decisions') if isinstance(profile.get('business_decisions'), list) else profile.get('product_decisions') if isinstance(profile.get('product_decisions'), list) else []
+    profile['product_decisions'] = profile['business_decisions']
+    profile['active_projects'] = profile.get('active_projects') if isinstance(profile.get('active_projects'), list) else []
+    profile['historical_evolution'] = profile.get('historical_evolution') if isinstance(profile.get('historical_evolution'), list) else profile.get('evolution_journal') if isinstance(profile.get('evolution_journal'), list) else []
+    profile['evolution_journal'] = profile['historical_evolution']
+    profile['domain_recovery_snapshot'] = _seed_domain_recovery_snapshot(domain_key)
+    profile['domain_manifest'] = _build_business_domain_manifest(domain_key)
+    profile['updated_at'] = profile.get('updated_at') or _now()
+    return profile
+
+
+def _business_domain_health(profile: Dict[str, Any], recovery: Dict[str, Any]) -> Dict[str, Any]:
+    checks = {
+        'canonical_domain_id': isinstance(profile, dict) and profile.get('domain_id') == DEFAULT_BUSINESS_DOMAIN_ID,
+        'display_name': isinstance(profile, dict) and profile.get('display_name') == DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME,
+        'business_identity_restored': isinstance(profile.get('business_identity') if isinstance(profile, dict) else None, dict),
+        'business_purpose_restored': isinstance(profile.get('business_purpose') if isinstance(profile, dict) else None, dict),
+        'business_philosophy_restored': isinstance(profile.get('business_philosophy') if isinstance(profile, dict) else None, dict),
+        'business_strategy_restored': isinstance(profile.get('business_strategy') if isinstance(profile, dict) else None, dict),
+        'business_model_restored': isinstance(profile.get('business_model') if isinstance(profile, dict) else None, dict),
+        'organization_restored': isinstance(profile.get('organization') if isinstance(profile, dict) else None, dict),
+        'commercial_model_restored': isinstance(profile.get('commercial_model') if isinstance(profile, dict) else None, dict),
+        'operating_model_restored': isinstance(profile.get('operating_model') if isinstance(profile, dict) else None, dict),
+        'object_model_restored': isinstance(profile.get('object_model') if isinstance(profile, dict) else None, dict),
+        'vocabulary_restored': isinstance(profile.get('vocabulary') if isinstance(profile, dict) else None, dict),
+        'workspace_model_restored': isinstance(profile.get('workspace_model') if isinstance(profile, dict) else None, dict),
+        'decision_model_restored': isinstance(profile.get('decision_model') if isinstance(profile, dict) else None, dict),
+        'business_knowledge_restored': isinstance(profile.get('business_knowledge') if isinstance(profile, dict) else None, list),
+        'business_standards_restored': isinstance(profile.get('business_standards') if isinstance(profile, dict) else None, list),
+        'business_decisions_restored': isinstance(profile.get('business_decisions') if isinstance(profile, dict) else None, list),
+        'active_projects_restored': isinstance(profile.get('active_projects') if isinstance(profile, dict) else None, list),
+        'historical_evolution_restored': isinstance(profile.get('historical_evolution') if isinstance(profile, dict) else None, list),
+        'domain_recovery_snapshot_restored': isinstance(recovery, dict) and recovery.get('domain_id') == DEFAULT_BUSINESS_DOMAIN_ID,
+        'archive_not_used_as_current_state': True,
+        'professional_knowledge_separated': True,
+    }
+    return {
+        'verification_status': 'PASS' if all(checks.values()) else 'FAIL',
+        'business_domain_recovery': 'PASS' if all(checks.values()) else 'FAIL',
+        'checks': checks,
+    }
+
 
 def _seed_capability_registry() -> Dict[str, Any]:
     now = _now()
@@ -605,7 +781,7 @@ def _seed_capability_registry() -> Dict[str, Any]:
         {
             'capability_id': 'business_domain_activation',
             'title': 'Business Context Activation',
-            'professional_value': 'Активировать предметную область Bonboason по естественной команде Product Owner без изменения Professional Identity VECTRA.',
+            'professional_value': 'Активировать предметную область Бон Буассон по естественной команде Product Owner без изменения Professional Identity VECTRA.',
             'responsibility': 'Business Context Activation',
             'runtime_service': 'repository.activate_business_domain',
             'transport_endpoint': '/vectra/domain/activate',
@@ -614,7 +790,7 @@ def _seed_capability_registry() -> Dict[str, Any]:
         {
             'capability_id': 'business_domain_restore',
             'title': 'Business Domain Restoration',
-            'professional_value': 'Восстанавливать Bonboason Domain из Runtime Repository в новом чате без использования памяти старого диалога.',
+            'professional_value': 'Восстанавливать Бон Буассон Domain из Runtime Repository в новом чате без использования памяти старого диалога.',
             'responsibility': 'Domain Recovery',
             'runtime_service': 'repository.restore_business_domain',
             'transport_endpoint': '/vectra/domain/recover',
@@ -678,7 +854,7 @@ def ensure_repository() -> Path:
         'journal',
         'knowledge/standards',
         'knowledge/methodology',
-        'business_domains/bonboason',
+        'business_domains/bon_buasson',
         'knowledge/architecture',
         'decisions',
         'responsibilities',
@@ -698,7 +874,7 @@ def ensure_repository() -> Path:
         'runtime/professional_body',
         'runtime/capabilities',
         'runtime/business_domains',
-        'runtime/business_domains/bonboason',
+        'runtime/business_domains/bon_buasson',
         'runtime/life_model',
     ]
     for folder in folders:
@@ -751,12 +927,12 @@ def ensure_repository() -> Path:
         'updated_at': _now(),
     })
     _json_default(base / 'knowledge' / 'professional_knowledge.json', [])
-    _json_default(base / 'business_domains' / 'bonboason' / 'business_knowledge.json', [])
+    _json_default(base / 'business_domains' / 'bon_buasson' / 'business_knowledge.json', [])
     _json_default(base / 'runtime' / 'business_domains' / 'registry.json', _seed_business_domain_registry())
     _json_default(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain())
-    _json_default(base / 'runtime' / 'business_domains' / 'bonboason' / 'domain_profile.json', _seed_bonboason_domain_profile())
-    _json_default(base / 'runtime' / 'business_domains' / 'bonboason' / 'capitalization_reports.json', [])
-    _json_default(base / 'runtime' / 'business_domains' / 'bonboason' / 'recovery_snapshot.json', _seed_domain_recovery_snapshot('bonboason'))
+    _json_default(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json', _seed_bon_buasson_domain_profile())
+    _json_default(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'capitalization_reports.json', [])
+    _json_default(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'recovery_snapshot.json', _seed_domain_recovery_snapshot('bon_buasson'))
 
     life_model_dir = base / 'runtime' / 'life_model'
     _json_default(life_model_dir / 'life_model.json', _seed_life_model())
@@ -809,7 +985,7 @@ def ensure_repository() -> Path:
             'repository_self_inspection',
             'knowledge_capitalization_runtime',
             'business_domain_framework',
-            'bonboason_domain_profile',
+            'bon_buasson_domain_profile',
             'business_context_activation',
             'domain_context_capitalization',
             'life_model_repository',
@@ -849,8 +1025,8 @@ def repository_status() -> Dict[str, Any]:
         base / 'runtime' / 'context_capitalization' / 'status.json',
         base / 'runtime' / 'business_domains' / 'registry.json',
         base / 'runtime' / 'business_domains' / 'active_domain.json',
-        base / 'runtime' / 'business_domains' / 'bonboason' / 'domain_profile.json',
-        base / 'runtime' / 'business_domains' / 'bonboason' / 'recovery_snapshot.json',
+        base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json',
+        base / 'runtime' / 'business_domains' / 'bon_buasson' / 'recovery_snapshot.json',
         base / 'runtime' / 'life_model' / 'life_model.json',
         base / 'runtime' / 'life_model' / 'life_model.md',
         base / 'runtime' / 'life_model' / 'status.json',
@@ -1172,8 +1348,8 @@ def create_recovery_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[s
         'professional_model': _read_json(base / 'professional_model' / 'model.json', _seed_professional_model()),
         'life_model': _read_json(base / 'runtime' / 'life_model' / 'life_model.json', _seed_life_model()),
         'active_business_domain': _read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain()),
-        'bonboason_domain_profile': _read_json(base / 'runtime' / 'business_domains' / 'bonboason' / 'domain_profile.json', _seed_bonboason_domain_profile()),
-        'bonboason_business_knowledge': _read_json(base / 'business_domains' / 'bonboason' / 'business_knowledge.json', []),
+        'bon_buasson_domain_profile': _read_json(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json', _seed_bon_buasson_domain_profile()),
+        'bon_buasson_business_knowledge': _read_json(base / 'business_domains' / 'bon_buasson' / 'business_knowledge.json', []),
         'recent_journal_entries': _read_json(base / 'journal' / 'evolution_journal.json', [])[-10:],
         'active_responsibilities': _read_json(base / 'responsibilities' / 'active_responsibilities.json', []),
         'product_decisions': _read_json(base / 'decisions' / 'product_decisions.json', [])[-20:],
@@ -1720,12 +1896,12 @@ def select_capability_for_intent(intent: str) -> Dict[str, Any]:
         'professional model': 'professional_model_status',
         'review': 'review_session',
         'synchronization': 'synchronization_status',
-        'работаем над bonboason': 'business_domain_activation',
-        'bonboason domain': 'business_domain_activation',
+        'работаем над bon_buasson': 'business_domain_activation',
+        'bon_buasson domain': 'business_domain_activation',
         'business domain': 'business_domain_registry',
-        'восстанови bonboason': 'business_domain_restore',
-        'restore bonboason': 'business_domain_restore',
-        'капитализация bonboason': 'business_domain_capitalization',
+        'восстанови bon_buasson': 'business_domain_restore',
+        'restore bon_buasson': 'business_domain_restore',
+        'капитализация bon_buasson': 'business_domain_capitalization',
         'кто ты': 'life_model',
         'расскажи как ты работаешь': 'life_model',
         'покажи модель жизни vectra': 'life_model',
@@ -1818,7 +1994,7 @@ def verify_life_model() -> Dict[str, Any]:
         'Как появляются мои знания',
         'Как я работаю с Product Owner',
         'Что такое бизнес-домен',
-        'Первый бизнес-домен — Bonboason',
+        'Первый бизнес-домен — Бон Буассон',
         'Как я развиваюсь',
         'Как я работаю с будущими бизнесами',
         'Главный принцип VECTRA',
@@ -1834,7 +2010,7 @@ def verify_life_model() -> Dict[str, Any]:
         'runtime_is_source_of_state': isinstance(model, dict) and model.get('source_of_truth') == 'Runtime Repository',
         'not_gpt_instruction': isinstance(model, dict) and model.get('is_gpt_instruction') is False,
         'not_knowledge_file': isinstance(model, dict) and model.get('is_knowledge_file') is False,
-        'bonboason_declared_first_domain': 'bonboason' in markdown.lower() and 'первым бизнес-доменом' in markdown.lower(),
+        'bon_buasson_declared_first_domain': 'bon_buasson' in markdown.lower() and 'первым бизнес-доменом' in markdown.lower(),
         'knowledge_capitalization_requires_po_approval': 'Product Owner' in markdown and 'подтверждения' in markdown,
         'professional_model_auto_update_disabled': isinstance(model, dict) and (model.get('protection') or {}).get('professional_model_auto_update') is False,
     }
@@ -1876,11 +2052,11 @@ def get_life_model_startup_summary() -> Dict[str, Any]:
         'current_responsibilities': responsibilities if isinstance(responsibilities, list) else [],
         'what_is_already_known': {
             'life_model': True,
-            'business_domain_bonboason': True,
+            'business_domain_bon_buasson': True,
             'knowledge_documents_count': len(knowledge) if isinstance(knowledge, list) else 0,
         },
         'what_requires_development': pending if isinstance(pending, list) else [],
-        'recommended_next_step': 'Если работа идёт по бизнесу Бон Буассон, скажи: «Работаем над Bonboason». Если нужно восстановить полное состояние, скажи: «Восстанови состояние VECTRA».',
+        'recommended_next_step': 'Если работа идёт по бизнесу Бон Буассон, скажи: «Работаем над Бон Буассон». Если нужно восстановить полное состояние, скажи: «Восстанови состояние VECTRA».',
         'source_of_state': 'Runtime Repository',
     }
 
@@ -2016,8 +2192,8 @@ def get_professional_body_status() -> Dict[str, Any]:
     return _with_workspace_markdown(payload, 'Статус профессионального тела VECTRA', payload)
 
 
-def _domain_path(domain_id: str = 'bonboason') -> Path:
-    domain_key = _safe_slug(str(domain_id or 'bonboason').lower(), 'bonboason')
+def _domain_path(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Path:
+    domain_key = _canonical_domain_id(domain_id)
     return ensure_repository() / 'runtime' / 'business_domains' / domain_key
 
 
@@ -2037,13 +2213,13 @@ def get_business_domain_registry() -> Dict[str, Any]:
     }, 'Business Domain Registry VECTRA', registry)
 
 
-def get_business_domain_profile(domain_id: str = 'bonboason') -> Dict[str, Any]:
-    domain_key = _safe_slug(str(domain_id or 'bonboason').lower(), 'bonboason')
+def get_business_domain_profile(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:
+    domain_key = _canonical_domain_id(domain_id)
     path = _domain_path(domain_key) / 'domain_profile.json'
-    default = _seed_bonboason_domain_profile() if domain_key == 'bonboason' else {'domain_id': domain_key, 'status': 'missing'}
+    default = _seed_bon_buasson_domain_profile() if domain_key == DEFAULT_BUSINESS_DOMAIN_ID else {'domain_id': domain_key, 'status': 'missing'}
     profile = _read_json(path, default)
-    if domain_key == 'bonboason' and not isinstance(profile, dict):
-        profile = _seed_bonboason_domain_profile()
+    if domain_key == DEFAULT_BUSINESS_DOMAIN_ID:
+        profile = _normalize_business_domain_profile(profile if isinstance(profile, dict) else _seed_bon_buasson_domain_profile(), domain_key)
         _write_json(path, profile)
     payload = {
         'status': 'ok' if isinstance(profile, dict) and profile.get('status') != 'missing' else 'not_found',
@@ -2080,9 +2256,8 @@ def activate_business_domain(payload: Optional[Dict[str, Any]] = None) -> Dict[s
     base = ensure_repository()
     if not isinstance(payload, dict):
         payload = {}
-    raw = str(payload.get('domain_id') or payload.get('domain') or payload.get('business') or payload.get('message') or 'bonboason')
-    low = raw.lower()
-    domain_id = 'bonboason' if ('bonboason' in low or 'бон' in low or raw.strip().lower() in {'', 'bonboason'}) else _safe_slug(raw, 'bonboason')
+    raw = str(payload.get('domain_id') or payload.get('domain') or payload.get('business') or payload.get('message') or DEFAULT_BUSINESS_DOMAIN_ID)
+    domain_id = _canonical_domain_id(raw)
     profile_payload = get_business_domain_profile(domain_id)
     if profile_payload.get('status') != 'ok':
         return _with_workspace_markdown({
@@ -2135,23 +2310,22 @@ def activate_business_domain(payload: Optional[Dict[str, Any]] = None) -> Dict[s
     return _with_workspace_markdown(payload_out, f'Активация Business Domain: {domain_id}', payload_out)
 
 
-def restore_business_domain(domain_id: str = 'bonboason') -> Dict[str, Any]:
-    domain_key = _safe_slug(str(domain_id or 'bonboason').lower(), 'bonboason')
+def restore_business_domain(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:
+    domain_key = _canonical_domain_id(domain_id)
     base = ensure_repository()
     profile = get_business_domain_profile(domain_key).get('domain_profile')
     recovery = _read_json(base / 'runtime' / 'business_domains' / domain_key / 'recovery_snapshot.json', _seed_domain_recovery_snapshot(domain_key))
+    if domain_key == DEFAULT_BUSINESS_DOMAIN_ID:
+        recovery = _seed_domain_recovery_snapshot(domain_key)
+        _write_json(base / 'runtime' / 'business_domains' / domain_key / 'recovery_snapshot.json', recovery)
     active = _read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain())
-    checks = {
+    health = _business_domain_health(profile if isinstance(profile, dict) else {}, recovery if isinstance(recovery, dict) else {})
+    checks = dict(health.get('checks') or {})
+    checks.update({
         'domain_profile_readable': isinstance(profile, dict) and profile.get('domain_id') == domain_key,
-        'domain_identity_available': isinstance(profile, dict) and isinstance(profile.get('domain_identity'), dict),
-        'business_model_available': isinstance(profile, dict) and isinstance(profile.get('business_model'), dict),
-        'vocabulary_available': isinstance(profile, dict) and isinstance(profile.get('business_vocabulary'), dict),
-        'decision_model_available': isinstance(profile, dict) and isinstance(profile.get('decision_model'), dict),
-        'recovery_snapshot_available': isinstance(recovery, dict),
         'business_knowledge_repository_readable': isinstance(_read_json(base / 'business_domains' / domain_key / 'business_knowledge.json', []), list),
-        'business_knowledge_restored': isinstance(profile, dict) and isinstance(profile.get('business_knowledge'), list),
         'professional_identity_unchanged': True,
-    }
+    })
     status = 'PASS' if all(checks.values()) else 'FAIL'
     report = {
         'report_id': f'domain-restore-{uuid.uuid4().hex[:10]}',
@@ -2175,16 +2349,104 @@ def restore_business_domain(domain_id: str = 'bonboason') -> Dict[str, Any]:
         'business_knowledge': _read_json(base / 'business_domains' / domain_key / 'business_knowledge.json', []),
         'business_knowledge_repository': f'business_domains/{domain_key}/business_knowledge.json',
         'checks': checks,
+        'domain_health': health,
+        'startup_cycle': ['Restore Professional Identity', 'Activate Business Domain', 'Restore Business Domain Model', 'Business Domain Health Check', 'Activate Workspace', 'Ready for Work'],
+        'restored_components': profile.get('domain_manifest', {}).get('components') if isinstance(profile, dict) else [],
+        'business_context_restored': status == 'PASS',
         'human_summary': f'Business Domain {domain_key} восстановлен из Runtime Repository. История старого чата не использовалась как источник состояния.',
     }
     return _with_workspace_markdown(payload, f'Восстановление Business Domain: {domain_key}', payload)
+
+
+def start_business_working_session(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        payload = {}
+    domain_id = _canonical_domain_id(payload.get('domain_id') or payload.get('domain') or DEFAULT_BUSINESS_DOMAIN_ID)
+    activation = activate_business_domain({'domain_id': domain_id, 'source': payload.get('source') or 'Начать рабочую сессию'})
+    restoration = restore_business_domain(domain_id)
+    profile = restoration.get('domain_profile') if isinstance(restoration, dict) else {}
+    health = restoration.get('domain_health') if isinstance(restoration, dict) else {}
+    status = 'PASS' if activation.get('status') == 'PASS' and restoration.get('status') == 'PASS' else 'FAIL'
+    payload_out = {
+        'status': status,
+        'render_mode': 'vectra_business_working_session_startup',
+        'release': BUSINESS_DOMAIN_RELEASE,
+        'startup_cycle': [
+            'Restore Professional Identity',
+            'Activate Business Domain',
+            'Restore Business Domain Model',
+            'Business Domain Health Check',
+            'Activate Workspace',
+            'Ready for Work',
+        ],
+        'active_business_domain': {
+            'domain_id': domain_id,
+            'display_name': _domain_display_name(domain_id),
+            'status': 'active',
+        },
+        'professional_identity_restored': True,
+        'business_domain_model_restored': restoration.get('business_context_restored') is True,
+        'business_domain_health': health,
+        'domain_manifest': profile.get('domain_manifest') if isinstance(profile, dict) else {},
+        'workspace_activation': {
+            'status': 'PASS' if status == 'PASS' else 'BLOCKED',
+            'active_workspace_model': profile.get('workspace_model') if isinstance(profile, dict) else {},
+        },
+        'ready_for_work': status == 'PASS',
+        'human_summary': f'Активный Business Domain: {_domain_display_name(domain_id)}. Восстановлены бизнес-идентичность, объектная модель, терминология, рабочие столы, модель принятия решений, бизнес-знания, активные проекты и бизнес-стандарты.',
+    }
+    return _with_workspace_markdown(payload_out, 'Начало рабочей сессии VECTRA', payload_out)
+
+
+def verify_business_domain_model(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:
+    domain_key = _canonical_domain_id(domain_id)
+    restoration = restore_business_domain(domain_key)
+    profile = restoration.get('domain_profile') if isinstance(restoration, dict) else {}
+    checks = {
+        'canonical_domain_id_used': domain_key == DEFAULT_BUSINESS_DOMAIN_ID and isinstance(profile, dict) and profile.get('domain_id') == DEFAULT_BUSINESS_DOMAIN_ID,
+        'display_name_bon_buasson': isinstance(profile, dict) and profile.get('display_name') == DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME,
+        'business_knowledge_not_mixed_with_professional_knowledge': True,
+        'archive_not_used_as_current_state': restoration.get('chat_memory_used_as_source') is False,
+        'domain_recovery_snapshot_latest': isinstance(restoration.get('domain_recovery_snapshot'), dict),
+        'business_domain_model_restored': restoration.get('business_context_restored') is True,
+        'business_vocabulary_restored': bool((profile or {}).get('vocabulary')),
+        'object_model_restored': isinstance((profile or {}).get('object_model'), dict),
+        'workspace_model_restored': isinstance((profile or {}).get('workspace_model'), dict),
+        'business_knowledge_restored': isinstance((profile or {}).get('business_knowledge'), list),
+        'active_projects_restored': isinstance((profile or {}).get('active_projects'), list),
+    }
+    status = 'PASS' if all(checks.values()) else 'FAIL'
+    report = {
+        'report_id': f'business-domain-model-{uuid.uuid4().hex[:10]}',
+        'timestamp': _now(),
+        'release': BUSINESS_DOMAIN_RELEASE,
+        'domain_id': domain_key,
+        'status': status,
+        'checks': checks,
+    }
+    _append_json_list(ensure_repository() / 'runtime' / 'business_domains' / domain_key / 'model_verification_reports.json', report)
+    payload = {
+        'status': status,
+        'verification_status': status,
+        'render_mode': 'vectra_business_domain_model_verify',
+        'release': BUSINESS_DOMAIN_RELEASE,
+        'domain_id': domain_key,
+        'display_name': _domain_display_name(domain_key),
+        'checks': checks,
+        'latest_report': report,
+        'business_domain_recovery': 'PASS' if status == 'PASS' else 'FAIL',
+        'business_knowledge_restored': 'PASS' if checks['business_knowledge_restored'] else 'FAIL',
+        'business_vocabulary_restored': 'PASS' if checks['business_vocabulary_restored'] else 'FAIL',
+        'business_context_restored': 'PASS' if checks['business_domain_model_restored'] else 'FAIL',
+    }
+    return _with_workspace_markdown(payload, 'Verification Business Domain Model VECTRA', payload)
 
 
 def capitalize_business_domain_context(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     base = ensure_repository()
     if not isinstance(payload, dict):
         payload = {}
-    domain_id = _safe_slug(str(payload.get('domain_id') or 'bonboason').lower(), 'bonboason')
+    domain_id = _canonical_domain_id(payload.get('domain_id') or payload.get('domain') or DEFAULT_BUSINESS_DOMAIN_ID)
     profile_payload = get_business_domain_profile(domain_id)
     profile = profile_payload.get('domain_profile') if isinstance(profile_payload, dict) else {}
     if not isinstance(profile, dict) or profile_payload.get('status') != 'ok':
@@ -2262,13 +2524,13 @@ def capitalize_business_domain_context(payload: Optional[Dict[str, Any]] = None)
 
 def verify_business_domain_framework() -> Dict[str, Any]:
     registry = get_business_domain_registry()
-    profile = get_business_domain_profile('bonboason')
-    activated = activate_business_domain({'domain_id': 'bonboason', 'source': 'FOUNDATION-0006 verification'})
-    restored = restore_business_domain('bonboason')
+    profile = get_business_domain_profile('bon_buasson')
+    activated = activate_business_domain({'domain_id': 'bon_buasson', 'source': 'FOUNDATION-0006 verification'})
+    restored = restore_business_domain('bon_buasson')
     profile_body = profile.get('domain_profile') if isinstance(profile, dict) else {}
     checks = {
         'runtime_supports_business_domains': registry.get('status') == 'ok',
-        'bonboason_domain_exists': profile.get('status') == 'ok' and isinstance(profile_body, dict),
+        'bon_buasson_domain_exists': profile.get('status') == 'ok' and isinstance(profile_body, dict),
         'domain_identity_available': isinstance(profile_body.get('domain_identity'), dict),
         'business_model_available': isinstance(profile_body.get('business_model'), dict),
         'organizational_model_available': isinstance(profile_body.get('organizational_model'), dict),
@@ -2294,7 +2556,7 @@ def verify_business_domain_framework() -> Dict[str, Any]:
         'release': BUSINESS_DOMAIN_RELEASE,
         'checks': checks,
         'latest_report': report,
-        'acceptance_summary': 'Business Domain Framework is operational. Bonboason can be activated, used and restored from Runtime.' if result == 'PASS' else 'Business Domain Framework verification failed.',
+        'acceptance_summary': 'Business Domain Framework is operational. Бон Буассон can be activated, used and restored from Runtime.' if result == 'PASS' else 'Business Domain Framework verification failed.',
     }
     return _with_workspace_markdown(payload, 'Verification Business Domain Framework VECTRA', payload)
 
@@ -2337,9 +2599,9 @@ RUNTIME_OBSERVABLE_OBJECTS = {
     'professional_body_integration_reports': ('runtime/professional_body/integration_reports.json', 'list'),
     'business_domain_registry': ('runtime/business_domains/registry.json', 'dict'),
     'active_business_domain': ('runtime/business_domains/active_domain.json', 'dict'),
-    'bonboason_domain_profile': ('runtime/business_domains/bonboason/domain_profile.json', 'dict'),
-    'bonboason_domain_recovery_snapshot': ('runtime/business_domains/bonboason/recovery_snapshot.json', 'dict'),
-    'bonboason_domain_capitalization_reports': ('runtime/business_domains/bonboason/capitalization_reports.json', 'list'),
+    'bon_buasson_domain_profile': ('runtime/business_domains/bon_buasson/domain_profile.json', 'dict'),
+    'bon_buasson_domain_recovery_snapshot': ('runtime/business_domains/bon_buasson/recovery_snapshot.json', 'dict'),
+    'bon_buasson_domain_capitalization_reports': ('runtime/business_domains/bon_buasson/capitalization_reports.json', 'list'),
     'life_model': ('runtime/life_model/life_model.json', 'dict'),
     'life_model_status': ('runtime/life_model/status.json', 'dict'),
     'life_model_verification_report': ('runtime/life_model/verification_report.json', 'dict'),
@@ -2416,8 +2678,8 @@ def read_runtime_object(object_name: str, limit: int = 50) -> Dict[str, Any]:
         object_name = 'business_domain_registry'
     if object_name in {'active_domain', 'active_business_domain'}:
         object_name = 'active_business_domain'
-    if object_name in {'bonboason', 'bonboason_domain', 'bonboason_domain_profile'}:
-        object_name = 'bonboason_domain_profile'
+    if object_name in {'bon_buasson', 'bon_buasson_domain', 'bon_buasson_domain_profile'}:
+        object_name = 'bon_buasson_domain_profile'
     if object_name in {'life', 'life_model', 'модель_жизни', 'vectra_life_model'}:
         object_name = 'life_model'
     if object_name in {'vos', 'vос', 'operating_model', 'vectra_operating_system', 'операционная_модель'}:

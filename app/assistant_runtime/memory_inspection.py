@@ -33,7 +33,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def inspect_memory_object(object_id: str, domain: str = "bonboason") -> Dict[str, Any]:
+def inspect_memory_object(object_id: str, domain: str = "bon_buasson") -> Dict[str, Any]:
     result = get_memory_object(object_id=object_id, domain=domain)
     obj = result.get("memory_object") if isinstance(result, dict) else None
     mapping = verify_knowledge_object_mapping(obj) if isinstance(obj, dict) else {"mapping_status": "FAIL", "reason": "object_not_found"}
@@ -50,7 +50,7 @@ def inspect_memory_object(object_id: str, domain: str = "bonboason") -> Dict[str
     }
 
 
-def inspect_memory_space(memory_space: str, domain: str = "bonboason", limit: int = 100) -> Dict[str, Any]:
+def inspect_memory_space(memory_space: str, domain: str = "bon_buasson", limit: int = 100) -> Dict[str, Any]:
     normalized = normalize_memory_space(memory_space)
     validation = validate_memory_space(normalized, require_active=False)
     listing = list_memory_objects(memory_space=normalized, domain=domain, limit=limit) if validation.get("validation_status") == "PASS" else {"objects": [], "objects_count": 0}
@@ -73,7 +73,7 @@ def inspect_memory_space(memory_space: str, domain: str = "bonboason", limit: in
     }
 
 
-def get_memory_statistics(domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_statistics(domain: str = "bon_buasson") -> Dict[str, Any]:
     listing = list_memory_objects(domain=domain, limit=10000)
     objects = listing.get("objects") if isinstance(listing.get("objects"), list) else []
     by_space: Dict[str, int] = {}
@@ -99,7 +99,7 @@ def get_memory_statistics(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def get_memory_integrity_report(domain: str = "bonboason") -> Dict[str, Any]:
+def get_memory_integrity_report(domain: str = "bon_buasson") -> Dict[str, Any]:
     overview = get_memory_overview(domain=domain)
     repository = verify_memory_repository_integrity(domain=domain)
     repo_status = repository_status()
@@ -122,7 +122,7 @@ def get_memory_integrity_report(domain: str = "bonboason") -> Dict[str, Any]:
     }
 
 
-def get_memory_readback_report(domain: str = "bonboason", limit: int = 100) -> Dict[str, Any]:
+def get_memory_readback_report(domain: str = "bon_buasson", limit: int = 100) -> Dict[str, Any]:
     listing = list_memory_objects(domain=domain, limit=limit)
     objects = listing.get("objects") if isinstance(listing.get("objects"), list) else []
     readbacks: List[Dict[str, Any]] = []
@@ -153,7 +153,7 @@ def get_memory_readback_report(domain: str = "bonboason", limit: int = 100) -> D
     }
 
 
-def run_memory_inspection(operation_type: str = "overview", payload: Optional[Dict[str, Any]] = None, domain: str = "bonboason") -> Dict[str, Any]:
+def run_memory_inspection(operation_type: str = "overview", payload: Optional[Dict[str, Any]] = None, domain: str = "bon_buasson") -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
     op = str(operation_type or "overview").strip().lower()
     if op in {"overview", "summary"}:

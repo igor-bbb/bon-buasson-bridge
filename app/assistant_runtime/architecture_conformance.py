@@ -28,7 +28,7 @@ REQUIRED_MEMORY_SPACES = {
 }
 REQUIRED_REPOSITORY_PATHS = [
     "knowledge/professional_knowledge.json",
-    "business_domains/bonboason/business_knowledge.json",
+    "business_domains/bon_buasson/business_knowledge.json",
     "knowledge/product_knowledge.json",
     "knowledge/general_knowledge.json",
     "decisions/product_decisions.json",
@@ -54,7 +54,7 @@ def _check_required_paths() -> Dict[str, Any]:
     return {"status": "PASS" if not missing else "FAIL", "paths": paths, "missing_paths": missing}
 
 
-def get_architecture_conformance_report(domain: str = "bonboason") -> Dict[str, Any]:
+def get_architecture_conformance_report(domain: str = "bon_buasson") -> Dict[str, Any]:
     overview = get_memory_overview(domain=domain)
     integrity = verify_memory_repository_integrity(domain=domain)
     health = verify_memory_health(domain=domain)
@@ -144,7 +144,7 @@ def get_architecture_conformance_report(domain: str = "bonboason") -> Dict[str, 
     }
 
 
-def verify_architecture_conformance(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_architecture_conformance(domain: str = "bon_buasson") -> Dict[str, Any]:
     report = get_architecture_conformance_report(domain=domain)
     return {
         "status": report.get("conformance_status"),
