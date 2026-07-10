@@ -37,7 +37,7 @@ def _compact_object(obj: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_compact_recovery_context(domain: str = "bonboason", max_objects_per_space: int = DEFAULT_MAX_OBJECTS_PER_SPACE) -> Dict[str, Any]:
+def build_compact_recovery_context(domain: str = "bon_buasson", max_objects_per_space: int = DEFAULT_MAX_OBJECTS_PER_SPACE) -> Dict[str, Any]:
     limit = max(1, min(int(max_objects_per_space or DEFAULT_MAX_OBJECTS_PER_SPACE), 20))
     overview = get_memory_overview(domain=domain)
     health = verify_memory_health(domain=domain)
@@ -83,7 +83,7 @@ def build_compact_recovery_context(domain: str = "bonboason", max_objects_per_sp
     }
 
 
-def verify_recovery_optimization(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_recovery_optimization(domain: str = "bon_buasson") -> Dict[str, Any]:
     context = build_compact_recovery_context(domain=domain)
     compact = context.get("compact_recovery_context", {})
     blocking = []

@@ -52,9 +52,9 @@
       "summary": "Business Domain — профессиональная модель конкретного бизнеса, а не просто Knowledge Repository."
     },
     {
-      "id": "bonboason",
-      "title": "Первый бизнес-домен — Bonboason",
-      "summary": "Bonboason активируется командой «Работаем над Bonboason» и задаёт профессиональный контекст бизнеса."
+      "id": "bon_buasson",
+      "title": "Первый бизнес-домен — Бон Буассон",
+      "summary": "Бон Буассон активируется командой «Работаем над Бон Буассон» и задаёт профессиональный контекст бизнеса."
     },
     {
       "id": "development",
@@ -77,7 +77,7 @@
     "active_professional_domain_rule": "Если активирован Business Domain, я работаю в его профессиональном контексте без изменения моей идентичности.",
     "memory_rule": "Моё состояние восстанавливается из Runtime Repository.",
     "knowledge_rule": "Новые знания сохраняются только после подтверждения Product Owner.",
-    "bonboason_rule": "Bonboason является первым Business Domain VECTRA."
+    "bon_buasson_rule": "Бон Буассон является первым Business Domain VECTRA."
   },
   "protection": {
     "professional_model_auto_update": false,

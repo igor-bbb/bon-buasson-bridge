@@ -79,7 +79,7 @@ def _new_archive(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         "archive_id": _stable_id("SA", session_id),
         "project_id": payload.get("project_id") or "vectra",
         "program_id": payload.get("program_id") or payload.get("program") or "professional_intelligence",
-        "business_domain": payload.get("business_domain") or payload.get("domain") or "bonboason",
+        "business_domain": payload.get("business_domain") or payload.get("domain") or "bon_buasson",
         "created_at": _now(),
         "updated_at": _now(),
         "status": "ACTIVE",
@@ -260,7 +260,7 @@ def _events_to_session_payload(archive: dict[str, Any], events: list[dict[str, A
         "session_id": archive.get("session_id"),
         "project_id": archive.get("project_id") or "vectra",
         "program_id": archive.get("program_id") or "professional_intelligence",
-        "business_domain": archive.get("business_domain") or "bonboason",
+        "business_domain": archive.get("business_domain") or "bon_buasson",
         "messages": messages,
         "artifacts": artifacts,
         "final_outputs": final_outputs,
@@ -469,7 +469,7 @@ HISTORICAL_STAGE_KEYWORDS = [
     ("professional_intelligence", "Professional Intelligence", ["professional intelligence", "session context", "knowledge candidate", "prepared_knowledge_package", "интеллект"]),
     ("session_archive", "Session Archive", ["session archive", "replay", "bootstrap", "historical", "archive", "архив"]),
     ("engineering", "Engineering", ["deploy", "release brief", "product verification", "cycle closed", "инженер"]),
-    ("business_domain", "Business Domain — Бон Буассон", ["бон буассон", "bonboason", "business domain", "sku", "маржа", "оборот", "сеть", "бизнес"]),
+    ("business_domain", "Business Domain — Бон Буассон", ["бон буассон", "bon_buasson", "business domain", "sku", "маржа", "оборот", "сеть", "бизнес"]),
 ]
 
 
@@ -531,7 +531,7 @@ def _normalize_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, 
             "event_type": payload.get("event_type") or "message",
             "metadata": {
                 "source_type": payload.get("source_type") or "historical_session_export",
-                "domain": payload.get("domain") or payload.get("business_domain") or "bonboason",
+                "domain": payload.get("domain") or payload.get("business_domain") or "bon_buasson",
             },
         }]
     return []
@@ -543,13 +543,13 @@ def import_historical_session(payload: dict[str, Any] | None = None) -> dict[str
     normalized_messages = _normalize_messages_from_payload(payload)
     explicit_session_id = payload.get("session_id") or payload.get("archive_id")
     source_fingerprint = sha256(json.dumps(normalized_messages, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:12] if normalized_messages else _stable_id("EMPTY", _now())
-    session_id = str(explicit_session_id or _stable_id("HIST", payload.get("source_type") or "historical_session_export", payload.get("domain") or payload.get("business_domain") or "bonboason", source_fingerprint))
+    session_id = str(explicit_session_id or _stable_id("HIST", payload.get("source_type") or "historical_session_export", payload.get("domain") or payload.get("business_domain") or "bon_buasson", source_fingerprint))
     migration_id = str(payload.get("migration_id") or _stable_id("HM", "vectra", "historical-migration"))
     create_session_archive({
         "session_id": session_id,
         "project_id": payload.get("project_id") or "vectra",
         "program_id": payload.get("program_id") or "historical_migration",
-        "business_domain": payload.get("business_domain") or payload.get("domain") or "bonboason",
+        "business_domain": payload.get("business_domain") or payload.get("domain") or "bon_buasson",
         "reset": bool(payload.get("reset")),
     })
     imported_count = 0
@@ -579,7 +579,7 @@ def import_historical_session(payload: dict[str, Any] | None = None) -> dict[str
         "created_at": _now(),
         "status": "IN_PROGRESS",
         "session_ids": [],
-        "business_domain": payload.get("business_domain") or payload.get("domain") or "bonboason",
+        "business_domain": payload.get("business_domain") or payload.get("domain") or "bon_buasson",
     })
     if session_id not in migration.setdefault("session_ids", []):
         migration["session_ids"].append(session_id)
@@ -689,7 +689,7 @@ def replay_historical_session(payload: dict[str, Any] | None = None) -> dict[str
         "session_id": _stable_id("HISTCTX", session_ids),
         "project_id": "vectra",
         "program_id": "historical_migration",
-        "business_domain": payload.get("business_domain") or payload.get("domain") or "bonboason",
+        "business_domain": payload.get("business_domain") or payload.get("domain") or "bon_buasson",
         "fragments": [],
         "artifacts": [],
         "confirmations": [],
@@ -736,7 +736,7 @@ def _fallback_objects_from_historical_context(context: dict[str, Any], domain: s
             continue
         lower = text.lower()
         confirmed_signal = any(token in lower for token in ["подтверж", "утверж", "pass", "принят", "решение", "approved"])
-        business_signal = any(token in lower for token in ["бон буассон", "bonboason", "sku", "маржа", "оборот", "сеть", "бизнес", "регион", "канал"])
+        business_signal = any(token in lower for token in ["бон буассон", "bon_buasson", "sku", "маржа", "оборот", "сеть", "бизнес", "регион", "канал"])
         product_signal = any(token in lower for token in ["экран", "команда", "сценарий", "продукт vectra", "рабочая сессия"] )
         decision_signal = any(token in lower for token in ["решение", "утверждаю", "принято", "approved"] )
         professional_signal = any(token in lower for token in ["vectra", "вектора", "архитект", "standard", "runtime", "professional", "memory", "intelligence", "инженер"] )
@@ -790,7 +790,7 @@ def build_historical_migration_package(payload: dict[str, Any] | None = None) ->
 
     objects = package.get("knowledge_objects") if isinstance(package.get("knowledge_objects"), list) else []
     if not objects:
-        objects = _fallback_objects_from_historical_context(context, payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bonboason")
+        objects = _fallback_objects_from_historical_context(context, payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bon_buasson")
     unique: dict[str, dict[str, Any]] = {}
     for item in objects:
         if not isinstance(item, dict):
@@ -801,14 +801,14 @@ def build_historical_migration_package(payload: dict[str, Any] | None = None) ->
         if key and key not in unique:
             normalized = dict(item)
             if space == "business_domain_memory":
-                normalized["domain"] = payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bonboason"
+                normalized["domain"] = payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bon_buasson"
             unique[key] = normalized
     package["knowledge_objects"] = list(unique.values())
     package["package_type"] = "historical_migration_knowledge_package"
     package["migration_id"] = str(payload.get("migration_id") or _stable_id("HM", "vectra", "historical-migration"))
     package["context_status"] = replay.get("context_status")
     package["historical_sessions"] = replay.get("session_ids")
-    package["business_domain"] = payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bonboason"
+    package["business_domain"] = payload.get("business_domain") or payload.get("domain") or package.get("business_domain") or "bon_buasson"
 
     distribution: dict[str, int] = {}
     for item in package.get("knowledge_objects") or []:
@@ -850,15 +850,15 @@ def verify_business_domain_mapping(payload: dict[str, Any] | None = None) -> dic
     sample = {
         "session_id": "PI-FIX-BOOTSTRAP-BUSINESS-VERIFY",
         "reset": True,
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
-            {"role": "Product Owner", "actor": "Product Owner", "content": "Подтверждаю: Бон Буассон имеет бизнес-домен bonboason и бизнесовые знания не смешиваются с Professional Knowledge."},
+            {"role": "Product Owner", "actor": "Product Owner", "content": "Подтверждаю: Бон Буассон имеет бизнес-домен bon_buasson и бизнесовые знания не смешиваются с Professional Knowledge."},
             {"role": "Product Owner", "actor": "Product Owner", "content": "Бизнес Бон Буассон: SKU, сети, маржа и оборот относятся к Business Domain Knowledge."},
             {"role": "VECTRA Laboratory", "actor": "Laboratory", "content": "Product Verification PASS: Business Domain Mapping должен направлять знания в business_domain_memory."},
         ],
     }
     import_historical_session(sample)
-    result = classify_historical_knowledge({"session_ids": [sample["session_id"]], "business_domain": "bonboason"})
+    result = classify_historical_knowledge({"session_ids": [sample["session_id"]], "business_domain": "bon_buasson"})
     mapping = result.get("business_domain_mapping", {}) if isinstance(result.get("business_domain_mapping"), dict) else {}
     return {
         "status": "ok" if mapping.get("mapping_status") == "PASS" else "error",
@@ -902,7 +902,7 @@ def verify_session_bootstrap(payload: dict[str, Any] | None = None) -> dict[str,
     imported = bootstrap_session_archive({
         "session_id": session_id,
         "reset": True,
-        "business_domain": "bonboason",
+        "business_domain": "bon_buasson",
         "messages": [
             {"role": "Product Owner", "actor": "Product Owner", "content": "Подтверждаю архитектуру VECTRA и Historical Migration."},
             {"role": "Engineering Team", "actor": "Engineering Team", "content": "Release Brief: PI-FIX-SESSION-BOOTSTRAP-001 реализует Historical Session Import."},
@@ -912,7 +912,7 @@ def verify_session_bootstrap(payload: dict[str, Any] | None = None) -> dict[str,
     })
     timeline = build_historical_timeline({"session_ids": [session_id]})
     replay = replay_historical_session({"session_ids": [session_id], "chunk_size": 2})
-    package = build_historical_migration_package({"session_ids": [session_id], "business_domain": "bonboason"})
+    package = build_historical_migration_package({"session_ids": [session_id], "business_domain": "bon_buasson"})
     checks = {
         "historical_session_import": "PASS" if imported.get("imported_events_count") == 4 else "FAIL",
         "timeline_reconstruction": "PASS" if timeline.get("timeline_count") == 4 and timeline.get("order_preserved") is True else "FAIL",

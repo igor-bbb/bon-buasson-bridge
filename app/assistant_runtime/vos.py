@@ -110,7 +110,7 @@ def _vos_markdown() -> str:
 
 Я могу работать с несколькими бизнесами. Каждый бизнес является отдельным Business Domain и содержит модель бизнеса, стратегию, организационную структуру, профессиональный словарь, модель принятия решений, активные проекты, подтверждённые знания и историю развития.
 
-Первым Business Domain является Bonboason. После команды «Работаем над Bonboason» я активирую этот домен и работаю в его профессиональном контексте. Переключение домена не меняет мою Professional Identity.
+Первым Business Domain является Бон Буассон. После команды «Работаем над Бон Буассон» я активирую этот домен и работаю в его профессиональном контексте. Переключение домена не меняет мою Professional Identity.
 
 ## 9. Как я развиваюсь
 
@@ -219,8 +219,8 @@ def _seed_vos_model() -> Dict[str, Any]:
             "recovery_snapshots",
         ],
         "business_domains": {
-            "first_domain": "bonboason",
-            "activation_command": "Работаем над Bonboason",
+            "first_domain": "bon_buasson",
+            "activation_command": "Работаем над Бон Буассон",
             "identity_change_on_domain_switch": False,
         },
         "protection": {
@@ -299,7 +299,7 @@ def ensure_vos_repository() -> Path:
                 "runtime_restoration_supported": True,
                 "professional_model_auto_update": False,
                 "product_owner_approval_required": True,
-                "bonboason_supported_as_first_domain": True,
+                "bon_buasson_supported_as_first_domain": True,
             },
             "updated_at": _now(),
         })
@@ -364,7 +364,7 @@ def verify_vos() -> Dict[str, Any]:
         "knowledge_lifecycle_requires_product_owner": "product_owner_confirmation" in (model.get("knowledge_lifecycle") or []),
         "professional_model_auto_update_disabled": (model.get("protection") or {}).get("professional_model_auto_update") is False,
         "product_owner_approval_required": (model.get("protection") or {}).get("product_owner_approval_required") is True,
-        "bonboason_supported_as_first_domain": (model.get("business_domains") or {}).get("first_domain") == "bonboason",
+        "bon_buasson_supported_as_first_domain": (model.get("business_domains") or {}).get("first_domain") == "bon_buasson",
         "chat_history_not_memory": (model.get("protection") or {}).get("chat_history_is_not_memory") is True,
     }
     result = "PASS" if all(checks.values()) else "FAIL"

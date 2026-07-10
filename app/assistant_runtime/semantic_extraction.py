@@ -48,7 +48,7 @@ BOUNDARY_MARKERS = (
     "профессион", "business", "бизнес", "product", "decision", "решени",
     "standard", "стандарт", "lesson", "урок", "invariant", "инвариант",
     "constraint", "огранич", "runtime", "openapi", "actions", "бонус",
-    "марж", "sku", "сеть", "бон буассон", "bonboason", "финрез",
+    "марж", "sku", "сеть", "бон буассон", "bon_buasson", "финрез",
 )
 
 CONFIRMATION_MARKERS = (
@@ -67,7 +67,7 @@ REJECTION_MARKERS = (
 )
 
 BUSINESS_MARKERS = (
-    "бон буассон", "bon buasson", "bonboason", "варус", "атб", "сильпо", "фора",
+    "бон буассон", "bon buasson", "bon_buasson", "варус", "атб", "сильпо", "фора",
     "новус", "метро", "нива", "классико", "дистриб", "sku", "марж", "нацен",
     "оборот", "финрез", "ретро", "логист", "персонал", "сеть", "канал", "цена",
     "чудо-сад", "black", "лимонад", "регион", "business domain",
@@ -216,8 +216,8 @@ def _classify_segment(segment: str, event: dict[str, Any] | None = None) -> tupl
         return "product_decision", None
     if _contains_any(low, BUSINESS_MARKERS):
         if _contains_any(low, STANDARD_MARKERS):
-            return "business_standard", "bonboason"
-        return "business_knowledge", "bonboason"
+            return "business_standard", "bon_buasson"
+        return "business_knowledge", "bon_buasson"
     if _contains_any(low, STANDARD_MARKERS):
         return "professional_standard", None
     if _contains_any(low, PRODUCT_MARKERS):
@@ -378,7 +378,7 @@ def extract_semantic_knowledge_candidates(payload: dict[str, Any] | None = None)
         "classification_report": {
             "candidate_categories": dict(by_category),
             "business_domains": dict(by_domain),
-            "business_domain_mapping_status": "PASS" if by_domain.get("bonboason", 0) > 0 or raw_count == 0 else "NOT_APPLICABLE",
+            "business_domain_mapping_status": "PASS" if by_domain.get("bon_buasson", 0) > 0 or raw_count == 0 else "NOT_APPLICABLE",
         },
         "evidence_report": {
             "candidates_with_evidence": sum(1 for c in candidates if c.get("evidence")),
@@ -474,7 +474,7 @@ def verify_semantic_knowledge_extraction(payload: dict[str, Any] | None = None) 
         "source_text": """
         Product Owner confirmed Architecture First as a permanent professional rule.
         Engineering Team самостоятельно ведёт реализацию утверждённого Master Engineering Backlog.
-        Бон Буассон использует Business Domain bonboason для бизнес-знаний, SKU, сетей, маржи и финреза.
+        Бон Буассон использует Business Domain bon_buasson для бизнес-знаний, SKU, сетей, маржи и финреза.
         Lesson Learned: Release Brief не является доказательством реализации; Product Verification проверяет продукт.
         Architectural Invariant: Professional Memory cannot be lost between releases.
         Platform Constraint: GPT Actions public OpenAPI must remain compact.
@@ -482,7 +482,7 @@ def verify_semantic_knowledge_extraction(payload: dict[str, Any] | None = None) 
         """,
         "session_id": "PI-INTELLIGENCE-EXTRACTION-001-VERIFY",
         "source_type": "historical_session_export",
-        "domain": "bonboason",
+        "domain": "bon_buasson",
     }
     report = build_semantic_knowledge_extraction_report(sample)
     candidates_count = len(report.get("knowledge_candidates") or [])

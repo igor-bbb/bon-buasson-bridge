@@ -399,19 +399,19 @@ def _build_components() -> Dict[str, Dict[str, Any]]:
 
     business_domain_registry = get_business_domain_registry()
     active_business_domain = get_active_business_domain()
-    bonboason_domain = get_business_domain_profile('bonboason')
-    bonboason_recovery = restore_business_domain('bonboason')
+    bon_buasson_domain = get_business_domain_profile('bon_buasson')
+    bon_buasson_recovery = restore_business_domain('bon_buasson')
     business_domain_verify = verify_business_domain_framework()
     components["business_domain_framework"] = _component(
         "business_domain_framework",
         _status(business_domain_verify.get("status") == "PASS"),
-        "Business Domain Framework is available: Bonboason Domain can be activated, restored and used without changing VECTRA Professional Identity." if business_domain_verify.get("status") == "PASS" else "Business Domain Framework verification failed.",
+        "Business Domain Framework is available: Бон Буассон Domain can be activated, restored and used without changing VECTRA Professional Identity." if business_domain_verify.get("status") == "PASS" else "Business Domain Framework verification failed.",
         {
             "release": "FOUNDATION-0006",
             "domains_count": business_domain_registry.get("domains_count"),
             "active_domain": (active_business_domain.get("active_domain") or {}).get("active_domain_id") if isinstance(active_business_domain.get("active_domain"), dict) else None,
-            "bonboason_profile_status": bonboason_domain.get("status"),
-            "bonboason_recovery_status": bonboason_recovery.get("status"),
+            "bon_buasson_profile_status": bon_buasson_domain.get("status"),
+            "bon_buasson_recovery_status": bon_buasson_recovery.get("status"),
             "readback": business_domain_verify.get("status"),
             "professional_identity_changed": False,
             "professional_model_auto_update": False,
@@ -457,7 +457,7 @@ def _build_components() -> Dict[str, Dict[str, Any]]:
         },
     )
 
-    workspace_objects = ["professional_model", "professional_state", "evolution_journal", "recovery_bundle", "knowledge_candidates", "reflection_reports", "professional_observations", "observation_reports", "active_responsibilities", "responsibility_reports", "recovery_evolution_status", "recovery_evolution_reports", "recovery_checkpoints", "synchronization_status", "synchronization_reports", "synchronization_packages", "review_status", "review_sessions", "review_reports", "synchronization_execution_status", "synchronization_execution_reports", "synchronization_execution_history", "working_vectra_state", "context_capitalization_status", "context_capitalization_packages", "context_capitalization_reports", "capability_registry", "professional_body_status", "professional_body_restoration_reports", "professional_body_integration_reports", "business_domain_registry", "active_business_domain", "bonboason_domain_profile", "bonboason_domain_recovery_snapshot", "bonboason_domain_capitalization_reports", "life_model", "life_model_status", "life_model_verification_report", "vos", "vos_status", "vos_verification_report"]
+    workspace_objects = ["professional_model", "professional_state", "evolution_journal", "recovery_bundle", "knowledge_candidates", "reflection_reports", "professional_observations", "observation_reports", "active_responsibilities", "responsibility_reports", "recovery_evolution_status", "recovery_evolution_reports", "recovery_checkpoints", "synchronization_status", "synchronization_reports", "synchronization_packages", "review_status", "review_sessions", "review_reports", "synchronization_execution_status", "synchronization_execution_reports", "synchronization_execution_history", "working_vectra_state", "context_capitalization_status", "context_capitalization_packages", "context_capitalization_reports", "capability_registry", "professional_body_status", "professional_body_restoration_reports", "professional_body_integration_reports", "business_domain_registry", "active_business_domain", "bon_buasson_domain_profile", "bon_buasson_domain_recovery_snapshot", "bon_buasson_domain_capitalization_reports", "life_model", "life_model_status", "life_model_verification_report", "vos", "vos_status", "vos_verification_report"]
     workspace_checks: List[Dict[str, Any]] = []
     for object_name in workspace_objects:
         result = read_runtime_object(object_name)
@@ -590,11 +590,11 @@ def _build_components() -> Dict[str, Dict[str, Any]]:
         },
     )
 
-    business_knowledge = get_domain_knowledge_overview("bonboason")
+    business_knowledge = get_domain_knowledge_overview("bon_buasson")
     components["business_domain_knowledge"] = _component(
         "business_domain_knowledge",
         _status(business_knowledge.get("repository_status") == "readable"),
-        "Business Domain Knowledge repository is readable and restored for Bonboason." if business_knowledge.get("repository_status") == "readable" else "Business Domain Knowledge repository is not readable.",
+        "Business Domain Knowledge repository is readable and restored for Бон Буассон." if business_knowledge.get("repository_status") == "readable" else "Business Domain Knowledge repository is not readable.",
         {
             "domain": business_knowledge.get("domain"),
             "documents_count": business_knowledge.get("business_documents", 0),

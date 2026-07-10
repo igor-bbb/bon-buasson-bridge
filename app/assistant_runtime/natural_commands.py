@@ -97,8 +97,8 @@ def get_natural_command_model() -> Dict[str, Any]:
             "Восстанови состояние VECTRA.",
             "Покажи Capability Registry.",
             "Проверь профессиональное тело VECTRA.",
-            "Работаем над Bonboason.",
-            "Восстанови Bonboason.",
+            "Работаем над Бон Буассон.",
+            "Восстанови Бон Буассон.",
             "Покажи Business Domain.",
             "Кто ты?",
             "Расскажи, как ты работаешь.",
@@ -160,15 +160,15 @@ def classify_natural_command(payload: Any) -> Dict[str, Any]:
     if _contains_any(low, ["восстанови vos", "восстанови операционную модель", "restore vos", "restore operating system"]):
         return {"intent": "vos_restore", "confidence": 0.95, "message": text}
 
-    if _contains_any(low, ["работаем над bonboason", "работаем над бон", "активируй bonboason", "активировать bonboason", "bonboason domain"]):
+    if _contains_any(low, ["работаем над bon_buasson", "работаем над бон", "активируй bon_buasson", "активировать bon_buasson", "bon_buasson domain"]):
         return {"intent": "business_domain_activate", "confidence": 0.97, "message": text}
     if _contains_any(low, ["business domain", "бизнес домен", "предметная область", "domain registry", "домены"]):
         return {"intent": "business_domain_registry", "confidence": 0.93, "message": text}
     if _contains_any(low, ["активный domain", "активный домен", "статус domain", "статус домена"]):
         return {"intent": "business_domain_status", "confidence": 0.92, "message": text}
-    if _contains_any(low, ["восстанови bonboason", "восстановить bonboason", "restore bonboason", "восстанови бон"]):
+    if _contains_any(low, ["восстанови bon_buasson", "восстановить bon_buasson", "restore bon_buasson", "восстанови бон"]):
         return {"intent": "business_domain_restore", "confidence": 0.95, "message": text}
-    if _contains_any(low, ["проверь bonboason", "проверь domain", "проверить domain", "business domain verification"]):
+    if _contains_any(low, ["проверь bon_buasson", "проверь domain", "проверить domain", "business domain verification"]):
         return {"intent": "business_domain_verify", "confidence": 0.93, "message": text}
 
     if _contains_any(low, ["capability", "способност", "реестр способ", "capability registry"]):
@@ -422,9 +422,9 @@ def _humanize(intent: str, result: Dict[str, Any]) -> Dict[str, Any]:
         active = result.get('active_domain') if isinstance(result, dict) else {}
         return {"title": "Активный Business Domain", "short_answer": result.get('human_summary') or f"Активный Domain: {active.get('active_domain_id') if isinstance(active, dict) else None}."}
     if intent == "business_domain_activate":
-        return {"title": "Bonboason Domain активирован", "short_answer": result.get('human_summary', "Business Domain Bonboason активирован.")}
+        return {"title": "Бон Буассон Domain активирован", "short_answer": result.get('human_summary', "Business Domain Бон Буассон активирован.")}
     if intent == "business_domain_restore":
-        return {"title": "Восстановление Bonboason Domain", "short_answer": result.get('human_summary', "Bonboason Domain восстановлен из Runtime Repository.")}
+        return {"title": "Восстановление Бон Буассон Domain", "short_answer": result.get('human_summary', "Бон Буассон Domain восстановлен из Runtime Repository.")}
     if intent == "business_domain_verify":
         return {"title": "Проверка Business Domain Framework", "short_answer": f"Business Domain Verification: {result.get('status')}."}
     return {"title": "Подсказка VECTRA", "short_answer": "Я подскажу, что можно сказать обычным языком."}
@@ -473,7 +473,7 @@ def execute_natural_command(payload: Any) -> Dict[str, Any]:
         "business_domain_registry": get_business_domain_registry,
         "business_domain_status": get_active_business_domain,
         "business_domain_activate": lambda: activate_business_domain({"message": classification.get("message"), "source": "natural_command"}),
-        "business_domain_restore": lambda: restore_business_domain("bonboason"),
+        "business_domain_restore": lambda: restore_business_domain("bon_buasson"),
         "business_domain_verify": verify_business_domain_framework,
         "command_help": get_natural_command_model,
     }

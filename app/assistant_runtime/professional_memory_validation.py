@@ -30,13 +30,13 @@ def _sample_classification_payload() -> Dict[str, Any]:
     return {
         "items": [
             {"title": "Professional Memory validation sample", "description": "Confirmed professional product experience must persist between sessions.", "status": "confirmed", "recommended_memory_type": "professional_knowledge"},
-            {"title": "Business Domain validation sample", "description": "Confirmed Bon Boisson domain knowledge must stay separate from professional product knowledge.", "status": "confirmed", "recommended_memory_type": "business_knowledge", "business_domain": "bonboason"},
+            {"title": "Business Domain validation sample", "description": "Confirmed Bon Boisson domain knowledge must stay separate from professional product knowledge.", "status": "confirmed", "recommended_memory_type": "business_knowledge", "business_domain": "bon_buasson"},
             {"title": "Draft hypothesis sample", "description": "Unconfirmed draft must not be capitalized as permanent memory.", "status": "draft", "recommended_memory_type": "hypothesis"},
         ]
     }
 
 
-def run_professional_memory_e2e_validation(domain: str = "bonboason") -> Dict[str, Any]:
+def run_professional_memory_e2e_validation(domain: str = "bon_buasson") -> Dict[str, Any]:
     overview = get_memory_overview(domain=domain)
     objects = list_memory_objects(domain=domain, limit=10000).get("objects", [])
     statistics = get_memory_statistics(domain=domain)
@@ -98,7 +98,7 @@ def run_professional_memory_e2e_validation(domain: str = "bonboason") -> Dict[st
     }
 
 
-def verify_professional_memory_program(domain: str = "bonboason") -> Dict[str, Any]:
+def verify_professional_memory_program(domain: str = "bon_buasson") -> Dict[str, Any]:
     report = run_professional_memory_e2e_validation(domain=domain)
     return {
         "status": report.get("program_validation_status"),

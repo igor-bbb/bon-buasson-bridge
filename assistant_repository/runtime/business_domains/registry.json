@@ -7,12 +7,12 @@
   "principle": "Business Domain is a professional model of a concrete business. It is not Knowledge Repository and does not change VECTRA Professional Identity.",
   "domains": [
     {
-      "domain_id": "bonboason",
-      "title": "Bonboason",
+      "domain_id": "bon_buasson",
+      "title": "Бон Буассон",
       "status": "active",
-      "profile_path": "runtime/business_domains/bonboason/domain_profile.json",
-      "activation_phrase": "Работаем над Bonboason",
-      "purpose": "First professional subject area of VECTRA: business context, vocabulary, decision model, product history and active projects for Bonboason."
+      "profile_path": "runtime/business_domains/bon_buasson/domain_profile.json",
+      "activation_phrase": "Работаем над Бон Буассон",
+      "purpose": "First professional subject area of VECTRA: business context, vocabulary, decision model, product history and active projects for Бон Буассон."
     }
   ]
 }

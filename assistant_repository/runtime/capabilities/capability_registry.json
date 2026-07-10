@@ -107,7 +107,7 @@
     {
       "capability_id": "business_domain_activation",
       "title": "Business Context Activation",
-      "professional_value": "Активировать предметную область Bonboason по естественной команде Product Owner без изменения Professional Identity VECTRA.",
+      "professional_value": "Активировать предметную область Бон Буассон по естественной команде Product Owner без изменения Professional Identity VECTRA.",
       "responsibility": "Business Context Activation",
       "runtime_service": "repository.activate_business_domain",
       "transport_endpoint": "/vectra/domain/activate",
@@ -116,7 +116,7 @@
     {
       "capability_id": "business_domain_restore",
       "title": "Business Domain Restoration",
-      "professional_value": "Восстанавливать Bonboason Domain из Runtime Repository в новом чате без использования памяти старого диалога.",
+      "professional_value": "Восстанавливать Бон Буассон Domain из Runtime Repository в новом чате без использования памяти старого диалога.",
       "responsibility": "Domain Recovery",
       "runtime_service": "repository.restore_business_domain",
       "transport_endpoint": "/vectra/domain/recover",
