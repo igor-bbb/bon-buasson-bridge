@@ -1,0 +1,28 @@
+{
+  "snapshot_id": "bon_buasson-domain-recovery-root",
+  "domain_id": "bon_buasson",
+  "status": "ready",
+  "release": "FOUNDATION-0006",
+  "created_at": "2026-07-10T05:59:35Z",
+  "purpose": "Restore Business Domain professional state from Runtime Repository without using chat memory.",
+  "contains": [
+    "business_identity",
+    "business_purpose",
+    "business_philosophy",
+    "business_strategy",
+    "business_model",
+    "organization",
+    "commercial_model",
+    "operating_model",
+    "object_model",
+    "vocabulary",
+    "workspace_model",
+    "decision_model",
+    "business_knowledge",
+    "business_standards",
+    "business_decisions",
+    "active_projects",
+    "historical_evolution",
+    "domain_recovery_snapshot"
+  ]
+}
