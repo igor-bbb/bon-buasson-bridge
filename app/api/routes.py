@@ -104,6 +104,7 @@ from app.assistant_runtime.repository import (
     verify_business_domain_framework as verify_vectra_business_domain_framework,
     start_business_working_session as start_vectra_business_working_session,
     verify_business_domain_model as verify_vectra_business_domain_model,
+    normalize_business_domain_id as normalize_vectra_business_domain_id,
     get_life_model as get_vectra_life_model,
     get_life_model_status as get_vectra_life_model_status,
     verify_life_model as verify_vectra_life_model,
@@ -9134,9 +9135,10 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     professional_body = restore_vectra_professional_body_state()
     active_domain = get_vectra_active_business_domain()
-    domain_name = 'bon_buasson'
+    domain_source = 'bon_buasson'
     if isinstance(active_domain, dict):
-        domain_name = str(active_domain.get('active_domain') or active_domain.get('domain') or active_domain.get('domain_id') or domain_name)
+        domain_source = active_domain.get('active_domain') or active_domain.get('active_business_domain') or active_domain.get('domain') or active_domain.get('domain_id') or domain_source
+    domain_name = normalize_vectra_business_domain_id(domain_source)
     domain_restore = restore_vectra_business_domain(domain_name)
     professional_knowledge = list_vectra_professional_knowledge()
     business_knowledge = get_vectra_domain_knowledge(domain=domain_name)
@@ -9452,7 +9454,7 @@ def vectra_memory_health_verify(domain: str = 'bon_buasson', x_vectra_laboratory
 def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
-    d = domain or str(payload.get('domain') or 'bon_buasson')
+    d = normalize_vectra_business_domain_id(domain or payload.get('domain_id') or payload.get('domain') or 'bon_buasson')
     if _requires_product_owner_approval(operation_type) and not approval:
         return json_response(_facade_error(operation_type, 'Product Owner approval is required.', runtime_service='business_domain_facade'))
     try:

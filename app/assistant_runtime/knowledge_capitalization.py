@@ -54,7 +54,18 @@ def _now() -> str:
 
 def _slug(value: str, fallback: str = "knowledge") -> str:
     raw = str(value or "").strip().lower()
+    if fallback == "bon_buasson" and (
+        "active_domain_id" in raw
+        or "active-domain-id" in raw
+        or "bon_buasson" in raw
+        or "bonboason" in raw
+        or "bonbosson" in raw
+        or "бон буассон" in raw
+    ):
+        return "bon_buasson"
     raw = re.sub(r"[^a-z0-9а-яіїєґ_-]+", "-", raw, flags=re.IGNORECASE).strip("-")
+    if fallback == "bon_buasson" and raw in {"bonboason", "bonbosson", "bon-buasson", "bon-boisson", "бон-буассон"}:
+        return "bon_buasson"
     return raw[:90] or fallback
 
 

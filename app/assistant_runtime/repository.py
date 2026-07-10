@@ -27,13 +27,53 @@ BUSINESS_DOMAIN_ALIASES = {
 
 
 def _canonical_domain_id(value: Any = None) -> str:
+    """Return the single internal Business Domain identifier.
+
+    Restore paths may receive a plain domain string, a facade payload, or the
+    full active_domain state object.  The canonical runtime contract forbids
+    serializing that object into a repository path; only active_domain_id /
+    domain_id may be used.
+    """
+    if isinstance(value, dict):
+        for key_name in (
+            "active_domain_id",
+            "domain_id",
+            "domain",
+            "business_domain",
+            "business",
+            "display_name",
+        ):
+            nested_value = value.get(key_name)
+            if nested_value not in (None, "", {}):
+                return _canonical_domain_id(nested_value)
+        nested = value.get("active_domain") or value.get("active_business_domain")
+        if isinstance(nested, dict):
+            return _canonical_domain_id(nested)
+        return DEFAULT_BUSINESS_DOMAIN_ID
+
     raw = str(value or "").strip()
-    key = raw.lower().replace("_", " ").replace("-", " ")
+    raw_l = raw.lower()
+
+    # Guard against the previous bug where the full active_domain object was
+    # converted to a slug such as status-active-active_domain_id-bon_buasson-...
+    if "active_domain_id" in raw_l or "active-domain-id" in raw_l:
+        for alias in ("bon_buasson", "bonboason", "bonbosson", "бон буассон"):
+            if alias in raw_l:
+                return DEFAULT_BUSINESS_DOMAIN_ID
+        return DEFAULT_BUSINESS_DOMAIN_ID
+    if "bon_buasson" in raw_l or "bonboason" in raw_l or "bonbosson" in raw_l or "бон буассон" in raw_l:
+        return DEFAULT_BUSINESS_DOMAIN_ID
+
+    key = raw_l.replace("_", " ").replace("-", " ")
     key = re.sub(r"\s+", " ", key).strip()
     if key in BUSINESS_DOMAIN_ALIASES:
         return BUSINESS_DOMAIN_ALIASES[key]
-    slug = _safe_slug(raw.lower(), DEFAULT_BUSINESS_DOMAIN_ID)
+    slug = _safe_slug(raw_l, DEFAULT_BUSINESS_DOMAIN_ID)
     return BUSINESS_DOMAIN_ALIASES.get(slug, slug)
+
+
+def normalize_business_domain_id(value: Any = None) -> str:
+    return _canonical_domain_id(value)
 
 
 def _domain_display_name(domain_id: str) -> str:
