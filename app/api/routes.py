@@ -102,9 +102,6 @@ from app.assistant_runtime.repository import (
     restore_business_domain as restore_vectra_business_domain,
     capitalize_business_domain_context as capitalize_vectra_business_domain_context,
     verify_business_domain_framework as verify_vectra_business_domain_framework,
-    start_business_working_session as start_vectra_business_working_session,
-    verify_business_domain_model as verify_vectra_business_domain_model,
-    normalize_business_domain_id as normalize_vectra_business_domain_id,
     get_life_model as get_vectra_life_model,
     get_life_model_status as get_vectra_life_model_status,
     verify_life_model as verify_vectra_life_model,
@@ -332,6 +329,9 @@ from app.assistant_runtime.unified_professional_model import (
     build_unified_professional_model as build_vectra_unified_professional_model,
     verify_unified_professional_model as verify_vectra_unified_professional_model,
     verify_historical_archive_discovery as verify_vectra_historical_archive_discovery,
+)
+from app.assistant_runtime.repository_readback_consistency import (
+    verify_repository_readback_consistency as verify_vectra_repository_readback_consistency,
 )
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
@@ -6741,7 +6741,7 @@ def _laboratory_public_openapi_schema() -> dict:
                 'get': {
                     'operationId': 'verifyVectraOperatingSystem',
                     'summary': 'Verify VECTRA Operating System',
-                    'description': 'Verifies VOS readback, required sections, protection rules and Бон Буассон support.',
+                    'description': 'Verifies VOS readback, required sections, protection rules and Bonboason support.',
                     'security': security,
                     'responses': response('VECTRA Operating System verification'),
                 }
@@ -6835,7 +6835,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'description': 'Restores the active or requested Business Domain from Runtime Repository.',
                     'security': security,
                     'parameters': [
-                        {'name': 'domain_id', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Business Domain id. Defaults to bon_buasson.'},
+                        {'name': 'domain_id', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Business Domain id. Defaults to bonboason.'},
                     ],
                     'responses': response('Business Domain Restore'),
                 }
@@ -7104,7 +7104,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'security': security,
                     'parameters': [
                         {'name': 'memory_space', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Optional memory space filter, for example professional_memory or business_domain_memory.'},
-                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Business Domain id, default bon_buasson.'},
+                        {'name': 'domain', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Business Domain id, default bonboason.'},
                         {'name': 'limit', 'in': 'query', 'required': False, 'schema': {'type': 'integer'}},
                     ],
                     'responses': response('Unified Memory Objects'),
@@ -7416,7 +7416,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'summary': 'Get Business Domain Knowledge',
                     'description': 'Returns Business Knowledge stored inside the selected Business Domain.',
                     'security': security,
-                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'}],
+                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'}],
                     'responses': response('Domain Knowledge'),
                 }
             },
@@ -7426,7 +7426,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'summary': 'Get Business Domain Knowledge Overview',
                     'description': 'Returns Business Knowledge repository overview for a selected Business Domain.',
                     'security': security,
-                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'}],
+                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'}],
                     'responses': response('Domain Knowledge overview'),
                 }
             },
@@ -7437,7 +7437,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'description': 'Returns a single Business Knowledge document from the selected Business Domain.',
                     'security': security,
                     'parameters': [
-                        {'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'},
+                        {'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'},
                         {'name': 'knowledge_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Knowledge id, for example BK-001.'},
                     ],
                     'responses': response('Domain Knowledge document'),
@@ -7450,7 +7450,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'description': 'Verifies Business Knowledge readback from the selected Business Domain repository.',
                     'security': security,
                     'parameters': [
-                        {'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'},
+                        {'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'},
                         {'name': 'knowledge_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Knowledge id, for example BK-001.'},
                     ],
                     'responses': response('Domain Knowledge readback verification'),
@@ -7462,7 +7462,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'summary': 'Create Business Knowledge Candidate',
                     'description': 'Creates a Product Owner approval-gated Business Knowledge Candidate for the selected Business Domain.',
                     'security': security,
-                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'}],
+                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'}],
                     'requestBody': {'required': False, 'content': {'application/json': {'schema': capitalization_request_schema}}},
                     'responses': response('Business Knowledge Candidate'),
                 }
@@ -7473,7 +7473,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'summary': 'Create Business Knowledge Capitalization Package',
                     'description': 'Creates a Business Knowledge Capitalization Package after Product Owner approval without writing yet.',
                     'security': security,
-                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'}],
+                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'}],
                     'requestBody': {'required': False, 'content': {'application/json': {'schema': capitalization_request_schema}}},
                     'responses': response('Business Knowledge Capitalization Package'),
                 }
@@ -7484,7 +7484,7 @@ def _laboratory_public_openapi_schema() -> dict:
                     'summary': 'Write Business Knowledge',
                     'description': 'Writes packaged Product Owner approved Business Knowledge, performs readback, updates Recovery Snapshot and returns report.',
                     'security': security,
-                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bon_buasson.'}],
+                    'parameters': [{'name': 'domain', 'in': 'path', 'required': True, 'schema': {'type': 'string'}, 'description': 'Business Domain id, for example bonboason.'}],
                     'requestBody': {'required': False, 'content': {'application/json': {'schema': capitalization_request_schema}}},
                     'responses': response('Business Knowledge Capitalization Report'),
                 }
@@ -8002,7 +8002,7 @@ def _facade_operation_request_schema() -> dict:
         'properties': {
             'title': {'type': 'string', 'description': 'Human-readable Business Knowledge title prepared by VECTRA.'},
             'description': {'type': 'string', 'description': 'Full confirmed Business Domain Knowledge content to be capitalized.'},
-            'business_domain': {'type': 'string', 'description': 'Business Domain identifier, for example bon_buasson.'},
+            'business_domain': {'type': 'string', 'description': 'Business Domain identifier, for example bonboason.'},
             'status': {'type': 'string', 'description': 'Knowledge confirmation status, for example confirmed.'},
             'evidence': {'type': 'string', 'description': 'Evidence or source statement proving why this knowledge is confirmed.'},
             'recommended_memory_type': {'type': 'string', 'description': 'Recommended memory destination, normally business_knowledge.'},
@@ -8020,7 +8020,7 @@ def _facade_operation_request_schema() -> dict:
         'required': ['source', 'business_domain', 'confirmation_level'],
         'properties': {
             'source': {'type': 'string', 'description': 'Knowledge source, for example current_product_owner_dialogue.'},
-            'business_domain': {'type': 'string', 'description': 'Business Domain for Business Knowledge, for example bon_buasson.'},
+            'business_domain': {'type': 'string', 'description': 'Business Domain for Business Knowledge, for example bonboason.'},
             'confirmation_level': {'type': 'string', 'description': 'Confirmation level, for example confirmed_by_product_owner.'},
             'professional_knowledge': {
                 'type': 'array',
@@ -8065,10 +8065,10 @@ def _facade_operation_request_schema() -> dict:
             {
                 'operation_type': 'capitalize_confirmed_knowledge',
                 'product_owner_approval': True,
-                'domain': 'bon_buasson',
+                'domain': 'bonboason',
                 'prepared_knowledge_package': {
                     'source': 'current_product_owner_dialogue',
-                    'business_domain': 'bon_buasson',
+                    'business_domain': 'bonboason',
                     'confirmation_level': 'confirmed_by_product_owner',
                     'professional_knowledge': [
                         {
@@ -8155,7 +8155,7 @@ def _business_gpt_operation_request_schema() -> dict:
                 'description': 'Business query text when operation_type=query or when the operation accepts a natural business command.',
             },
             'period': {'type': 'string', 'description': 'Business period, for example 2026-02.'},
-            'domain': {'type': 'string', 'description': 'Business Domain identifier, for example bon_buasson.'},
+            'domain': {'type': 'string', 'description': 'Business Domain identifier, for example bonboason.'},
             'session_id': {'type': 'string', 'description': 'Working GPT session identifier.'},
         },
         'required': ['operation_type'],
@@ -8249,7 +8249,7 @@ def _business_gpt_openapi_schema() -> dict:
         'paths': paths,
         'x-vectra-scope': 'working_business_gpt_actions',
         'x-vectra-release': 'WORKING-GPT-ACTIONS-RESTORE-001',
-        'x-vectra-business-domain': 'bon_buasson',
+        'x-vectra-business-domain': 'bonboason',
         'x-vectra-excluded-scopes': [
             'professional_memory',
             'professional_intelligence',
@@ -8608,7 +8608,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
     }
 
 @router.get('/vectra/laboratory/memory/verify', summary='Verify VECTRA Knowledge Memory Persistence')
-def vectra_laboratory_memory_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_laboratory_memory_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     result = verify_vectra_knowledge_memory_persistence(domain=domain)
     return json_response(_facade_response('verify_memory_persistence', 'knowledge_capitalization.verify_knowledge_memory_persistence', '/vectra/laboratory/memory/verify', result))
@@ -9135,10 +9135,9 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     professional_body = restore_vectra_professional_body_state()
     active_domain = get_vectra_active_business_domain()
-    domain_source = 'bon_buasson'
+    domain_name = 'bonboason'
     if isinstance(active_domain, dict):
-        domain_source = active_domain.get('active_domain') or active_domain.get('active_business_domain') or active_domain.get('domain') or active_domain.get('domain_id') or domain_source
-    domain_name = normalize_vectra_business_domain_id(domain_source)
+        domain_name = str(active_domain.get('active_domain') or active_domain.get('domain') or active_domain.get('domain_id') or domain_name)
     domain_restore = restore_vectra_business_domain(domain_name)
     professional_knowledge = list_vectra_professional_knowledge()
     business_knowledge = get_vectra_domain_knowledge(domain=domain_name)
@@ -9184,7 +9183,7 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             endpoint = '/vectra/knowledge/professional/{knowledge_id}' if kid else '/vectra/knowledge/professional'
             return json_response(_facade_response(operation_type, 'knowledge_capitalization.read_professional_knowledge', endpoint, result))
         if operation_type == 'read_business_knowledge':
-            d = domain or str(payload.get('domain') or 'bon_buasson')
+            d = domain or str(payload.get('domain') or 'bonboason')
             kid = str(payload.get('knowledge_id') or '').strip()
             result = get_vectra_domain_knowledge_by_id(domain=d, knowledge_id=kid) if kid else get_vectra_domain_knowledge(domain=d)
             endpoint = '/vectra/domain/{domain}/knowledge/{knowledge_id}' if kid else '/vectra/domain/{domain}/knowledge'
@@ -9192,7 +9191,7 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
         if operation_type == 'verify_readback':
             kt = str(payload.get('knowledge_type') or '').lower()
             kid = str(payload.get('knowledge_id') or '').strip()
-            d = domain or str(payload.get('domain') or 'bon_buasson')
+            d = domain or str(payload.get('domain') or 'bonboason')
             if kt == 'business':
                 result = verify_vectra_domain_knowledge_readback(domain=d, knowledge_id=kid)
                 endpoint = '/vectra/domain/{domain}/knowledge/{knowledge_id}/readback'
@@ -9203,22 +9202,22 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
                 service = 'knowledge_capitalization.verify_professional_knowledge_readback'
             return json_response(_facade_response(operation_type, service, endpoint, result))
         if operation_type == 'list_memory_objects':
-            result = list_vectra_memory_objects(memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bon_buasson', limit=int(payload.get('limit') or 100))
+            result = list_vectra_memory_objects(memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
             return json_response(_facade_response(operation_type, 'memory_repository.list_memory_objects', '/vectra/memory/objects', result))
         if operation_type == 'read_memory_object':
-            result = get_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bon_buasson')
+            result = get_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_repository.get_memory_object', '/vectra/memory/objects/{object_id}', result))
         if operation_type == 'search_memory_object':
-            result = readback_vectra_memory_object(knowledge_id=str(payload.get('knowledge_id') or ''), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bon_buasson')
+            result = readback_vectra_memory_object(knowledge_id=str(payload.get('knowledge_id') or ''), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
         if operation_type == 'verify_memory_object_readback':
-            result = readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bon_buasson')
+            result = readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
         if operation_type == 'get_memory_overview':
-            result = get_vectra_memory_overview(domain=domain or payload.get('domain') or 'bon_buasson')
+            result = get_vectra_memory_overview(domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_repository.get_memory_overview', '/vectra/memory/overview', result))
         if operation_type == 'verify_memory_repository':
-            result = verify_vectra_memory_repository_integrity(domain=domain or payload.get('domain') or 'bon_buasson')
+            result = verify_vectra_memory_repository_integrity(domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_repository.verify_memory_repository_integrity', '/vectra/memory/verify', result))
         if operation_type == 'list_memory_spaces':
             result = list_vectra_memory_spaces(include_prepared=bool(payload.get('include_prepared', True)))
@@ -9227,31 +9226,31 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             result = validate_vectra_memory_space(str(payload.get('memory_space') or ''), require_active=bool(payload.get('require_active', False)))
             return json_response(_facade_response(operation_type, 'memory_spaces.validate_memory_space', '/vectra/memory/spaces/{memory_space}/validate', result))
         if operation_type == 'classify_knowledge_item':
-            result = classify_vectra_knowledge_item(payload, domain=domain or payload.get('domain') or 'bon_buasson')
+            result = classify_vectra_knowledge_item(payload, domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_classification.classify_knowledge_item', '/vectra/memory/classification', result))
         if operation_type == 'classify_knowledge_package':
-            result = classify_vectra_knowledge_package(payload, domain=domain or payload.get('domain') or 'bon_buasson')
+            result = classify_vectra_knowledge_package(payload, domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_classification.classify_knowledge_package', '/vectra/memory/classification', result))
         if operation_type == 'verify_automatic_classification':
-            result = verify_vectra_automatic_classification(payload, domain=domain or payload.get('domain') or 'bon_buasson')
+            result = verify_vectra_automatic_classification(payload, domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_classification.verify_automatic_classification', '/vectra/memory/classification/verify', result))
         if operation_type == 'inspect_memory':
-            result = run_vectra_memory_inspection(operation_type=str(payload.get('inspection_type') or payload.get('inspection_operation') or 'overview'), payload=payload, domain=domain or payload.get('domain') or 'bon_buasson')
+            result = run_vectra_memory_inspection(operation_type=str(payload.get('inspection_type') or payload.get('inspection_operation') or 'overview'), payload=payload, domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_inspection.run_memory_inspection', '/vectra/memory/inspection', result))
         if operation_type == 'inspect_memory_object':
-            result = inspect_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bon_buasson')
+            result = inspect_vectra_memory_object(object_id=str(payload.get('object_id') or ''), domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_inspection.inspect_memory_object', '/vectra/memory/inspection/object/{object_id}', result))
         if operation_type == 'inspect_memory_space':
-            result = inspect_vectra_memory_space(memory_space=str(payload.get('memory_space') or ''), domain=domain or payload.get('domain') or 'bon_buasson', limit=int(payload.get('limit') or 100))
+            result = inspect_vectra_memory_space(memory_space=str(payload.get('memory_space') or ''), domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
             return json_response(_facade_response(operation_type, 'memory_inspection.inspect_memory_space', '/vectra/memory/inspection/space/{memory_space}', result))
         if operation_type == 'get_memory_statistics':
-            result = get_vectra_memory_statistics(domain=domain or payload.get('domain') or 'bon_buasson')
+            result = get_vectra_memory_statistics(domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_statistics', '/vectra/memory/statistics', result))
         if operation_type == 'get_memory_integrity_report':
-            result = get_vectra_memory_integrity_report(domain=domain or payload.get('domain') or 'bon_buasson')
+            result = get_vectra_memory_integrity_report(domain=domain or payload.get('domain') or 'bonboason')
             return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_integrity_report', '/vectra/memory/integrity-report', result))
         if operation_type == 'get_memory_readback_report':
-            result = get_vectra_memory_readback_report(domain=domain or payload.get('domain') or 'bon_buasson', limit=int(payload.get('limit') or 100))
+            result = get_vectra_memory_readback_report(domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
             return json_response(_facade_response(operation_type, 'memory_inspection.get_memory_readback_report', '/vectra/memory/readback-report', result))
         if operation_type == 'create_report':
             reports_result = list_vectra_knowledge_capitalization_reports(limit=int(payload.get('limit') or 20), include_failed=bool(payload.get('include_failed', True)))
@@ -9283,13 +9282,13 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
 
 
 @router.get('/vectra/memory/objects', summary='List unified VECTRA Memory Objects')
-def vectra_memory_objects(memory_space: str | None = None, domain: str = 'bon_buasson', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_objects(memory_space: str | None = None, domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(list_vectra_memory_objects(memory_space=memory_space, domain=domain, limit=limit))
 
 
 @router.get('/vectra/memory/objects/{object_id}', summary='Read unified VECTRA Memory Object')
-def vectra_memory_object_by_id(object_id: str, domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_object_by_id(object_id: str, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_object(object_id=object_id, domain=domain))
 
@@ -9298,17 +9297,17 @@ def vectra_memory_object_by_id(object_id: str, domain: str = 'bon_buasson', x_ve
 def vectra_memory_object_readback(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     payload = request if isinstance(request, dict) else {}
-    return json_response(readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=payload.get('domain') or 'bon_buasson'))
+    return json_response(readback_vectra_memory_object(object_id=payload.get('object_id'), knowledge_id=payload.get('knowledge_id'), memory_space=payload.get('memory_space'), domain=payload.get('domain') or 'bonboason'))
 
 
 @router.get('/vectra/memory/overview', summary='Get unified VECTRA Memory overview')
-def vectra_memory_overview(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_overview(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_overview(domain=domain))
 
 
 @router.get('/vectra/memory/verify', summary='Verify unified VECTRA Memory Repository integrity')
-def vectra_memory_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_memory_repository_integrity(domain=domain))
 
@@ -9332,52 +9331,52 @@ def vectra_memory_space_validate(memory_space: str, require_active: bool = False
 
 
 @router.post('/vectra/memory/classification', summary='Classify VECTRA Knowledge Package')
-def vectra_memory_classification(request: dict = None, domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_classification(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     payload = request if isinstance(request, dict) else {}
     return json_response(classify_vectra_knowledge_package(payload, domain=payload.get('domain') or domain))
 
 
 @router.post('/vectra/memory/classification/verify', summary='Verify VECTRA Automatic Knowledge Classification')
-def vectra_memory_classification_verify(request: dict = None, domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_classification_verify(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     payload = request if isinstance(request, dict) else {}
     return json_response(verify_vectra_automatic_classification(payload, domain=payload.get('domain') or domain))
 
 
 @router.post('/vectra/memory/inspection', summary='Run VECTRA Memory Inspection')
-def vectra_memory_inspection(request: dict = None, domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_inspection(request: dict = None, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     payload = request if isinstance(request, dict) else {}
     return json_response(run_vectra_memory_inspection(operation_type=str(payload.get('inspection_type') or payload.get('inspection_operation') or 'overview'), payload=payload, domain=payload.get('domain') or domain))
 
 
 @router.get('/vectra/memory/inspection/object/{object_id}', summary='Inspect VECTRA Memory Object')
-def vectra_memory_inspection_object(object_id: str, domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_inspection_object(object_id: str, domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(inspect_vectra_memory_object(object_id=object_id, domain=domain))
 
 
 @router.get('/vectra/memory/inspection/space/{memory_space}', summary='Inspect VECTRA Memory Space')
-def vectra_memory_inspection_space(memory_space: str, domain: str = 'bon_buasson', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_inspection_space(memory_space: str, domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(inspect_vectra_memory_space(memory_space=memory_space, domain=domain, limit=limit))
 
 
 @router.get('/vectra/memory/statistics', summary='Get VECTRA Memory Statistics')
-def vectra_memory_statistics(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_statistics(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_statistics(domain=domain))
 
 
 @router.get('/vectra/memory/integrity-report', summary='Get VECTRA Memory Integrity Report')
-def vectra_memory_integrity_report(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_integrity_report(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_integrity_report(domain=domain))
 
 
 @router.get('/vectra/memory/readback-report', summary='Get VECTRA Memory Readback Report')
-def vectra_memory_readback_report(domain: str = 'bon_buasson', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_readback_report(domain: str = 'bonboason', limit: int = 100, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_readback_report(domain=domain, limit=limit))
 
@@ -9433,19 +9432,19 @@ def vectra_product_decisions_runtime_verify(decision_id: str | None = None, x_ve
 
 
 @router.get('/vectra/memory/health', summary='Get VECTRA Memory Health status')
-def vectra_memory_health(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_health(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_health_status(domain=domain))
 
 
 @router.get('/vectra/memory/diagnostics', summary='Get VECTRA Memory Diagnostics report')
-def vectra_memory_diagnostics(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_diagnostics(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_memory_diagnostics_report(domain=domain))
 
 
 @router.get('/vectra/memory/health/verify', summary='Verify VECTRA Memory Health')
-def vectra_memory_health_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_health_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_memory_health(domain=domain))
 
@@ -9454,7 +9453,7 @@ def vectra_memory_health_verify(domain: str = 'bon_buasson', x_vectra_laboratory
 def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
-    d = normalize_vectra_business_domain_id(domain or payload.get('domain_id') or payload.get('domain') or 'bon_buasson')
+    d = domain or str(payload.get('domain') or 'bonboason')
     if _requires_product_owner_approval(operation_type) and not approval:
         return json_response(_facade_error(operation_type, 'Product Owner approval is required.', runtime_service='business_domain_facade'))
     try:
@@ -9472,11 +9471,6 @@ def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_labo
         if operation_type == 'verify_domain_knowledge':
             kid = str(payload.get('knowledge_id') or '').strip()
             return json_response(_facade_response(operation_type, 'knowledge_capitalization.verify_domain_knowledge_readback', '/vectra/domain/{domain}/knowledge/{knowledge_id}/readback', verify_vectra_domain_knowledge_readback(domain=d, knowledge_id=kid)))
-        if operation_type in {'start_working_session', 'start_business_working_session', 'business_domain_startup', 'start_session'}:
-            payload['domain_id'] = d
-            return json_response(_facade_response(operation_type, 'repository.start_business_working_session', '/vectra/domain/start-session', start_vectra_business_working_session(payload)))
-        if operation_type in {'verify_business_domain_model', 'verify_domain_model', 'verify_business_domain_recovery', 'business_domain_model_verify'}:
-            return json_response(_facade_response(operation_type, 'repository.verify_business_domain_model', '/vectra/domain/verify/model', verify_vectra_business_domain_model(d)))
         return json_response(_facade_error(operation_type, f'Unsupported business domain operation_type: {operation_type}', runtime_service='business_domain_facade'))
     except Exception as exc:
         logger.exception('business_domain_facade_operation_failed')
@@ -9618,6 +9612,8 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'semantic_extraction.build_semantic_knowledge_extraction_report', '/vectra/laboratory/facade/memory', build_vectra_semantic_knowledge_extraction_report(payload), next_action='Review semantic extraction quality. Capitalization is not executed by this operation.'))
         if operation_type in {'verify_semantic_knowledge_extraction', 'verify_semantic_extraction_engine', 'semantic_extraction_verify'}:
             return json_response(_facade_response(operation_type, 'semantic_extraction.verify_semantic_knowledge_extraction', '/vectra/laboratory/facade/memory', verify_vectra_semantic_knowledge_extraction(payload), next_action='If PASS, rerun build_unified_professional_model on imported archives.'))
+        if operation_type in {'verify_repository_readback_consistency', 'repository_readback_consistency', 'verify_knowledge_repository_readback', 'knowledge_repository_readback_verify'}:
+            return json_response(_facade_response(operation_type, 'repository_readback_consistency.verify_repository_readback_consistency', '/vectra/laboratory/facade/memory', verify_vectra_repository_readback_consistency(payload), next_action='If PASS, Repository readback is consistent. If FAIL, inspect failure_reasons and deltas.'))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
@@ -9777,37 +9773,37 @@ def vectra_professional_intelligence_e2e_validation(request: dict = None, x_vect
     return json_response(build_vectra_professional_intelligence_e2e_validation(payload))
 
 @router.get('/vectra/memory/architecture-conformance', summary='Get VECTRA Memory Architecture Conformance report')
-def vectra_memory_architecture_conformance(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_architecture_conformance(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(get_vectra_architecture_conformance_report(domain=domain))
 
 
 @router.get('/vectra/memory/architecture-conformance/verify', summary='Verify VECTRA Memory Architecture Conformance')
-def vectra_memory_architecture_conformance_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_architecture_conformance_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_architecture_conformance(domain=domain))
 
 
 @router.get('/vectra/memory/recovery-optimized', summary='Build compact VECTRA Professional Memory recovery context')
-def vectra_memory_recovery_optimized(domain: str = 'bon_buasson', max_objects_per_space: int = 5, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_recovery_optimized(domain: str = 'bonboason', max_objects_per_space: int = 5, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(build_vectra_compact_recovery_context(domain=domain, max_objects_per_space=max_objects_per_space))
 
 
 @router.get('/vectra/memory/recovery-optimized/verify', summary='Verify compact VECTRA Professional Memory recovery context')
-def vectra_memory_recovery_optimized_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_recovery_optimized_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_recovery_optimization(domain=domain))
 
 
 @router.get('/vectra/memory/e2e-validation', summary='Run End-to-End Professional Memory validation')
-def vectra_memory_e2e_validation(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_e2e_validation(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(run_vectra_professional_memory_e2e_validation(domain=domain))
 
 
 @router.get('/vectra/memory/e2e-validation/verify', summary='Verify Professional Memory v1.0 program completion')
-def vectra_memory_e2e_validation_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_e2e_validation_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     return json_response(verify_vectra_professional_memory_program(domain=domain))
 
@@ -9844,7 +9840,7 @@ def vectra_memory_revisions(object_id: str | None = None, knowledge_id: str | No
 
 
 @router.get('/vectra/memory/revisions/verify', summary='Verify VECTRA Revision and Version Model')
-def vectra_memory_revision_verify(domain: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_memory_revision_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     objects = list_vectra_memory_objects(domain=domain, limit=10000).get('objects', [])
     return json_response(verify_vectra_revision_model(active_objects=objects))
@@ -11026,7 +11022,7 @@ def vectra_review_verify():
 
 
 
-# FOUNDATION-0006: Business Domain Framework (Бон Буассон Domain)
+# FOUNDATION-0006: Business Domain Framework (Bonboason Domain)
 # Business Domain is a persistent professional model of a concrete business.
 # It does not change VECTRA Professional Identity and is restored from Runtime.
 
@@ -11042,14 +11038,14 @@ def vectra_business_domain_status(x_vectra_laboratory_key: str | None = Header(d
     return json_response(get_vectra_active_business_domain())
 
 
-@router.get('/vectra/domain/bon_buasson', summary='Read Бон Буассон Business Domain Profile')
-def vectra_business_domain_bon_buasson(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+@router.get('/vectra/domain/bonboason', summary='Read Bonboason Business Domain Profile')
+def vectra_business_domain_bonboason(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     require_laboratory_key(x_vectra_laboratory_key)
-    return json_response(get_vectra_business_domain_profile('bon_buasson'))
+    return json_response(get_vectra_business_domain_profile('bonboason'))
 
 
-@router.get('/vectra/domain/recover', summary='Restore active or Бон Буассон Business Domain from Runtime')
-def vectra_business_domain_recover(domain_id: str = 'bon_buasson', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+@router.get('/vectra/domain/recover', summary='Restore active or Bonboason Business Domain from Runtime')
+def vectra_business_domain_recover(domain_id: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     require_laboratory_key(x_vectra_laboratory_key)
     return json_response(restore_vectra_business_domain(domain_id))
 
