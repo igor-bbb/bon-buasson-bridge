@@ -130,6 +130,7 @@ from app.assistant_runtime.business_data import (
     get_business_data_entities as get_vectra_business_data_entities,
     get_business_data_sample as get_vectra_business_data_sample,
     get_business_data_summary as get_vectra_business_data_summary,
+    get_business_data_manifest as get_vectra_business_data_manifest,
     run_business_data_query as run_vectra_business_data_query,
     verify_business_data_access as verify_vectra_business_data_access,
 )
@@ -9487,12 +9488,16 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     period = str(payload.get('period') or '')
     try:
+        if operation_type in {'manifest', 'capabilities', 'business_data_manifest', 'business_data_capabilities'}:
+            return json_response(_facade_response(operation_type, 'business_data.get_manifest', '/vectra/laboratory/facade/business-data', get_vectra_business_data_manifest(), next_action='Select the next Business Data operation only from supported_operation_types.'))
         if operation_type == 'status':
             return json_response(_facade_response(operation_type, 'business_data.get_status', '/vectra/laboratory/business-data/status', get_vectra_business_data_status()))
         if operation_type == 'entities':
             return json_response(_facade_response(operation_type, 'business_data.get_entities', '/vectra/laboratory/business-data/entities', get_vectra_business_data_entities(limit_per_group=int(payload.get('limit_per_group') or 50))))
-        if operation_type == 'summary':
+        if operation_type in {'summary', 'summary_business', 'business_summary', 'summary/business'}:
             return json_response(_facade_response(operation_type, 'business_data.get_summary', '/vectra/laboratory/business-data/summary/business', public_summary(get_vectra_business_data_summary('business', period=period))))
+        if operation_type == 'verify':
+            return json_response(_facade_response(operation_type, 'business_data.verify', '/vectra/laboratory/business-data/verify', verify_vectra_business_data_access()))
         if operation_type == 'query':
             return json_response(_facade_response(operation_type, 'business_data.query', '/vectra/laboratory/business-data/query', run_vectra_business_data_query(message=str(payload.get('message') or payload.get('query') or ''), session_id=session_id or 'laboratory-facade')))
         level_map = {

@@ -46,6 +46,149 @@ DIMENSION_FIELDS = ["period", "business", "manager_top", "manager", "network", "
 NUMERIC_FIELDS = ["revenue", "cost", "finrez_pre", "finrez", "retro_bonus", "logistics_cost", "personnel_cost", "other_costs", "markup", "margin_pre"]
 
 
+BUSINESS_DATA_OPERATION_MANIFEST = [
+    {
+        "operation_type": "manifest",
+        "aliases": ["capabilities", "business_data_manifest", "business_data_capabilities"],
+        "description": "Machine-readable Business Data facade capability manifest.",
+        "required_parameters": [],
+        "optional_parameters": [],
+        "supports_pagination": False,
+        "max_response_size": "small",
+        "read_only": True,
+    },
+    {
+        "operation_type": "status",
+        "description": "Business Data connection, health, source and volume status.",
+        "required_parameters": [],
+        "optional_parameters": [],
+        "supports_pagination": False,
+        "max_response_size": "small",
+        "read_only": True,
+    },
+    {
+        "operation_type": "entities",
+        "description": "Entity dictionary and dimensional values preview.",
+        "required_parameters": [],
+        "optional_parameters": ["limit_per_group"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+    },
+    {
+        "operation_type": "summary",
+        "aliases": ["summary_business", "business_summary", "summary/business"],
+        "description": "Executive business summary for the selected period.",
+        "required_parameters": ["period"],
+        "optional_parameters": ["limit"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "level": "business",
+    },
+    {
+        "operation_type": "manager_summary",
+        "description": "Manager summary for the selected manager and period.",
+        "required_parameters": ["period", "manager"],
+        "optional_parameters": ["object_name", "limit"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "level": "manager",
+    },
+    {
+        "operation_type": "contract_summary",
+        "description": "Network / contract summary for the selected network and period.",
+        "required_parameters": ["period", "network"],
+        "optional_parameters": ["object_name", "limit"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "level": "network",
+    },
+    {
+        "operation_type": "category_summary",
+        "description": "Category summary for the selected category and period.",
+        "required_parameters": ["period", "category"],
+        "optional_parameters": ["object_name", "limit"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "level": "category",
+    },
+    {
+        "operation_type": "sku_summary",
+        "description": "SKU summary for the selected SKU and period.",
+        "required_parameters": ["period", "sku"],
+        "optional_parameters": ["object_name", "limit"],
+        "supports_pagination": False,
+        "max_response_size": "medium_to_large",
+        "read_only": True,
+        "level": "sku",
+    },
+    {
+        "operation_type": "query",
+        "description": "Natural business query through the working VECTRA query pipeline.",
+        "required_parameters": ["message"],
+        "optional_parameters": ["session_id", "query"],
+        "supports_pagination": False,
+        "max_response_size": "depends_on_query",
+        "read_only": True,
+    },
+    {
+        "operation_type": "verify",
+        "description": "Business Data facade verification.",
+        "required_parameters": [],
+        "optional_parameters": [],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+    },
+]
+
+
+def get_business_data_manifest() -> Dict[str, Any]:
+    """Return the machine-readable Business Data facade contract.
+
+    The manifest is the source of truth for supported Business Data operation_type
+    values. VECTRA clients should call this before selecting a Business Data
+    operation instead of relying on remembered or guessed operation names.
+    """
+    status = get_business_data_status()
+    supported_operation_types = [item["operation_type"] for item in BUSINESS_DATA_OPERATION_MANIFEST]
+    return {
+        "status": "ok" if status.get("business_data_health") == "PASS" else "degraded",
+        "render_mode": "vectra_business_data_facade_manifest",
+        "release": BUSINESS_DATA_ACCESS_RELEASE,
+        "verification_status": "PASS" if status.get("business_data_health") == "PASS" else "FAIL",
+        "business_data_connected": bool(status.get("business_data_connected")),
+        "business_data_health": status.get("business_data_health"),
+        "read_only": True,
+        "mutation_endpoints_exposed": False,
+        "source_type": status.get("source_type"),
+        "rows_count": status.get("rows_count"),
+        "latest_period": status.get("latest_period"),
+        "periods_sample": status.get("periods_sample"),
+        "contract_source_of_truth": "executeVectraBusinessDataOperation(operation_type=manifest)",
+        "facade_name": "executeVectraBusinessDataOperation",
+        "facade_endpoint": "/vectra/laboratory/facade/business-data",
+        "supported_operation_types": supported_operation_types,
+        "operations": BUSINESS_DATA_OPERATION_MANIFEST,
+        "usage_policy": {
+            "must_read_manifest_before_operation_selection": True,
+            "do_not_guess_operation_type": True,
+            "use_query_for_natural_language_business_questions": True,
+            "use_summary_for_business_period_summary": True,
+            "period_required_for_summary_operations": True,
+        },
+        "large_response_policy": {
+            "prefer_period_filter": True,
+            "prefer_specific_level_summary_over_raw_query_for_large_requests": True,
+            "response_too_large_mitigation": "Use period and object filters; request focused summaries before broad queries.",
+        },
+    }
+
+
 def _unique_values(rows: List[Dict[str, Any]], field: str, limit: Optional[int] = None) -> List[str]:
     values = sorted({str(row.get(field, "")).strip() for row in rows if str(row.get(field, "")).strip()})
     if limit is None:
