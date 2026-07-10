@@ -20,9 +20,10 @@ from app.assistant_runtime.repository import (
     _read_json,
     _write_json,
     _with_workspace_markdown,
+    _business_knowledge_for_recovery_snapshot,
 )
 
-RECOVERY_SYNC_RELEASE = "RECOVERY-SNAPSHOT-SYNC-001"
+RECOVERY_SYNC_RELEASE = "RECOVERY-SNAPSHOT-BUSINESS-KNOWLEDGE-HOTFIX-002"
 CANONICAL_DOMAIN_ID = "bon_buasson"
 
 
@@ -50,7 +51,7 @@ def _latest_capitalization_report(base: Path) -> Optional[Dict[str, Any]]:
 def _repository_counts(base: Path, domain_id: str = CANONICAL_DOMAIN_ID) -> Dict[str, Any]:
     professional = _read_list(base / "knowledge" / "professional_knowledge.json")
     product = _read_list(base / "knowledge" / "product_knowledge.json")
-    business = _read_list(base / "business_domains" / domain_id / "business_knowledge.json")
+    business = _business_knowledge_for_recovery_snapshot(base, domain_id)
     domain_profile = _read_json(base / "runtime" / "business_domains" / domain_id / "domain_profile.json", {})
     product_decisions = _read_list(base / "decisions" / "product_decisions.json")
     kc_reports = _read_list(base / "runtime" / "knowledge_capitalization" / "reports.json")

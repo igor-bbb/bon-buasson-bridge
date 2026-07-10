@@ -1371,6 +1371,70 @@ def record_product_decision(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {'status': 'ok', 'render_mode': 'assistant_runtime_product_decision', 'decision': decision, 'decisions_count': len(decisions), 'readback_verification': verification}
 
 
+
+def _dedupe_business_knowledge_for_snapshot(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    no_id: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kid = str(item.get('knowledge_id') or item.get('id') or '').strip()
+        row = dict(item)
+        row.setdefault('domain_id', DEFAULT_BUSINESS_DOMAIN_ID)
+        row.setdefault('display_name', DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME)
+        if not kid:
+            no_id.append(row)
+            continue
+        current = merged.get(kid, {})
+        current.update(row)
+        merged[kid] = current
+    return list(merged.values()) + no_id
+
+
+def _business_knowledge_for_recovery_snapshot(base: Path, domain_id: Any = DEFAULT_BUSINESS_DOMAIN_ID) -> List[Dict[str, Any]]:
+    """Return complete Business Knowledge for the active Business Domain.
+
+    Recovery Snapshot must include the same domain knowledge that Repository
+    readback sees.  Therefore it reads both the canonical repository file and
+    the domain profile fallback used by older capitalization paths.  Legacy
+    locations are input-only compatibility sources and are normalized to
+    bon_buasson in the returned records.
+    """
+    domain_key = _canonical_domain_id(domain_id)
+    candidate_paths = [
+        base / 'business_domains' / domain_key / 'business_knowledge.json',
+        base / 'business_domains' / 'bonboason' / 'business_knowledge.json',
+        base / 'business_domains' / 'Bonboason' / 'business_knowledge.json',
+        base / 'business_domains' / 'Bonbosson' / 'business_knowledge.json',
+    ]
+    profile_paths = [
+        base / 'runtime' / 'business_domains' / domain_key / 'domain_profile.json',
+        base / 'runtime' / 'business_domains' / 'bonboason' / 'domain_profile.json',
+    ]
+    items: List[Dict[str, Any]] = []
+    for path in candidate_paths:
+        value = _read_json(path, [])
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    row = dict(item)
+                    row.setdefault('domain_id', DEFAULT_BUSINESS_DOMAIN_ID)
+                    row.setdefault('display_name', DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME)
+                    row.setdefault('repository_path', 'business_domains/bon_buasson/business_knowledge.json')
+                    items.append(row)
+    for path in profile_paths:
+        profile = _read_json(path, {})
+        profile_items = profile.get('business_knowledge') if isinstance(profile, dict) else []
+        if isinstance(profile_items, list):
+            for item in profile_items:
+                if isinstance(item, dict):
+                    row = dict(item)
+                    row.setdefault('domain_id', DEFAULT_BUSINESS_DOMAIN_ID)
+                    row.setdefault('display_name', DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME)
+                    row.setdefault('repository_path', 'runtime/business_domains/bon_buasson/domain_profile.json#business_knowledge')
+                    items.append(row)
+    return _dedupe_business_knowledge_for_snapshot(items)
+
 def create_recovery_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     base = ensure_repository()
     if not isinstance(payload, dict):
@@ -1380,7 +1444,7 @@ def create_recovery_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[s
     snapshot_id = str(payload.get('snapshot_id') or f'snapshot-{datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")}-{uuid.uuid4().hex[:6]}')
     metadata = payload.get('metadata') if isinstance(payload.get('metadata'), dict) else {}
     domain_profile = _read_json(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json', _seed_bon_buasson_domain_profile())
-    business_knowledge = _read_json(base / 'business_domains' / 'bon_buasson' / 'business_knowledge.json', [])
+    business_knowledge = _business_knowledge_for_recovery_snapshot(base, DEFAULT_BUSINESS_DOMAIN_ID)
     professional_knowledge = _read_json(base / 'knowledge' / 'professional_knowledge.json', [])
     product_knowledge = _read_json(base / 'knowledge' / 'product_knowledge.json', [])
     product_decisions = _read_json(base / 'decisions' / 'product_decisions.json', [])
@@ -1410,12 +1474,16 @@ def create_recovery_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[s
         'capitalization_reports': capitalization_reports if isinstance(capitalization_reports, list) else [],
         'professional_model': _read_json(base / 'professional_model' / 'model.json', _seed_professional_model()),
         'life_model': _read_json(base / 'runtime' / 'life_model' / 'life_model.json', _seed_life_model()),
+        'business_domain_id': DEFAULT_BUSINESS_DOMAIN_ID,
+        'business_domain_display_name': DEFAULT_BUSINESS_DOMAIN_DISPLAY_NAME,
         'active_business_domain': _read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain()),
         'active_business_domains': [_read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain())],
         'business_domain_models': {'bon_buasson': domain_profile},
         'bon_buasson_domain_profile': domain_profile,
         'bon_buasson_business_knowledge': business_knowledge,
         'business_knowledge': business_knowledge,
+        'business_knowledge_count': len(business_knowledge) if isinstance(business_knowledge, list) else 0,
+        'business_knowledge_ids': [str(item.get('knowledge_id')) for item in business_knowledge if isinstance(item, dict) and item.get('knowledge_id')],
         'business_standards': domain_profile.get('business_standards', []) if isinstance(domain_profile, dict) else [],
         'business_decisions': domain_profile.get('business_decisions', []) if isinstance(domain_profile, dict) else [],
         'active_projects': domain_profile.get('active_projects', []) if isinstance(domain_profile, dict) else [],
