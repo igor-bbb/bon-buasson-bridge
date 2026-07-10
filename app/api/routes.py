@@ -131,6 +131,7 @@ from app.assistant_runtime.business_data import (
     get_business_data_sample as get_vectra_business_data_sample,
     get_business_data_summary as get_vectra_business_data_summary,
     get_business_data_manifest as get_vectra_business_data_manifest,
+    get_business_data_first_impression as get_vectra_business_data_first_impression,
     run_business_data_query as run_vectra_business_data_query,
     verify_business_data_access as verify_vectra_business_data_access,
 )
@@ -9500,6 +9501,8 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
             return json_response(_facade_response(operation_type, 'business_data.verify', '/vectra/laboratory/business-data/verify', verify_vectra_business_data_access()))
         if operation_type == 'query':
             return json_response(_facade_response(operation_type, 'business_data.query', '/vectra/laboratory/business-data/query', run_vectra_business_data_query(message=str(payload.get('message') or payload.get('query') or ''), session_id=session_id or 'laboratory-facade')))
+        if operation_type in {'first_impression', 'explore', 'initial_exploration', 'business_first_impression'}:
+            return json_response(_facade_response(operation_type, 'business_data.first_impression', '/vectra/laboratory/facade/business-data', get_vectra_business_data_first_impression(period=period or None, message=str(payload.get('message') or payload.get('query') or ''))))
         level_map = {
             'manager_summary': ('manager', 'manager', '/vectra/laboratory/business-data/summary/manager'),
             'contract_summary': ('network', 'network', '/vectra/laboratory/business-data/summary/network'),

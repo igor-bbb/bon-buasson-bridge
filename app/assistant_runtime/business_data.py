@@ -136,6 +136,17 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "read_only": True,
     },
     {
+        "operation_type": "first_impression",
+        "aliases": ["explore", "initial_exploration", "business_first_impression"],
+        "description": "Exploration-first introduction to Business Data. Runtime handles manifest/status/entities/sample internally and returns a non-technical first professional impression.",
+        "required_parameters": [],
+        "optional_parameters": ["period", "message", "session_id"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "default_behavior": "explore_before_conclusions",
+    },
+    {
         "operation_type": "verify",
         "description": "Business Data facade verification.",
         "required_parameters": [],
@@ -179,8 +190,45 @@ def get_business_data_manifest() -> Dict[str, Any]:
             "do_not_guess_operation_type": True,
             "use_query_for_natural_language_business_questions": True,
             "use_summary_for_business_period_summary": True,
+            "use_first_impression_for_initial_data_acquaintance": True,
             "period_required_for_summary_operations": True,
+            "technical_discovery_is_internal": True,
+            "do_not_ask_product_owner_for_operation_type": True,
         },
+        "exploration_first_policy": {
+            "principle": "When connecting to a Runtime data source for the first time, VECTRA must explore before conclusions.",
+            "user_visible_behavior": "Return a first professional impression of the business data, not a technical explanation of Actions, Facade, Manifest, or operation_type.",
+            "internal_steps": [
+                "read_manifest",
+                "check_status",
+                "inspect_entities",
+                "sample_data_shape",
+                "optionally_read_latest_period_summary",
+                "form_first_impression"
+            ],
+            "prohibited_user_questions": [
+                "Which operation_type should I use?",
+                "Which Action should I call?",
+                "How is Runtime structured?"
+            ]
+        },
+        "common_user_requests": [
+            {
+                "user_request": "Подключись к Business Data и дай первое впечатление.",
+                "recommended_operation_type": "first_impression",
+                "reason": "Initial acquaintance with raw business data without final conclusions."
+            },
+            {
+                "user_request": "Покажи бизнес за период.",
+                "recommended_operation_type": "summary",
+                "required_parameters": ["period"]
+            },
+            {
+                "user_request": "Ответь на свободный бизнес-вопрос.",
+                "recommended_operation_type": "query",
+                "required_parameters": ["message"]
+            }
+        ],
         "large_response_policy": {
             "prefer_period_filter": True,
             "prefer_specific_level_summary_over_raw_query_for_large_requests": True,
@@ -200,6 +248,88 @@ def _field_presence(rows: List[Dict[str, Any]], field: str) -> Dict[str, Any]:
     filled = sum(1 for row in rows if str(row.get(field, "")).strip() != "")
     return {"field": field, "filled": filled, "empty": max(0, len(rows) - filled), "unique_count": len(_unique_values(rows, field))}
 
+
+
+def _safe_preview(values: List[str], limit: int = 8) -> List[str]:
+    return values[: max(0, int(limit))]
+
+
+def get_business_data_first_impression(period: Optional[str] = None, message: str = "") -> Dict[str, Any]:
+    """Return a non-technical first professional impression of Business Data.
+
+    This helper implements Exploration First behavior for Business Data. It uses
+    Runtime discovery internally and returns business-facing observations instead
+    of asking the Product Owner about Actions, Manifest, Facade, or operation_type.
+    """
+    status = get_business_data_status()
+    entities = get_business_data_entities(limit_per_group=12)
+    sample = get_business_data_sample(limit=5)
+
+    selected_period = (period or status.get("latest_period") or "").strip()
+    summary_payload: Dict[str, Any] = {}
+    summary_status = "not_requested"
+    if selected_period:
+        try:
+            summary_payload = get_business_data_summary("business", period=selected_period)
+            summary_status = "ok" if summary_payload.get("status") == "ok" else "degraded"
+        except Exception as exc:  # pragma: no cover - defensive runtime exploration
+            summary_payload = {"status": "error", "reason": str(exc)}
+            summary_status = "error"
+
+    dimensions = status.get("dimension_counts") or {}
+    periods = entities.get("entities", {}).get("period", []) if isinstance(entities.get("entities"), dict) else []
+    managers = entities.get("entities", {}).get("manager", []) if isinstance(entities.get("entities"), dict) else []
+    networks = entities.get("entities", {}).get("network", []) if isinstance(entities.get("entities"), dict) else []
+    categories = entities.get("entities", {}).get("category", []) if isinstance(entities.get("entities"), dict) else []
+    skus = entities.get("entities", {}).get("sku", []) if isinstance(entities.get("entities"), dict) else []
+
+    first_impression = [
+        "Данные выглядят как управленческая модель продаж и финансового результата, а не как разрозненная таблица.",
+        "Структура позволяет идти сверху вниз: период → бизнес → руководитель/менеджер → сеть/контракт → категория → SKU.",
+        "Для первого знакомства корректнее не делать окончательных выводов, а зафиксировать карту данных, уровни анализа и первые зоны для дальнейшей калибровки.",
+    ]
+    if selected_period:
+        first_impression.append(f"Для первичного ориентира можно использовать последний доступный период: {selected_period}.")
+
+    return {
+        "status": "ok" if status.get("business_data_health") == "PASS" else "degraded",
+        "render_mode": "vectra_business_data_first_impression",
+        "verification_status": "PASS" if status.get("business_data_health") == "PASS" else "FAIL",
+        "business_data_connected": bool(status.get("business_data_connected")),
+        "business_data_health": status.get("business_data_health"),
+        "read_only": True,
+        "technical_discovery_performed": True,
+        "technical_details_hidden_from_user": True,
+        "manifest_required_for_operation_selection": True,
+        "operation_type_guessing_used": False,
+        "capitalization_performed": False,
+        "selected_period": selected_period,
+        "summary_status": summary_status,
+        "data_landscape": {
+            "rows_count": status.get("rows_count"),
+            "periods_count": dimensions.get("period"),
+            "managers_count": dimensions.get("manager"),
+            "networks_count": dimensions.get("network"),
+            "categories_count": dimensions.get("category"),
+            "skus_count": dimensions.get("sku"),
+            "periods_preview": _safe_preview([str(v) for v in periods]),
+            "managers_preview": _safe_preview([str(v) for v in managers]),
+            "networks_preview": _safe_preview([str(v) for v in networks]),
+            "categories_preview": _safe_preview([str(v) for v in categories]),
+            "sku_preview": _safe_preview([str(v) for v in skus], limit=6),
+        },
+        "first_professional_impression": first_impression,
+        "business_facing_response_guidance": {
+            "tone": "first_acquaintance",
+            "avoid_final_conclusions": True,
+            "next_step": "Согласовать с Product Owner, какие показатели и уровни анализа считать ключевыми для управленческой работы.",
+        },
+        "sample_shape": {
+            "sample_rows_count": sample.get("sample_rows_count"),
+            "fields": sample.get("fields") or DIMENSION_FIELDS + NUMERIC_FIELDS,
+        },
+        "business_summary_preview": summary_payload if summary_status == "ok" else {},
+    }
 
 def get_business_data_status() -> Dict[str, Any]:
     try:
