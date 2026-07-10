@@ -320,6 +320,10 @@ from app.assistant_runtime.session_archive import (
     import_historical_session as import_vectra_historical_session,
     bootstrap_session_archive as bootstrap_vectra_session_archive,
 )
+from app.assistant_runtime.semantic_extraction import (
+    build_semantic_knowledge_extraction_report as build_vectra_semantic_knowledge_extraction_report,
+    verify_semantic_knowledge_extraction as verify_vectra_semantic_knowledge_extraction,
+)
 from app.assistant_runtime.unified_professional_model import (
     build_unified_archive_context as build_vectra_unified_archive_context,
     build_unified_professional_model as build_vectra_unified_professional_model,
@@ -9601,6 +9605,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'professional_intelligence.build_end_to_end_professional_intelligence_validation', '/vectra/professional-intelligence/e2e-validation', build_vectra_professional_intelligence_e2e_validation(payload), next_action='Run verify_runtime_capitalization.'))
         if operation_type in {'verify_runtime_capitalization', 'verify_runtime_capitalization_integration', 'runtime_capitalization_verify', 'verify_professional_intelligence_end_to_end'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.verify_runtime_capitalization_integration', '/vectra/professional-intelligence/runtime-capitalization/verify', verify_vectra_professional_intelligence_runtime_capitalization()))
+        if operation_type in {'build_semantic_knowledge_extraction', 'semantic_knowledge_extraction', 'extract_semantic_knowledge', 'semantic_extraction_engine'}:
+            return json_response(_facade_response(operation_type, 'semantic_extraction.build_semantic_knowledge_extraction_report', '/vectra/laboratory/facade/memory', build_vectra_semantic_knowledge_extraction_report(payload), next_action='Review semantic extraction quality. Capitalization is not executed by this operation.'))
+        if operation_type in {'verify_semantic_knowledge_extraction', 'verify_semantic_extraction_engine', 'semantic_extraction_verify'}:
+            return json_response(_facade_response(operation_type, 'semantic_extraction.verify_semantic_knowledge_extraction', '/vectra/laboratory/facade/memory', verify_vectra_semantic_knowledge_extraction(payload), next_action='If PASS, rerun build_unified_professional_model on imported archives.'))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':

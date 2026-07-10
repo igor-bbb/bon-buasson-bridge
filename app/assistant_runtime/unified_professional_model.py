@@ -21,6 +21,7 @@ from typing import Any
 import re
 
 from app.assistant_runtime.session_archive import _read_store, get_session_replay_context
+from app.assistant_runtime.semantic_extraction import build_semantic_knowledge_extraction_report
 
 
 MODEL_VERSION = "Unified Professional Model of VECTRA v1.0"
@@ -216,8 +217,17 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
     payload = payload if isinstance(payload, dict) else {}
     context = build_unified_archive_context(payload)
     events = context.get("events") if isinstance(context.get("events"), list) else []
-    candidates = [item for item in (_event_to_knowledge(event) for event in events) if item]
+    semantic_report = build_semantic_knowledge_extraction_report({"events": events})
+    semantic_candidates = semantic_report.get("validated_knowledge_objects") if isinstance(semantic_report.get("validated_knowledge_objects"), list) else []
+    if not semantic_candidates:
+        semantic_candidates = semantic_report.get("knowledge_candidates") if isinstance(semantic_report.get("knowledge_candidates"), list) else []
+    candidates = [_semantic_candidate_to_unified_knowledge(item) for item in semantic_candidates if isinstance(item, dict)]
+    candidates = [item for item in candidates if item]
+    if not candidates:
+        # Safety fallback for legacy archives. The new semantic engine should be the primary path.
+        candidates = [item for item in (_event_to_knowledge(event) for event in events) if item]
     merged, dedup_report = _merge_knowledge(candidates)
+    semantic_quality_report = semantic_report.get("quality_report") if isinstance(semantic_report.get("quality_report"), dict) else {}
 
     sections: dict[str, Any] = {
         "professional_identity": {
@@ -319,6 +329,10 @@ def build_unified_professional_model(payload: dict[str, Any] | None = None) -> d
         "historical_session_exports_processed": context.get("archives_count", 0),
         "historical_events_processed": context.get("events_count", 0),
         "knowledge_candidates_found": dedup_report.get("raw_knowledge_candidates_count", 0),
+        "semantic_segments_detected": (semantic_report.get("segmentation_report") or {}).get("semantic_segments_detected", 0),
+        "knowledge_density": semantic_quality_report.get("knowledge_density"),
+        "knowledge_precision": semantic_quality_report.get("knowledge_precision"),
+        "semantic_extraction_status": semantic_report.get("verification_status") or semantic_quality_report.get("completeness_status"),
         "knowledge_merged_count": dedup_report.get("deduplicated_knowledge_count", 0),
         "duplicates_found_count": dedup_report.get("duplicates_found_count", 0),
         "conflicts_resolved_count": dedup_report.get("conflicts_resolved_count", 0),
