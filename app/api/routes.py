@@ -333,6 +333,10 @@ from app.assistant_runtime.unified_professional_model import (
 from app.assistant_runtime.repository_readback_consistency import (
     verify_repository_readback_consistency as verify_vectra_repository_readback_consistency,
 )
+from app.assistant_runtime.recovery_snapshot_sync import (
+    verify_recovery_snapshot_sync as verify_vectra_recovery_snapshot_sync,
+    rebuild_and_persist_recovery_snapshot_after_capitalization as rebuild_vectra_recovery_snapshot_after_capitalization,
+)
 from app.assistant_runtime.laboratory_behavior import (
     get_laboratory_action_first_policy as get_vectra_laboratory_action_first_policy,
     determine_laboratory_next_action as determine_vectra_laboratory_next_action,
@@ -9614,6 +9618,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'semantic_extraction.verify_semantic_knowledge_extraction', '/vectra/laboratory/facade/memory', verify_vectra_semantic_knowledge_extraction(payload), next_action='If PASS, rerun build_unified_professional_model on imported archives.'))
         if operation_type in {'verify_repository_readback_consistency', 'repository_readback_consistency', 'verify_knowledge_repository_readback', 'knowledge_repository_readback_verify'}:
             return json_response(_facade_response(operation_type, 'repository_readback_consistency.verify_repository_readback_consistency', '/vectra/laboratory/facade/memory', verify_vectra_repository_readback_consistency(payload), next_action='If PASS, Repository readback is consistent. If FAIL, inspect failure_reasons and deltas.'))
+        if operation_type in {'verify_recovery_snapshot_sync', 'recovery_snapshot_sync_verify', 'verify_recovery_sync'}:
+            return json_response(_facade_response(operation_type, 'recovery_snapshot_sync.verify_recovery_snapshot_sync', '/vectra/laboratory/facade/memory', verify_vectra_recovery_snapshot_sync(payload), next_action='If PASS, Recovery Snapshot is synchronized with Repository and Readback.'))
+        if operation_type in {'rebuild_recovery_snapshot', 'sync_recovery_snapshot', 'rebuild_recovery_snapshot_after_capitalization'}:
+            return json_response(_facade_response(operation_type, 'recovery_snapshot_sync.rebuild_and_persist_recovery_snapshot_after_capitalization', '/vectra/laboratory/facade/memory', rebuild_vectra_recovery_snapshot_after_capitalization(payload), next_action='Run verify_repository_readback_consistency.'))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':

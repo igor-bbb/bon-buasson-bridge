@@ -33,6 +33,7 @@ from app.assistant_runtime.knowledge_object import (
     verify_knowledge_object_mapping,
 )
 from app.assistant_runtime.memory_classification import classify_knowledge_item
+from app.assistant_runtime.recovery_snapshot_sync import rebuild_and_persist_recovery_snapshot_after_capitalization
 
 KNOWLEDGE_RELEASE = "LABORATORY-KNOWLEDGE-0010"
 KNOWLEDGE_STATUSES = [
@@ -145,6 +146,19 @@ def _paths() -> Dict[str, Path]:
 def _read_list(path: Path) -> List[Dict[str, Any]]:
     value = _read_json(path, [])
     return value if isinstance(value, list) else []
+
+
+def _sync_recovery_after_successful_capitalization(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Close the capitalization lifecycle with a full Recovery Snapshot rebuild."""
+    try:
+        return rebuild_and_persist_recovery_snapshot_after_capitalization(metadata)
+    except Exception as exc:  # Recovery sync failure must be explicit in reports.
+        return {
+            "status": "FAIL",
+            "verification_status": "FAIL",
+            "error": str(exc),
+            "release": "RECOVERY-SNAPSHOT-SYNC-001",
+        }
 
 
 def _find_by_id(items: List[Dict[str, Any]], key: str, value: str) -> Optional[Dict[str, Any]]:
@@ -485,16 +499,17 @@ def write_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None) -> Dict[
     if readback.get("status") != "PASS":
         return _failed_report(candidate, package, "readback_failed", write_status=write_status, readback=readback)
 
-    recovery = create_recovery_snapshot({"metadata": {"created_by": "knowledge_capitalization", "package_id": package.get("package_id"), "knowledge_id": knowledge_id, "knowledge_type": knowledge_type}})
-    recovery_snapshot_id = (recovery.get("snapshot") or {}).get("snapshot_id") if isinstance(recovery.get("snapshot"), dict) else None
-    recovery_status = "RECOVERY_UPDATED" if recovery_snapshot_id else "FAILED"
+    # Recovery Snapshot is rebuilt only after write and readback have succeeded.
+    recovery = {"status": "PENDING", "reason": "recovery_snapshot_sync_runs_after_report_persist"}
+    recovery_snapshot_id = None
+    recovery_status = "PENDING"
 
     journal_entry_id = f"knowledge-capitalization-{uuid.uuid4().hex[:10]}"
     journal_entry = {
         "entry_id": journal_entry_id,
         "timestamp": now,
         "release": KNOWLEDGE_RELEASE,
-        "status": "CAPITALIZED" if recovery_snapshot_id else "FAILED",
+        "status": "CAPITALIZED",
         "event_type": "knowledge_capitalization",
         "summary": f"Knowledge {knowledge_id} capitalized into {target_repository}.",
         "package_id": package.get("package_id"),
@@ -504,7 +519,7 @@ def write_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None) -> Dict[
     }
     _append_json_list(paths["journal"], journal_entry)
 
-    final_status = "CAPITALIZED" if recovery_snapshot_id else "FAILED"
+    final_status = "CAPITALIZED"
     report_id = f"KCAP-REPORT-{uuid.uuid4().hex[:10].upper()}"
     report = {
         "report_id": report_id,
@@ -526,6 +541,30 @@ def write_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "created_at": now,
     }
     _append_json_list(paths["reports"], report)
+
+    recovery = _sync_recovery_after_successful_capitalization({
+        "created_by": "knowledge_capitalization",
+        "package_id": package.get("package_id"),
+        "capitalization_report_id": report_id,
+        "knowledge_id": knowledge_id,
+        "knowledge_type": knowledge_type,
+        "domain_id": domain if knowledge_type == "business" else "bon_buasson",
+        "knowledge_objects_count": 1,
+    })
+    recovery_snapshot = recovery.get("recovery_snapshot", {}).get("snapshot") if isinstance(recovery.get("recovery_snapshot"), dict) else None
+    recovery_snapshot_id = recovery_snapshot.get("snapshot_id") if isinstance(recovery_snapshot, dict) else None
+    recovery_status = "RECOVERY_UPDATED" if recovery.get("status") == "PASS" and recovery_snapshot_id else "FAILED"
+    final_status = "CAPITALIZED" if recovery_status == "RECOVERY_UPDATED" else "FAILED"
+    report["final_status"] = final_status
+    report["recovery_snapshot_status"] = recovery_status
+    report["recovery_snapshot_id"] = recovery_snapshot_id
+    report["recovery_snapshot_sync_status"] = recovery.get("status")
+    report["statuses_passed"] = ["DETECTED", "CONFIRMED_BY_PRODUCT_OWNER", "CAPITALIZATION_PACKAGE_CREATED", "WRITTEN", "READBACK_PASS", recovery_status, final_status]
+    reports_all = _read_list(paths["reports"])
+    for stored_report in reports_all:
+        if stored_report.get("report_id") == report_id:
+            stored_report.update(report)
+    _write_json(paths["reports"], reports_all)
 
     # Persist package terminal fields.
     packages = _read_list(paths["packages"])
@@ -1483,12 +1522,36 @@ def auto_capitalize_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None
         "errors_count": len(errors),
     }
     _append_json_list(paths["reports"], final_report)
+    final_recovery_sync = {"status": "NOT_EXECUTED"}
+    if all_capitalized:
+        final_recovery_sync = _sync_recovery_after_successful_capitalization({
+            "created_by": "automatic_batch_capitalization",
+            "package_id": built_package.get("package_id"),
+            "capitalization_report_id": final_report_id,
+            "knowledge_objects_count": len(reports),
+            "domain_id": "bon_buasson",
+        })
+        final_snapshot = final_recovery_sync.get("recovery_snapshot", {}).get("snapshot") if isinstance(final_recovery_sync.get("recovery_snapshot"), dict) else None
+        final_report["recovery_snapshot_sync_status"] = final_recovery_sync.get("status")
+        final_report["recovery_snapshot_id"] = final_snapshot.get("snapshot_id") if isinstance(final_snapshot, dict) else None
+        final_report["recovery_snapshot_version"] = final_snapshot.get("snapshot_version") if isinstance(final_snapshot, dict) else None
+        if final_recovery_sync.get("status") != "PASS":
+            final_report["recovery_snapshot_status"] = "FAILED"
+            final_report["final_status"] = "FAILED"
+            errors.append({"stage": "Recovery Snapshot Sync", "result": final_recovery_sync})
+            all_capitalized = False
+        reports_all = _read_list(paths["reports"])
+        for stored_report in reports_all:
+            if stored_report.get("report_id") == final_report_id:
+                stored_report.update(final_report)
+        _write_json(paths["reports"], reports_all)
     _write_json(paths["status"], {
         "status": "ok" if all_capitalized else "degraded",
         "release": KNOWLEDGE_RELEASE,
         "last_package_id": built_package.get("package_id"),
         "last_report_id": final_report_id,
         "last_final_status": final_report.get("final_status"),
+        "recovery_snapshot_sync_status": final_recovery_sync.get("status"),
         "product_owner_approval_required": True,
         "updated_at": _now(),
     })

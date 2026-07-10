@@ -1375,30 +1375,72 @@ def create_recovery_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[s
     base = ensure_repository()
     if not isinstance(payload, dict):
         payload = {}
+    existing_snapshots = sorted((base / 'snapshots').glob('*.json')) if (base / 'snapshots').exists() else []
+    snapshot_version = len(existing_snapshots) + 1
     snapshot_id = str(payload.get('snapshot_id') or f'snapshot-{datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")}-{uuid.uuid4().hex[:6]}')
+    metadata = payload.get('metadata') if isinstance(payload.get('metadata'), dict) else {}
+    domain_profile = _read_json(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json', _seed_bon_buasson_domain_profile())
+    business_knowledge = _read_json(base / 'business_domains' / 'bon_buasson' / 'business_knowledge.json', [])
+    professional_knowledge = _read_json(base / 'knowledge' / 'professional_knowledge.json', [])
+    product_knowledge = _read_json(base / 'knowledge' / 'product_knowledge.json', [])
+    product_decisions = _read_json(base / 'decisions' / 'product_decisions.json', [])
+    capitalization_reports = _read_json(base / 'runtime' / 'knowledge_capitalization' / 'reports.json', [])
+    knowledge_capitalization_status = _read_json(base / 'runtime' / 'knowledge_capitalization' / 'status.json', {})
+    recovery_metadata = {
+        'snapshot_version': snapshot_version,
+        'capitalization_report_id': metadata.get('capitalization_report_id') or knowledge_capitalization_status.get('last_report_id'),
+        'package_id': metadata.get('package_id') or knowledge_capitalization_status.get('last_package_id'),
+        'knowledge_objects_count': metadata.get('knowledge_objects_count') or (len(professional_knowledge) + len(product_knowledge) + len(business_knowledge)),
+        'capitalization_reports_count': len(capitalization_reports) if isinstance(capitalization_reports, list) else 0,
+        'professional_model_version': metadata.get('professional_model_version') or 'current',
+        'synced_at': _now(),
+    }
+    recovery_metadata.update(metadata)
     snapshot = {
         'snapshot_id': snapshot_id,
+        'snapshot_version': snapshot_version,
         'created_at': _now(),
         'release': REPOSITORY_VERSION,
         'state': _read_json(base / 'state' / 'current_state.json', _seed_state()),
         'runtime': _read_json(base / 'runtime' / 'runtime_status.json', {}),
         'knowledge_index': _read_json(base / 'knowledge' / 'knowledge_index.json', []),
-        'professional_knowledge': _read_json(base / 'knowledge' / 'professional_knowledge.json', []),
-        'knowledge_capitalization_status': _read_json(base / 'runtime' / 'knowledge_capitalization' / 'status.json', {}),
+        'professional_knowledge': professional_knowledge,
+        'product_knowledge': product_knowledge,
+        'knowledge_capitalization_status': knowledge_capitalization_status,
+        'capitalization_reports': capitalization_reports if isinstance(capitalization_reports, list) else [],
         'professional_model': _read_json(base / 'professional_model' / 'model.json', _seed_professional_model()),
         'life_model': _read_json(base / 'runtime' / 'life_model' / 'life_model.json', _seed_life_model()),
         'active_business_domain': _read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain()),
-        'bon_buasson_domain_profile': _read_json(base / 'runtime' / 'business_domains' / 'bon_buasson' / 'domain_profile.json', _seed_bon_buasson_domain_profile()),
-        'bon_buasson_business_knowledge': _read_json(base / 'business_domains' / 'bon_buasson' / 'business_knowledge.json', []),
+        'active_business_domains': [_read_json(base / 'runtime' / 'business_domains' / 'active_domain.json', _seed_active_business_domain())],
+        'business_domain_models': {'bon_buasson': domain_profile},
+        'bon_buasson_domain_profile': domain_profile,
+        'bon_buasson_business_knowledge': business_knowledge,
+        'business_knowledge': business_knowledge,
+        'business_standards': domain_profile.get('business_standards', []) if isinstance(domain_profile, dict) else [],
+        'business_decisions': domain_profile.get('business_decisions', []) if isinstance(domain_profile, dict) else [],
+        'active_projects': domain_profile.get('active_projects', []) if isinstance(domain_profile, dict) else [],
+        'professional_standards': _read_json(base / 'knowledge' / 'standards' / 'professional_standards.json', []),
+        'lessons_learned': _read_json(base / 'knowledge' / 'lessons_learned.json', []),
+        'architectural_invariants': _read_json(base / 'knowledge' / 'architecture' / 'architectural_invariants.json', []),
+        'platform_constraints': _read_json(base / 'knowledge' / 'architecture' / 'platform_constraints.json', []),
         'recent_journal_entries': _read_json(base / 'journal' / 'evolution_journal.json', [])[-10:],
         'active_responsibilities': _read_json(base / 'responsibilities' / 'active_responsibilities.json', []),
-        'product_decisions': _read_json(base / 'decisions' / 'product_decisions.json', [])[-20:],
-        'metadata': payload.get('metadata') if isinstance(payload.get('metadata'), dict) else {},
+        'product_decisions': product_decisions,
+        'repository_counts': {
+            'professional_knowledge': len(professional_knowledge) if isinstance(professional_knowledge, list) else 0,
+            'product_knowledge': len(product_knowledge) if isinstance(product_knowledge, list) else 0,
+            'business_knowledge': len(business_knowledge) if isinstance(business_knowledge, list) else 0,
+            'product_decisions': len(product_decisions) if isinstance(product_decisions, list) else 0,
+            'capitalization_reports': len(capitalization_reports) if isinstance(capitalization_reports, list) else 0,
+        },
+        'metadata': recovery_metadata,
     }
     path = base / 'snapshots' / f'{_safe_slug(snapshot_id, "snapshot")}.json'
     _write_json(path, snapshot)
     state = snapshot['state'] if isinstance(snapshot.get('state'), dict) else _seed_state()
     state['last_recovery_snapshot_id'] = snapshot_id
+    state['last_recovery_snapshot_version'] = snapshot_version
+    state['last_recovery_snapshot_synced_at'] = snapshot['created_at']
     state['updated_at'] = _now()
     _write_json(base / 'state' / 'current_state.json', state)
     return {'status': 'ok', 'render_mode': 'assistant_runtime_snapshot', 'snapshot': snapshot, 'path': _relative(path)}
