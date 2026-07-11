@@ -131,6 +131,7 @@ from app.assistant_runtime.business_data import (
     get_business_data_sample as get_vectra_business_data_sample,
     get_business_data_summary as get_vectra_business_data_summary,
     get_business_data_manifest as get_vectra_business_data_manifest,
+    get_business_data_discovery as get_vectra_business_data_discovery,
     get_business_data_first_impression as get_vectra_business_data_first_impression,
     run_business_data_query as run_vectra_business_data_query,
     verify_business_data_access as verify_vectra_business_data_access,
@@ -7976,7 +7977,7 @@ _FACADE_ACTIONS = [
     ('verifyVectraActionCompleteness', 'GET', '/vectra/laboratory/actions/verify', 'Verify VECTRA Action Completeness', 'Checks Runtime Capabilities ↔ Facade Actions ↔ Internal Runtime Services.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Facade for Business Domain restore, activation, profile and knowledge operations.'),
-    ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data status, entities, summaries and query.'),
+    ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
@@ -8124,7 +8125,7 @@ _BUSINESS_GPT_FACADE_ACTIONS = [
         'POST',
         '/vectra/laboratory/facade/business-data',
         'Execute VECTRA Business Data operation',
-        'Read-only facade for Business Data status, entities, summaries and business query operations.',
+        'Read-only facade for Business Data manifest, discovery, status, entities, summaries and business query operations.',
     ),
     (
         'executeVectraBusinessDomainOperation',
@@ -8149,7 +8150,7 @@ def _business_gpt_operation_request_schema() -> dict:
         'properties': {
             'operation_type': {
                 'type': 'string',
-                'description': 'Business operation to execute through the facade, for example status, entities, query, summary or restore_domain.',
+                'description': 'Business operation to execute through the facade, for example manifest, discovery, first_impression, status, entities, query, summary or restore_domain.',
             },
             'payload': {
                 'type': 'object',
@@ -9495,6 +9496,22 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
             return json_response(_facade_response(operation_type, 'business_data.get_status', '/vectra/laboratory/business-data/status', get_vectra_business_data_status()))
         if operation_type == 'entities':
             return json_response(_facade_response(operation_type, 'business_data.get_entities', '/vectra/laboratory/business-data/entities', get_vectra_business_data_entities(limit_per_group=int(payload.get('limit_per_group') or 50))))
+        if operation_type in {'discovery', 'business_discovery', 'discover', 'inspect_source'}:
+            include_samples = payload.get('include_samples', False)
+            if isinstance(include_samples, str):
+                include_samples = include_samples.strip().lower() in {'1', 'true', 'yes', 'on'}
+            return json_response(_facade_response(
+                operation_type,
+                'business_data.discovery',
+                '/vectra/laboratory/facade/business-data',
+                get_vectra_business_data_discovery(
+                    period=period or None,
+                    limit=int(payload.get('limit') or 25),
+                    limit_per_group=int(payload.get('limit_per_group') or 12),
+                    include_samples=bool(include_samples),
+                    sample_size=int(payload.get('sample_size') or 3),
+                ),
+            ))
         if operation_type in {'summary', 'summary_business', 'business_summary', 'summary/business'}:
             return json_response(_facade_response(operation_type, 'business_data.get_summary', '/vectra/laboratory/business-data/summary/business', public_summary(get_vectra_business_data_summary('business', period=period))))
         if operation_type == 'verify':

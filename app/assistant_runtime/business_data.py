@@ -8,6 +8,7 @@ same Business Data source without introducing a second calculation logic.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from app.config import SHEET_URL
 from app.data.loader import normalize_sheet_url, get_csv_text
@@ -26,7 +27,7 @@ from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query
 from app.workspace_runtime import apply_runtime_contract
 
-BUSINESS_DATA_ACCESS_RELEASE = "FOUNDATION-0008-PV"
+BUSINESS_DATA_ACCESS_RELEASE = "BUSINESS-DISCOVERY-ENGINE-001"
 READ_ONLY_ENDPOINTS = [
     "/vectra/laboratory/business-data/status",
     "/vectra/laboratory/business-data/entities",
@@ -136,6 +137,17 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "read_only": True,
     },
     {
+        "operation_type": "discovery",
+        "aliases": ["business_discovery", "discover", "inspect_source"],
+        "description": "Compact structural discovery of Business Data before business analysis.",
+        "required_parameters": [],
+        "optional_parameters": ["period", "limit", "limit_per_group", "include_samples", "sample_size"],
+        "supports_pagination": False,
+        "max_response_size": "medium",
+        "read_only": True,
+        "default_behavior": "structure_before_analysis",
+    },
+    {
         "operation_type": "first_impression",
         "aliases": ["explore", "initial_exploration", "business_first_impression"],
         "description": "Exploration-first introduction to Business Data. Runtime handles manifest/status/entities/sample internally and returns a non-technical first professional impression.",
@@ -190,6 +202,7 @@ def get_business_data_manifest() -> Dict[str, Any]:
             "do_not_guess_operation_type": True,
             "use_query_for_natural_language_business_questions": True,
             "use_summary_for_business_period_summary": True,
+            "use_discovery_for_initial_source_research": True,
             "use_first_impression_for_initial_data_acquaintance": True,
             "period_required_for_summary_operations": True,
             "technical_discovery_is_internal": True,
@@ -201,10 +214,11 @@ def get_business_data_manifest() -> Dict[str, Any]:
             "internal_steps": [
                 "read_manifest",
                 "check_status",
+                "run_compact_discovery",
                 "inspect_entities",
-                "sample_data_shape",
-                "optionally_read_latest_period_summary",
-                "form_first_impression"
+                "assess_data_quality",
+                "build_preliminary_object_map",
+                "form_first_impression_without_business_conclusions"
             ],
             "prohibited_user_questions": [
                 "Which operation_type should I use?",
@@ -244,8 +258,15 @@ def _unique_values(rows: List[Dict[str, Any]], field: str, limit: Optional[int] 
     return values[: max(0, int(limit))]
 
 
+def _is_filled(value: Any) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip()
+    return bool(text) and text.lower() not in {"none", "nan", "null"}
+
+
 def _field_presence(rows: List[Dict[str, Any]], field: str) -> Dict[str, Any]:
-    filled = sum(1 for row in rows if str(row.get(field, "")).strip() != "")
+    filled = sum(1 for row in rows if _is_filled(row.get(field)))
     return {"field": field, "filled": filled, "empty": max(0, len(rows) - filled), "unique_count": len(_unique_values(rows, field))}
 
 
@@ -254,81 +275,213 @@ def _safe_preview(values: List[str], limit: int = 8) -> List[str]:
     return values[: max(0, int(limit))]
 
 
-def get_business_data_first_impression(period: Optional[str] = None, message: str = "") -> Dict[str, Any]:
-    """Return a non-technical first professional impression of Business Data.
 
-    This helper implements Exploration First behavior for Business Data. It uses
-    Runtime discovery internally and returns business-facing observations instead
-    of asking the Product Owner about Actions, Manifest, Facade, or operation_type.
-    """
-    status = get_business_data_status()
-    entities = get_business_data_entities(limit_per_group=12)
-    sample = get_business_data_sample(limit=5)
+def _filter_rows_by_period(rows: List[Dict[str, Any]], period: Optional[str]) -> List[Dict[str, Any]]:
+    selected = (period or "").strip()
+    if not selected:
+        return rows
+    return [row for row in rows if str(row.get("period", "")).strip() == selected]
 
-    selected_period = (period or status.get("latest_period") or "").strip()
-    summary_payload: Dict[str, Any] = {}
-    summary_status = "not_requested"
-    if selected_period:
+
+def _period_gaps(periods: List[str]) -> List[str]:
+    parsed = []
+    for value in periods:
         try:
-            summary_payload = get_business_data_summary("business", period=selected_period)
-            summary_status = "ok" if summary_payload.get("status") == "ok" else "degraded"
-        except Exception as exc:  # pragma: no cover - defensive runtime exploration
-            summary_payload = {"status": "error", "reason": str(exc)}
-            summary_status = "error"
+            parsed.append(datetime.strptime(value, "%Y-%m"))
+        except (TypeError, ValueError):
+            continue
+    if len(parsed) < 2:
+        return []
+    parsed = sorted(set(parsed))
+    present = {item.strftime("%Y-%m") for item in parsed}
+    cursor = parsed[0]
+    last = parsed[-1]
+    gaps: List[str] = []
+    while cursor <= last:
+        key = cursor.strftime("%Y-%m")
+        if key not in present:
+            gaps.append(key)
+        year = cursor.year + (1 if cursor.month == 12 else 0)
+        month = 1 if cursor.month == 12 else cursor.month + 1
+        cursor = cursor.replace(year=year, month=month)
+    return gaps
 
-    dimensions = status.get("dimension_counts") or {}
-    periods = entities.get("entities", {}).get("period", []) if isinstance(entities.get("entities"), dict) else []
-    managers = entities.get("entities", {}).get("manager", []) if isinstance(entities.get("entities"), dict) else []
-    networks = entities.get("entities", {}).get("network", []) if isinstance(entities.get("entities"), dict) else []
-    categories = entities.get("entities", {}).get("category", []) if isinstance(entities.get("entities"), dict) else []
-    skus = entities.get("entities", {}).get("sku", []) if isinstance(entities.get("entities"), dict) else []
 
-    first_impression = [
-        "Данные выглядят как управленческая модель продаж и финансового результата, а не как разрозненная таблица.",
-        "Структура позволяет идти сверху вниз: период → бизнес → руководитель/менеджер → сеть/контракт → категория → SKU.",
-        "Для первого знакомства корректнее не делать окончательных выводов, а зафиксировать карту данных, уровни анализа и первые зоны для дальнейшей калибровки.",
+def _completeness(rows: List[Dict[str, Any]], fields: List[str]) -> List[Dict[str, Any]]:
+    total = len(rows)
+    result: List[Dict[str, Any]] = []
+    for field in fields:
+        presence = _field_presence(rows, field)
+        filled = int(presence["filled"])
+        presence["fill_rate_percent"] = round((filled / total * 100.0), 2) if total else 0.0
+        result.append(presence)
+    return result
+
+
+def get_business_data_discovery(
+    period: Optional[str] = None,
+    limit: int = 25,
+    limit_per_group: int = 12,
+    include_samples: bool = False,
+    sample_size: int = 3,
+) -> Dict[str, Any]:
+    """Return a compact Business Data Discovery Report.
+
+    Discovery describes source structure, volume, cardinality, completeness and
+    time coverage. It intentionally does not run an executive summary or infer
+    causes, recommendations or business performance conclusions.
+    """
+    safe_limit = min(max(int(limit or 25), 1), 100)
+    safe_group_limit = min(max(int(limit_per_group or 12), 1), 25)
+    safe_sample_size = min(max(int(sample_size or 3), 1), 10)
+    try:
+        all_rows = load_raw_rows()
+        rows = _filter_rows_by_period(all_rows, period)
+        available_periods = _unique_values(all_rows, "period")
+        selected_periods = _unique_values(rows, "period")
+        fields = sorted({str(key) for row in rows[:safe_limit] for key in row.keys()})
+        dimensions = {field: len(_unique_values(rows, field)) for field in DIMENSION_FIELDS}
+        quality = _completeness(rows, DIMENSION_FIELDS + NUMERIC_FIELDS)
+        missing_fields = [item["field"] for item in quality if item["filled"] == 0]
+        partially_filled_fields = [item["field"] for item in quality if 0 < item["filled"] < len(rows)]
+        period_gaps = _period_gaps(available_periods)
+        preview = {field: _unique_values(rows, field, limit=safe_group_limit) for field in DIMENSION_FIELDS}
+        sample_rows = rows[:safe_sample_size] if include_samples else []
+        status = "ok"
+        error = None
+    except Exception as exc:  # pragma: no cover - defensive Action response
+        all_rows = []
+        rows = []
+        available_periods = []
+        selected_periods = []
+        fields = []
+        dimensions = {field: 0 for field in DIMENSION_FIELDS}
+        quality = []
+        missing_fields = DIMENSION_FIELDS + NUMERIC_FIELDS
+        partially_filled_fields = []
+        period_gaps = []
+        preview = {field: [] for field in DIMENSION_FIELDS}
+        sample_rows = []
+        status = "degraded"
+        error = str(exc)
+
+    preliminary_object_map = [
+        {"from": "business", "to": "manager_top", "confidence": "medium", "status": "observation"},
+        {"from": "manager_top", "to": "manager", "confidence": "high", "status": "observation"},
+        {"from": "manager", "to": "network", "confidence": "medium", "status": "observation"},
+        {"from": "network", "to": "category", "confidence": "medium", "status": "observation"},
+        {"from": "category", "to": "tmc_group", "confidence": "high", "status": "observation"},
+        {"from": "tmc_group", "to": "sku", "confidence": "high", "status": "observation"},
     ]
-    if selected_period:
-        first_impression.append(f"Для первичного ориентира можно использовать последний доступный период: {selected_period}.")
-
+    unknown_business_meanings = [
+        {"field": "finrez_pre", "question": "Чем финансовый результат ДО отличается от итогового финансового результата?"},
+        {"field": "retro_bonus", "question": "Какие начисления и договорные условия входят в ретро-бонус?"},
+        {"field": "network", "question": "Network обозначает сеть, клиента или договорный контур?"},
+        {"field": "markup", "question": "Какой метод расчёта наценки является бизнес-стандартом?"},
+        {"field": "margin_pre", "question": "Какой управленческий смысл закреплён за маржой ДО?"},
+    ]
     return {
-        "status": "ok" if status.get("business_data_health") == "PASS" else "degraded",
+        "status": status,
+        "render_mode": "vectra_business_data_discovery_report",
+        "release": BUSINESS_DATA_ACCESS_RELEASE,
+        "verification_status": "PASS" if status == "ok" and bool(rows) else "FAIL",
+        "business_data_connected": bool(all_rows),
+        "read_only": True,
+        "capitalization_performed": False,
+        "deep_business_analysis_performed": False,
+        "manifest_used": True,
+        "operation_type_guessing_used": False,
+        "selected_period": (period or "").strip() or None,
+        "source": {
+            "source_type": "Google Sheets CSV via Runtime data loader",
+            "access_mode": "read_only",
+            "rows_count": len(rows),
+            "total_rows_count": len(all_rows),
+        },
+        "time_structure": {
+            "periods_count": len(selected_periods if period else available_periods),
+            "first_period": (selected_periods if period else available_periods)[0] if (selected_periods if period else available_periods) else None,
+            "latest_period": (selected_periods if period else available_periods)[-1] if (selected_periods if period else available_periods) else None,
+            "periods": (selected_periods if period else available_periods)[:safe_limit],
+            "periods_truncated": len(selected_periods if period else available_periods) > safe_limit,
+            "missing_periods": period_gaps[:safe_limit],
+            "regularity": "monthly_without_gaps" if available_periods and not period_gaps else ("monthly_with_gaps" if available_periods else "unknown"),
+            "history_sufficient_for_trend_analysis": len(available_periods) >= 12,
+        },
+        "schema": {
+            "fields": fields,
+            "dimensions": DIMENSION_FIELDS,
+            "measures": NUMERIC_FIELDS,
+            "grain_hypothesis": ["period", "business", "manager_top", "manager", "network", "category", "tmc_group", "sku"],
+            "grain_status": "observation_requires_business_confirmation",
+        },
+        "cardinality": dimensions,
+        "entity_preview": preview,
+        "data_quality": {
+            "status": "PASS" if not missing_fields else "WARNING",
+            "field_completeness": quality,
+            "missing_fields": missing_fields,
+            "partially_filled_fields": partially_filled_fields,
+        },
+        "preliminary_object_map": preliminary_object_map,
+        "unknown_business_meanings": unknown_business_meanings,
+        "business_source_profile": {
+            "profile_type": "runtime_observation_not_business_knowledge",
+            "schema_fields": fields,
+            "dimension_cardinality": dimensions,
+            "periods_count": len(available_periods),
+            "latest_period": available_periods[-1] if available_periods else None,
+        },
+        "confirmed_facts": [
+            "Источник доступен в режиме только чтения." if all_rows else "Источник данных недоступен.",
+            f"Доступно строк: {len(rows)}.",
+            f"Доступно периодов: {len(selected_periods if period else available_periods)}.",
+        ],
+        "observations": [
+            "SKU выглядит наиболее детальным объектным уровнем.",
+            "Данные имеют иерархическую структуру, но связи требуют подтверждения Product Owner.",
+            "Показатели отделимы от измерений для последующего управленческого анализа.",
+        ],
+        "recommended_next_step": "Подтвердить бизнес-смысл неизвестных показателей и затем выбрать период или объект для анализа.",
+        "samples": sample_rows,
+        "samples_included": bool(include_samples),
+        "error": error,
+    }
+
+
+def get_business_data_first_impression(period: Optional[str] = None, message: str = "") -> Dict[str, Any]:
+    """Return a business-facing introduction based on structural discovery only."""
+    discovery = get_business_data_discovery(period=period, include_samples=False)
+    source = discovery.get("source") or {}
+    time_structure = discovery.get("time_structure") or {}
+    cardinality = discovery.get("cardinality") or {}
+    return {
+        "status": discovery.get("status"),
         "render_mode": "vectra_business_data_first_impression",
-        "verification_status": "PASS" if status.get("business_data_health") == "PASS" else "FAIL",
-        "business_data_connected": bool(status.get("business_data_connected")),
-        "business_data_health": status.get("business_data_health"),
+        "release": BUSINESS_DATA_ACCESS_RELEASE,
+        "verification_status": discovery.get("verification_status"),
+        "business_data_connected": discovery.get("business_data_connected"),
         "read_only": True,
         "technical_discovery_performed": True,
         "technical_details_hidden_from_user": True,
-        "manifest_required_for_operation_selection": True,
-        "operation_type_guessing_used": False,
+        "deep_business_analysis_performed": False,
         "capitalization_performed": False,
-        "selected_period": selected_period,
-        "summary_status": summary_status,
-        "data_landscape": {
-            "rows_count": status.get("rows_count"),
-            "periods_count": dimensions.get("period"),
-            "managers_count": dimensions.get("manager"),
-            "networks_count": dimensions.get("network"),
-            "categories_count": dimensions.get("category"),
-            "skus_count": dimensions.get("sku"),
-            "periods_preview": _safe_preview([str(v) for v in periods]),
-            "managers_preview": _safe_preview([str(v) for v in managers]),
-            "networks_preview": _safe_preview([str(v) for v in networks]),
-            "categories_preview": _safe_preview([str(v) for v in categories]),
-            "sku_preview": _safe_preview([str(v) for v in skus], limit=6),
+        "selected_period": discovery.get("selected_period"),
+        "confirmed_facts": {
+            "rows_count": source.get("rows_count"),
+            "total_rows_count": source.get("total_rows_count"),
+            "periods_count": time_structure.get("periods_count"),
+            "first_period": time_structure.get("first_period"),
+            "latest_period": time_structure.get("latest_period"),
+            "dimensions": cardinality,
+            "measures": (discovery.get("schema") or {}).get("measures", []),
+            "data_quality": discovery.get("data_quality"),
         },
-        "first_professional_impression": first_impression,
-        "business_facing_response_guidance": {
-            "tone": "first_acquaintance",
-            "avoid_final_conclusions": True,
-            "next_step": "Согласовать с Product Owner, какие показатели и уровни анализа считать ключевыми для управленческой работы.",
-        },
-        "sample_shape": {
-            "sample_rows_count": sample.get("sample_rows_count"),
-            "fields": sample.get("fields") or DIMENSION_FIELDS + NUMERIC_FIELDS,
-        },
-        "business_summary_preview": summary_payload if summary_status == "ok" else {},
+        "observations": discovery.get("observations", []),
+        "questions_for_product_owner": discovery.get("unknown_business_meanings", []),
+        "preliminary_object_map": discovery.get("preliminary_object_map", []),
+        "recommended_next_step": discovery.get("recommended_next_step"),
+        "discovery_report": discovery,
     }
 
 def get_business_data_status() -> Dict[str, Any]:
