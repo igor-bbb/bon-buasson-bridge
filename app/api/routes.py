@@ -100,6 +100,9 @@ from app.assistant_runtime.repository import (
     get_active_business_domain as get_vectra_active_business_domain,
     activate_business_domain as activate_vectra_business_domain,
     restore_business_domain as restore_vectra_business_domain,
+    load_business_core as load_vectra_business_core,
+    get_business_readiness_status as get_vectra_business_readiness_status,
+    start_business_working_session as start_vectra_business_working_session,
     capitalize_business_domain_context as capitalize_vectra_business_domain_context,
     verify_business_domain_framework as verify_vectra_business_domain_framework,
     get_life_model as get_vectra_life_model,
@@ -9148,16 +9151,22 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
     domain_restore = restore_vectra_business_domain(domain_name)
     professional_knowledge = list_vectra_professional_knowledge()
     business_knowledge = get_vectra_domain_knowledge(domain=domain_name)
+    business_registry = get_vectra_business_domain_registry()
+    business_readiness = get_vectra_business_readiness_status()
     result = {
         'status': 'ok',
         'render_mode': 'vectra_laboratory_state_restore',
-        'restore_sequence': ['Restore Professional State', 'Restore Active Business Domain', 'Restore Professional Knowledge', 'Restore Business Knowledge'],
+        'restore_sequence': ['Restore Professional State', 'Read Available Business Domains', 'Wait for or confirm Business Selection', 'Load Selected Business Core'],
+        'available_businesses': (business_registry.get('business_domain_registry') or {}).get('domains', []),
+        'business_readiness': business_readiness,
         'professional_body': professional_body,
         'active_business_domain': active_domain,
         'business_domain_restore': domain_restore,
         'professional_knowledge': professional_knowledge,
         'business_knowledge': business_knowledge,
-        'final_status': 'RESTORED',
+        'final_status': 'PROFESSIONAL_READY' if business_readiness.get('business_readiness_status') == 'BUSINESS_DOMAIN_NOT_ACTIVE' else business_readiness.get('business_readiness_status'),
+        'business_data_auto_started': False,
+        'next_dialogue': 'Select or confirm a business, then continue the working dialogue. Connect Business Data only when the user request requires factual data.',
     }
     return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action='Continue Product Verification through facade Actions.'))
 
@@ -9464,8 +9473,22 @@ def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_labo
     if _requires_product_owner_approval(operation_type) and not approval:
         return json_response(_facade_error(operation_type, 'Product Owner approval is required.', runtime_service='business_domain_facade'))
     try:
+        if operation_type in {'list_domains', 'available_businesses'}:
+            return json_response(_facade_response(operation_type, 'repository.get_business_domain_registry', '/vectra/domains', get_vectra_business_domain_registry(), next_action='Ask Product Owner which business to activate.'))
+        if operation_type in {'start_session', 'begin_working_session'}:
+            return json_response(_facade_response(operation_type, 'repository.start_business_working_session', '/vectra/domain/session/start', start_vectra_business_working_session(payload), next_action='Continue the dialogue from the returned Business Readiness state.'))
         if operation_type == 'activate_domain':
-            return json_response(_facade_response(operation_type, 'repository.activate_business_domain', '/vectra/domain/activate', activate_vectra_business_domain(d)))
+            payload['domain_id'] = d
+            payload.setdefault('session_id', session_id)
+            payload.setdefault('request_id', request_id)
+            return json_response(_facade_response(operation_type, 'repository.activate_business_domain', '/vectra/domain/activate', activate_vectra_business_domain(payload), next_action='Continue business dialogue. Do not connect Business Data unless the current request requires facts.'))
+        if operation_type == 'load_business_core':
+            payload['domain_id'] = d
+            payload.setdefault('session_id', session_id)
+            payload.setdefault('request_id', request_id)
+            return json_response(_facade_response(operation_type, 'repository.load_business_core', '/vectra/domain/business-core/load', load_vectra_business_core(payload), next_action='Continue business dialogue. Business Data remains disconnected until needed.'))
+        if operation_type in {'business_readiness', 'get_business_readiness'}:
+            return json_response(_facade_response(operation_type, 'repository.get_business_readiness_status', '/vectra/domain/business-readiness', get_vectra_business_readiness_status()))
         if operation_type == 'restore_domain':
             return json_response(_facade_response(operation_type, 'repository.restore_business_domain', '/vectra/domain/recover', restore_vectra_business_domain(d)))
         if operation_type == 'get_domain_profile':

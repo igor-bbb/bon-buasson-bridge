@@ -2448,14 +2448,24 @@ def activate_business_domain(payload: Optional[Dict[str, Any]] = None) -> Dict[s
         'source': active['activation_source'],
     }
     _append_json_list(base / 'runtime' / 'business_domains' / domain_id / 'activation_reports.json', report)
+    business_core = load_business_core({
+        'domain_id': domain_id,
+        'session_id': payload.get('session_id'),
+        'request_id': payload.get('request_id'),
+    })
     payload_out = {
-        'status': 'PASS',
+        'status': 'PASS' if business_core.get('business_readiness_status') in {'BUSINESS_READY', 'BUSINESS_READY_PARTIAL'} else 'FAIL',
         'render_mode': 'vectra_business_domain_activation',
         'release': BUSINESS_DOMAIN_RELEASE,
         'active_domain': active,
         'domain_profile': profile_payload.get('domain_profile'),
         'professional_identity_changed': False,
-        'human_summary': f'Business Domain {domain_id} активирован. VECTRA использует Vocabulary, Decision Model, Business Model, Product History и Active Projects данного Domain.',
+        'business_core': business_core,
+        'business_readiness_status': business_core.get('business_readiness_status'),
+        'business_data_connected': False,
+        'business_data_auto_started': False,
+        'next_dialogue': business_core.get('next_dialogue'),
+        'human_summary': f'Бизнес {_domain_display_name(domain_id)} выбран. Его подтверждённый бизнес-контекст загружен. Business Data автоматически не подключалась; дальнейший шаг определяется в диалоге.',
     }
     return _with_workspace_markdown(payload_out, f'Активация Business Domain: {domain_id}', payload_out)
 
@@ -2508,44 +2518,232 @@ def restore_business_domain(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict
     return _with_workspace_markdown(payload, f'Восстановление Business Domain: {domain_key}', payload)
 
 
+
+BUSINESS_CORE_RELEASE = "BUSINESS-CORE-LOADER-001"
+
+def _business_core_status_path() -> Path:
+    return ensure_repository() / "runtime" / "business_domains" / "business_core_status.json"
+
+def _business_session_context_path(domain_id: str) -> Path:
+    return _domain_path(domain_id) / "session_business_context.json"
+
+def get_business_readiness_status() -> Dict[str, Any]:
+    value = _read_json(_business_core_status_path(), {})
+    if isinstance(value, dict) and value:
+        return value
+    return {
+        "status": "ok",
+        "business_readiness_status": "BUSINESS_DOMAIN_NOT_ACTIVE",
+        "business_core_status": "not_loaded",
+        "active_domain": None,
+        "updated_at": _now(),
+    }
+
+def load_business_core(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        payload = {}
+    base = ensure_repository()
+    active_payload = get_active_business_domain()
+    active = active_payload.get("active_domain") if isinstance(active_payload, dict) else {}
+    active_id = (active or {}).get("active_domain_id") if isinstance(active, dict) else None
+    requested = _canonical_domain_id(payload.get("domain_id") or payload.get("domain") or active_id or DEFAULT_BUSINESS_DOMAIN_ID)
+    now = _now()
+    if not active_id or _canonical_domain_id(active_id) != requested:
+        result = {
+            "status": "blocked",
+            "release": BUSINESS_CORE_RELEASE,
+            "business_readiness_status": "BUSINESS_DOMAIN_NOT_ACTIVE",
+            "business_core_status": "not_loaded",
+            "requested_domain": requested,
+            "active_domain": active_id,
+            "errors": ["Сначала выберите и активируйте бизнес."],
+            "warnings": [],
+            "business_data_auto_started": False,
+            "next_dialogue": "Покажите доступные бизнесы и попросите Product Owner выбрать бизнес.",
+            "updated_at": now,
+        }
+        _write_json(_business_core_status_path(), result)
+        return result
+    profile_payload = get_business_domain_profile(requested)
+    profile = profile_payload.get("domain_profile") if isinstance(profile_payload, dict) else {}
+    if not isinstance(profile, dict) or profile_payload.get("status") != "ok":
+        result = {
+            "status": "error",
+            "release": BUSINESS_CORE_RELEASE,
+            "domain": requested,
+            "business_readiness_status": "BUSINESS_CORE_LOAD_FAILED",
+            "business_core_status": "load_failed",
+            "errors": ["Профиль выбранного бизнеса недоступен."],
+            "warnings": [],
+            "business_data_auto_started": False,
+            "updated_at": now,
+        }
+        _write_json(_business_core_status_path(), result)
+        return result
+    knowledge = _business_knowledge_for_recovery_snapshot(base, requested)
+    recovery = _read_json(_domain_path(requested) / "recovery_snapshot.json", {})
+    sections = {
+        "business_identity": profile.get("business_identity"),
+        "business_strategy": profile.get("business_strategy"),
+        "business_model": profile.get("business_model"),
+        "object_model": profile.get("object_model"),
+        "vocabulary": profile.get("vocabulary"),
+        "business_standards": profile.get("business_standards"),
+        "business_knowledge": knowledge,
+        "business_decisions": profile.get("business_decisions"),
+        "active_projects": profile.get("active_projects"),
+        "workspace_model": profile.get("workspace_model"),
+    }
+    required = list(sections)
+    loaded, empty, failed = [], [], []
+    for name, value in sections.items():
+        if value is None:
+            failed.append(name)
+        else:
+            loaded.append(name)
+            if isinstance(value, (dict, list)) and not value:
+                empty.append(name)
+    isolation_errors = []
+    for item in knowledge:
+        if not isinstance(item, dict):
+            continue
+        item_domain = _canonical_domain_id(item.get("domain_id") or item.get("business_domain") or item.get("domain") or requested)
+        if item_domain != requested:
+            isolation_errors.append(str(item.get("knowledge_id") or item.get("id") or "unknown"))
+    recovery_ok = isinstance(recovery, dict) and _canonical_domain_id(recovery.get("domain_id") or requested) == requested
+    if isolation_errors:
+        readiness = "BUSINESS_CORE_INCONSISTENT"
+    elif failed:
+        readiness = "BUSINESS_CORE_LOAD_FAILED"
+    elif not any(bool(v) for v in sections.values()):
+        readiness = "BUSINESS_CORE_EMPTY"
+    elif not recovery_ok:
+        readiness = "BUSINESS_READY_PARTIAL"
+    else:
+        readiness = "BUSINESS_READY"
+    vocabulary = profile.get("vocabulary") if isinstance(profile.get("vocabulary"), dict) else {}
+    context = {
+        "active_domain": requested,
+        "display_name": _domain_display_name(requested),
+        "business_readiness_status": readiness,
+        "recognized_objects": profile.get("object_model") or {},
+        "recognized_metrics": {k: v for k, v in vocabulary.items() if k in {"revenue", "cost", "finrez", "finrez_pre", "margin_pre", "markup", "retro", "retro_bonus", "logistics_cost", "personnel_cost", "other_costs"}},
+        "business_vocabulary": vocabulary,
+        "interpretation_rules": profile.get("business_standards") or [],
+        "active_decisions": profile.get("business_decisions") or [],
+        "active_projects": profile.get("active_projects") or [],
+        "analysis_constraints": {
+            "business_data_auto_connect": False,
+            "business_data_requires_dialogue_need": True,
+            "unknown_terms_must_not_be_invented": True,
+            "automatic_knowledge_write": False,
+        },
+        "source_knowledge_ids": [str(i.get("knowledge_id")) for i in knowledge if isinstance(i, dict) and i.get("knowledge_id")],
+        "loaded_at": now,
+    }
+    _write_json(_business_session_context_path(requested), context)
+    result = {
+        "status": "ok" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "degraded",
+        "release": BUSINESS_CORE_RELEASE,
+        "domain": requested,
+        "domain_display_name": _domain_display_name(requested),
+        "domain_activation_status": "active",
+        "business_core_status": "loaded" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "not_ready",
+        "business_readiness_status": readiness,
+        "business_core_version": str((profile.get("domain_manifest") or {}).get("version") or "1.0"),
+        "loaded_at": now,
+        **sections,
+        "session_business_context": context,
+        "completeness": {
+            "status": "complete" if readiness == "BUSINESS_READY" else "partial" if readiness == "BUSINESS_READY_PARTIAL" else "failed",
+            "required_sections": required,
+            "loaded_sections": loaded,
+            "missing_sections": failed,
+            "empty_sections": empty,
+            "failed_sections": failed,
+        },
+        "verification": {
+            "domain_isolation_confirmed": not isolation_errors,
+            "readback_confirmed": isinstance(knowledge, list),
+            "knowledge_integrity_confirmed": not isolation_errors,
+            "recovery_snapshot_consistent": recovery_ok,
+        },
+        "warnings": [] if recovery_ok else ["Recovery Snapshot недоступен или не совпадает с выбранным бизнесом."],
+        "errors": [] if not isolation_errors else [f"Обнаружены знания другого домена: {', '.join(isolation_errors)}"],
+        "next_dialogue": "Бизнес-контекст готов. Можно работать со знаниями и проектами либо подключить Business Data, когда текущий вопрос потребует фактических показателей.",
+        "business_data_connected": False,
+        "business_data_auto_started": False,
+        "automatic_knowledge_write": False,
+        "updated_at": now,
+    }
+    _write_json(_business_core_status_path(), result)
+    _append_json_list(_domain_path(requested) / "business_core_load_reports.json", {
+        "report_id": f"business-core-load-{uuid.uuid4().hex[:10]}",
+        "session_id": payload.get("session_id"),
+        "request_id": payload.get("request_id"),
+        "domain": requested,
+        "started_at": now,
+        "finished_at": _now(),
+        "loaded_sections": loaded,
+        "missing_sections": failed,
+        "empty_sections": empty,
+        "knowledge_count": len(knowledge),
+        "vocabulary_count": len(vocabulary),
+        "business_decisions_count": len(profile.get("business_decisions") or []),
+        "active_projects_count": len(profile.get("active_projects") or []),
+        "business_readiness_status": readiness,
+    })
+    return result
+
 def start_business_working_session(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         payload = {}
-    domain_id = _canonical_domain_id(payload.get('domain_id') or payload.get('domain') or DEFAULT_BUSINESS_DOMAIN_ID)
-    activation = activate_business_domain({'domain_id': domain_id, 'source': payload.get('source') or 'Начать рабочую сессию'})
-    restoration = restore_business_domain(domain_id)
-    profile = restoration.get('domain_profile') if isinstance(restoration, dict) else {}
-    health = restoration.get('domain_health') if isinstance(restoration, dict) else {}
-    status = 'PASS' if activation.get('status') == 'PASS' and restoration.get('status') == 'PASS' else 'FAIL'
-    payload_out = {
-        'status': status,
+    requested = payload.get('domain_id') or payload.get('domain') or payload.get('business')
+    if not requested:
+        registry_payload = get_business_domain_registry()
+        registry = registry_payload.get('business_domain_registry') if isinstance(registry_payload, dict) else {}
+        domains = registry.get('domains') if isinstance(registry, dict) else []
+        return _with_workspace_markdown({
+            'status': 'AWAITING_BUSINESS_SELECTION',
+            'render_mode': 'vectra_business_working_session_startup',
+            'release': BUSINESS_CORE_RELEASE,
+            'professional_state_restored': True,
+            'business_selected': False,
+            'available_businesses': domains or [],
+            'business_readiness_status': 'BUSINESS_DOMAIN_NOT_ACTIVE',
+            'business_data_connected': False,
+            'business_data_auto_started': False,
+            'human_summary': 'Профессиональная модель VECTRA восстановлена. Выберите бизнес, с которым продолжаем работу.',
+            'next_dialogue': 'Покажите доступные бизнесы и спросите Product Owner, с каким бизнесом работаем.',
+        }, 'Начало рабочей сессии VECTRA')
+    domain_id = _canonical_domain_id(requested)
+    activation = activate_business_domain({
+        'domain_id': domain_id,
+        'source': payload.get('source') or 'Product Owner selected business',
+        'session_id': payload.get('session_id'),
+        'request_id': payload.get('request_id'),
+    })
+    core = activation.get('business_core') if isinstance(activation, dict) else {}
+    readiness = core.get('business_readiness_status') if isinstance(core, dict) else 'BUSINESS_CORE_LOAD_FAILED'
+    return _with_workspace_markdown({
+        'status': 'PASS' if readiness in {'BUSINESS_READY', 'BUSINESS_READY_PARTIAL'} else 'FAIL',
         'render_mode': 'vectra_business_working_session_startup',
-        'release': BUSINESS_DOMAIN_RELEASE,
-        'startup_cycle': [
-            'Restore Professional Identity',
-            'Activate Business Domain',
-            'Restore Business Domain Model',
-            'Business Domain Health Check',
-            'Activate Workspace',
-            'Ready for Work',
-        ],
+        'release': BUSINESS_CORE_RELEASE,
+        'professional_state_restored': True,
+        'business_selected': True,
         'active_business_domain': {
             'domain_id': domain_id,
             'display_name': _domain_display_name(domain_id),
             'status': 'active',
         },
-        'professional_identity_restored': True,
-        'business_domain_model_restored': restoration.get('business_context_restored') is True,
-        'business_domain_health': health,
-        'domain_manifest': profile.get('domain_manifest') if isinstance(profile, dict) else {},
-        'workspace_activation': {
-            'status': 'PASS' if status == 'PASS' else 'BLOCKED',
-            'active_workspace_model': profile.get('workspace_model') if isinstance(profile, dict) else {},
-        },
-        'ready_for_work': status == 'PASS',
-        'human_summary': f'Активный Business Domain: {_domain_display_name(domain_id)}. Восстановлены бизнес-идентичность, объектная модель, терминология, рабочие столы, модель принятия решений, бизнес-знания, активные проекты и бизнес-стандарты.',
-    }
-    return _with_workspace_markdown(payload_out, 'Начало рабочей сессии VECTRA', payload_out)
+        'business_core': core,
+        'business_readiness_status': readiness,
+        'business_data_connected': False,
+        'business_data_auto_started': False,
+        'ready_for_business_dialogue': readiness in {'BUSINESS_READY', 'BUSINESS_READY_PARTIAL'},
+        'human_summary': f'Бизнес {_domain_display_name(domain_id)} подключён. Его знания, терминология, модель, решения и проекты загружены. Business Data пока не подключалась.',
+        'next_dialogue': 'Продолжите живой рабочий диалог. Подключайте Business Data только когда текущий вопрос требует фактических показателей.',
+    }, 'Начало рабочей сессии VECTRA')
 
 
 def verify_business_domain_model(domain_id: str = DEFAULT_BUSINESS_DOMAIN_ID) -> Dict[str, Any]:

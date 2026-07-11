@@ -380,6 +380,12 @@ def get_business_data_discovery(
         {"field": "markup", "question": "Какой метод расчёта наценки является бизнес-стандартом?"},
         {"field": "margin_pre", "question": "Какой управленческий смысл закреплён за маржой ДО?"},
     ]
+    readiness_guard = _business_data_interpretation_guard(technical_discovery=True)
+    readiness = _business_readiness()
+    business_context = readiness.get("session_business_context") if isinstance(readiness, dict) else {}
+    vocabulary = business_context.get("business_vocabulary") if isinstance(business_context, dict) else {}
+    if isinstance(vocabulary, dict) and vocabulary:
+        unknown_business_meanings = [item for item in unknown_business_meanings if item.get("field") not in vocabulary]
     return {
         "status": status,
         "render_mode": "vectra_business_data_discovery_report",
@@ -389,6 +395,9 @@ def get_business_data_discovery(
         "read_only": True,
         "capitalization_performed": False,
         "deep_business_analysis_performed": False,
+        "business_readiness": readiness_guard,
+        "business_core_applied": readiness_guard.get("professional_interpretation_allowed", False),
+        "known_business_vocabulary": vocabulary if isinstance(vocabulary, dict) else {},
         "manifest_used": True,
         "operation_type_guessing_used": False,
         "selected_period": (period or "").strip() or None,
@@ -449,9 +458,40 @@ def get_business_data_discovery(
     }
 
 
+def _business_readiness() -> Dict[str, Any]:
+    try:
+        from app.assistant_runtime.repository import get_business_readiness_status
+        value = get_business_readiness_status()
+        return value if isinstance(value, dict) else {}
+    except Exception as exc:  # pragma: no cover
+        return {
+            "business_readiness_status": "BUSINESS_CORE_LOAD_FAILED",
+            "business_core_status": "unavailable",
+            "error": str(exc),
+        }
+
+
+def _business_data_interpretation_guard(technical_discovery: bool = False) -> Dict[str, Any]:
+    readiness = _business_readiness()
+    status = str(readiness.get("business_readiness_status") or "BUSINESS_DOMAIN_NOT_ACTIVE")
+    allowed = status in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"}
+    technical_allowed = technical_discovery and status in {
+        "BUSINESS_READY", "BUSINESS_READY_PARTIAL", "BUSINESS_CORE_EMPTY", "BUSINESS_CORE_LOAD_FAILED"
+    }
+    return {
+        "business_readiness_status": status,
+        "professional_interpretation_allowed": allowed,
+        "technical_discovery_allowed": technical_allowed,
+        "limitations": readiness.get("warnings") or [],
+        "active_domain": readiness.get("domain") or readiness.get("active_domain"),
+        "business_core_status": readiness.get("business_core_status"),
+    }
+
+
 def get_business_data_first_impression(period: Optional[str] = None, message: str = "") -> Dict[str, Any]:
     """Return a business-facing introduction based on structural discovery only."""
     discovery = get_business_data_discovery(period=period, include_samples=False)
+    readiness_guard = _business_data_interpretation_guard(technical_discovery=True)
     source = discovery.get("source") or {}
     time_structure = discovery.get("time_structure") or {}
     cardinality = discovery.get("cardinality") or {}
@@ -466,6 +506,8 @@ def get_business_data_first_impression(period: Optional[str] = None, message: st
         "technical_details_hidden_from_user": True,
         "deep_business_analysis_performed": False,
         "capitalization_performed": False,
+        "business_readiness": readiness_guard,
+        "professional_interpretation_allowed": readiness_guard.get("professional_interpretation_allowed", False),
         "selected_period": discovery.get("selected_period"),
         "confirmed_facts": {
             "rows_count": source.get("rows_count"),
@@ -622,6 +664,18 @@ def run_business_data_query(message: str, session_id: str = "laboratory-read-onl
     endpoint does not write Business Data or Runtime Repository objects and does
     not expose any mutation action in Laboratory OpenAPI.
     """
+    guard = _business_data_interpretation_guard(technical_discovery=False)
+    if not guard.get("professional_interpretation_allowed"):
+        return {
+            "status": "blocked",
+            "render_mode": "vectra_business_data_query_blocked",
+            "reason": "business_core_not_ready",
+            "business_readiness": guard,
+            "read_only": True,
+            "business_data_access_release": BUSINESS_DATA_ACCESS_RELEASE,
+            "human_summary": "Профессиональная интерпретация Business Data не начата: сначала нужно выбрать бизнес и загрузить его Business Core.",
+            "next_dialogue": "Вернитесь к выбору бизнеса или восстановите Business Core. Техническое исследование структуры данных остаётся доступным.",
+        }
     try:
         payload = orchestrate_vectra_query(message or "", session_id=session_id or "laboratory-read-only")
         payload = apply_runtime_contract(payload if isinstance(payload, dict) else {"status": "error", "reason": "invalid_query_payload"})
