@@ -9144,31 +9144,41 @@ def health():
 def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     professional_body = restore_vectra_professional_body_state()
-    active_domain = get_vectra_active_business_domain()
-    domain_name = 'bonboason'
-    if isinstance(active_domain, dict):
-        domain_name = str(active_domain.get('active_domain') or active_domain.get('domain') or active_domain.get('domain_id') or domain_name)
-    domain_restore = restore_vectra_business_domain(domain_name)
-    professional_knowledge = list_vectra_professional_knowledge()
-    business_knowledge = get_vectra_domain_knowledge(domain=domain_name)
     business_registry = get_vectra_business_domain_registry()
-    business_readiness = get_vectra_business_readiness_status()
-    result = {
-        'status': 'ok',
-        'render_mode': 'vectra_laboratory_state_restore',
-        'restore_sequence': ['Restore Professional State', 'Read Available Business Domains', 'Wait for or confirm Business Selection', 'Load Selected Business Core'],
-        'available_businesses': (business_registry.get('business_domain_registry') or {}).get('domains', []),
-        'business_readiness': business_readiness,
-        'professional_body': professional_body,
-        'active_business_domain': active_domain,
-        'business_domain_restore': domain_restore,
-        'professional_knowledge': professional_knowledge,
-        'business_knowledge': business_knowledge,
-        'final_status': 'PROFESSIONAL_READY' if business_readiness.get('business_readiness_status') == 'BUSINESS_DOMAIN_NOT_ACTIVE' else business_readiness.get('business_readiness_status'),
-        'business_data_auto_started': False,
-        'next_dialogue': 'Select or confirm a business, then continue the working dialogue. Connect Business Data only when the user request requires factual data.',
+    domains = (business_registry.get('business_domain_registry') or {}).get('domains', [])
+    compact_domains = []
+    for item in domains if isinstance(domains, list) else []:
+        if not isinstance(item, dict):
+            continue
+        compact_domains.append({
+            'domain_id': item.get('domain_id') or item.get('id') or item.get('domain'),
+            'display_name': item.get('display_name') or item.get('name'),
+            'status': item.get('status') or 'available',
+        })
+    professional_summary = {
+        'status': professional_body.get('status'),
+        'source_of_state': professional_body.get('source_of_state'),
+        'professional_readiness': 'PROFESSIONAL_READY' if professional_body.get('status') == 'PASS' else 'PROFESSIONAL_RESTORE_FAILED',
+        'identity_restored': bool(professional_body.get('professional_identity')),
+        'operating_model_restored': bool(professional_body.get('professional_model')),
+        'chat_memory_used_as_source': professional_body.get('chat_memory_used_as_source', False),
     }
-    return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action='Continue Product Verification through facade Actions.'))
+    result = {
+        'status': 'ok' if professional_body.get('status') == 'PASS' else 'degraded',
+        'render_mode': 'vectra_laboratory_state_restore',
+        'professional_state': professional_summary,
+        'business_selection_status': 'required',
+        'available_businesses': compact_domains,
+        'active_business_domain': None,
+        'business_core_loaded': False,
+        'business_readiness_status': 'BUSINESS_DOMAIN_NOT_ACTIVE',
+        'business_data_connected': False,
+        'business_data_auto_started': False,
+        'final_status': 'PROFESSIONAL_READY' if professional_body.get('status') == 'PASS' else 'PROFESSIONAL_RESTORE_FAILED',
+        'recommended_next_action': 'select_business_domain',
+        'next_dialogue': 'Профессиональная модель восстановлена. Покажите доступные бизнесы и спросите Product Owner, с каким бизнесом продолжаем работу.',
+    }
+    return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action='Ask Product Owner to select a business domain.'))
 
 
 @router.post('/vectra/laboratory/facade/knowledge', summary='Execute VECTRA Knowledge facade operation')

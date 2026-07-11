@@ -2539,6 +2539,65 @@ def get_business_readiness_status() -> Dict[str, Any]:
         "updated_at": _now(),
     }
 
+
+
+def _section_count(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, (dict, list, tuple, set)):
+        return len(value)
+    return 1
+
+def _build_business_core_index(
+    *,
+    domain_id: str,
+    readiness: str,
+    version: str,
+    sections: Dict[str, Any],
+    loaded: list,
+    empty: list,
+    failed: list,
+    verification: Dict[str, Any],
+    warnings: list,
+    errors: list,
+    loaded_at: str,
+) -> Dict[str, Any]:
+    section_index = {}
+    for name, value in sections.items():
+        if name in failed:
+            status = "failed"
+        elif name in empty:
+            status = "loaded_empty"
+        else:
+            status = "loaded"
+        section_index[name] = {"status": status, "item_count": _section_count(value)}
+    return {
+        "status": "ok" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "degraded",
+        "release": BUSINESS_CORE_RELEASE,
+        "domain": domain_id,
+        "domain_display_name": _domain_display_name(domain_id),
+        "domain_activation_status": "active",
+        "business_core_status": "loaded" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "not_ready",
+        "business_readiness_status": readiness,
+        "business_core_version": version,
+        "loaded_at": loaded_at,
+        "business_core_index": {
+            "sections": section_index,
+            "loaded_sections": loaded,
+            "missing_sections": failed,
+            "empty_sections": empty,
+            "knowledge_access_mode": "context_driven",
+        },
+        "verification": verification,
+        "warnings": warnings,
+        "errors": errors,
+        "business_data_connected": False,
+        "business_data_auto_started": False,
+        "automatic_knowledge_write": False,
+        "next_dialogue": "Бизнес-контекст готов. Продолжайте обычный рабочий диалог; Business Data подключается только когда вопрос требует фактических показателей.",
+        "updated_at": loaded_at,
+    }
+
 def load_business_core(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         payload = {}
@@ -2642,40 +2701,27 @@ def load_business_core(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
         "loaded_at": now,
     }
     _write_json(_business_session_context_path(requested), context)
-    result = {
-        "status": "ok" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "degraded",
-        "release": BUSINESS_CORE_RELEASE,
-        "domain": requested,
-        "domain_display_name": _domain_display_name(requested),
-        "domain_activation_status": "active",
-        "business_core_status": "loaded" if readiness in {"BUSINESS_READY", "BUSINESS_READY_PARTIAL"} else "not_ready",
-        "business_readiness_status": readiness,
-        "business_core_version": str((profile.get("domain_manifest") or {}).get("version") or "1.0"),
-        "loaded_at": now,
-        **sections,
-        "session_business_context": context,
-        "completeness": {
-            "status": "complete" if readiness == "BUSINESS_READY" else "partial" if readiness == "BUSINESS_READY_PARTIAL" else "failed",
-            "required_sections": required,
-            "loaded_sections": loaded,
-            "missing_sections": failed,
-            "empty_sections": empty,
-            "failed_sections": failed,
-        },
-        "verification": {
-            "domain_isolation_confirmed": not isolation_errors,
-            "readback_confirmed": isinstance(knowledge, list),
-            "knowledge_integrity_confirmed": not isolation_errors,
-            "recovery_snapshot_consistent": recovery_ok,
-        },
-        "warnings": [] if recovery_ok else ["Recovery Snapshot недоступен или не совпадает с выбранным бизнесом."],
-        "errors": [] if not isolation_errors else [f"Обнаружены знания другого домена: {', '.join(isolation_errors)}"],
-        "next_dialogue": "Бизнес-контекст готов. Можно работать со знаниями и проектами либо подключить Business Data, когда текущий вопрос потребует фактических показателей.",
-        "business_data_connected": False,
-        "business_data_auto_started": False,
-        "automatic_knowledge_write": False,
-        "updated_at": now,
+    verification = {
+        "domain_isolation_confirmed": not isolation_errors,
+        "readback_confirmed": isinstance(knowledge, list),
+        "knowledge_integrity_confirmed": not isolation_errors,
+        "recovery_snapshot_consistent": recovery_ok,
     }
+    warnings = [] if recovery_ok else ["Recovery Snapshot недоступен или не совпадает с выбранным бизнесом."]
+    errors = [] if not isolation_errors else [f"Обнаружены знания другого домена: {', '.join(isolation_errors)}"]
+    result = _build_business_core_index(
+        domain_id=requested,
+        readiness=readiness,
+        version=str((profile.get("domain_manifest") or {}).get("version") or "1.0"),
+        sections=sections,
+        loaded=loaded,
+        empty=empty,
+        failed=failed,
+        verification=verification,
+        warnings=warnings,
+        errors=errors,
+        loaded_at=now,
+    )
     _write_json(_business_core_status_path(), result)
     _append_json_list(_domain_path(requested) / "business_core_load_reports.json", {
         "report_id": f"business-core-load-{uuid.uuid4().hex[:10]}",
