@@ -8065,6 +8065,8 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
     'executeVectraProductReviewOperation': '/vectra/laboratory/facade/product-review',
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
+    'executeVectraMemoryOperation': '/vectra/laboratory/facade/memory',
+    'runBusinessWorkspaceFrameworkValidation': '/vectra/laboratory/framework-validation/run',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
 }
@@ -8082,6 +8084,7 @@ _FACADE_ACTIONS = [
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
+    ('runBusinessWorkspaceFrameworkValidation', 'POST', '/vectra/laboratory/framework-validation/run', 'Run Business Workspace Framework Validation', 'Starts the read-only Digital Business Analyst Professional Activity and returns a complete evidence-based Framework Validation Report for the existing Business Workspace Framework.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
 ]
@@ -8293,6 +8296,40 @@ def _business_gpt_query_request_schema() -> dict:
     }
 
 
+def _framework_validation_action_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'description': 'Optional parameters for the read-only Business Workspace Framework Validation Professional Activity.',
+        'properties': {
+            'period': {
+                'type': 'string',
+                'description': 'Optional reporting period in YYYY-MM format. If omitted, Runtime uses the latest available Business Data period.',
+                'pattern': '^\\d{4}-\\d{2}$',
+            },
+            'business_domain': {
+                'type': 'string',
+                'description': 'Optional active Business Domain. Default: bon_buasson.',
+                'default': 'bon_buasson',
+            },
+            'workspace_scenarios': {
+                'type': 'array',
+                'description': 'Optional explicit independent Workspace scenarios. Normally omitted so Runtime discovers available objects automatically.',
+                'items': {
+                    'type': 'object',
+                    'properties': {
+                        'workspace_type': {'type': 'string'},
+                        'owner_role': {'type': 'string'},
+                        'command': {'type': 'string'},
+                        'object': {'type': 'string'},
+                    },
+                    'additionalProperties': True,
+                },
+            },
+        },
+        'additionalProperties': False,
+    }
+
+
 def _business_gpt_openapi_schema() -> dict:
     """Return the compact OpenAPI schema for the working VECTRA Business GPT.
 
@@ -8398,9 +8435,15 @@ def _laboratory_facade_openapi_schema() -> dict:
             'responses': generic_response,
         }
         if method == 'POST':
+            if operation_id == 'runBusinessWorkspaceFrameworkValidation':
+                request_schema = _framework_validation_action_request_schema()
+                request_required = False
+            else:
+                request_schema = _facade_operation_request_schema()
+                request_required = True
             op['requestBody'] = {
-                'required': True,
-                'content': {'application/json': {'schema': _facade_operation_request_schema()}},
+                'required': request_required,
+                'content': {'application/json': {'schema': request_schema}},
             }
         elif operation_id == 'determineVectraLaboratoryNextAction':
             op['parameters'] = [
@@ -8412,7 +8455,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'MEMORY-IMPL-0013-0015-PROFESSIONAL-MEMORY-V1',
+            'version': 'DIGITAL-BUSINESS-ANALYST-RUNTIME-CAPABILITY-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8429,7 +8472,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'MEMORY-IMPL-0013-0015',
+        'x-vectra-release': 'DIGITAL-BUSINESS-ANALYST-RUNTIME-CAPABILITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -8714,6 +8757,25 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'affected_product_owner_command': [] if not incomplete else ['Лаборатория, продолжай работу.', 'Лаборатория, капитализируй подтверждённые знания.', 'Лаборатория, проверь комплектацию.'],
         'release_blocked': incomplete,
     }
+
+@router.post('/vectra/laboratory/framework-validation/run', summary='Run Business Workspace Framework Validation', operation_id='runBusinessWorkspaceFrameworkValidation')
+def vectra_laboratory_run_business_workspace_framework_validation(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    """Direct GPT Action entry point for the Framework Validation Professional Activity.
+
+    This route exists so Laboratory can invoke the capability as a first-class
+    Action without knowing or selecting an internal facade operation_type.
+    """
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    result = run_vectra_business_workspace_framework_validation(payload)
+    return json_response(_facade_response(
+        'run_business_workspace_framework_validation',
+        'digital_business_analyst.run_framework_validation',
+        '/vectra/laboratory/framework-validation/run',
+        result,
+        next_action='Review the Framework Validation Report and complete Product Review.',
+    ))
+
 
 @router.get('/vectra/laboratory/memory/verify', summary='Verify VECTRA Knowledge Memory Persistence')
 def vectra_laboratory_memory_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
