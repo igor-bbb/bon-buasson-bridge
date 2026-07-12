@@ -208,13 +208,17 @@ from app.assistant_runtime.digital_business_analyst import (
     list_business_reviews as list_vectra_business_reviews,
     verify_digital_business_analyst_foundation as verify_vectra_digital_business_analyst_foundation,
 )
-from app.assistant_runtime.business_workspace import (
-    get_business_workspace_manifest as get_vectra_business_workspace_manifest,
-    build_business_workspace as build_vectra_business_workspace,
-    refresh_business_workspace as refresh_vectra_business_workspace,
-    get_business_workspace as get_vectra_business_workspace,
-    list_business_workspaces as list_vectra_business_workspaces,
-    verify_business_workspace_foundation as verify_vectra_business_workspace_foundation,
+from app.assistant_runtime.business_runtime_integration import (
+    get_business_runtime_integration_manifest as get_vectra_business_runtime_integration_manifest,
+    connect_business_runtime as connect_vectra_business_runtime,
+    execute_business_runtime_command as execute_vectra_business_runtime_command,
+    open_existing_business_workspace as open_vectra_existing_business_workspace,
+    navigate_existing_business_workspace as navigate_vectra_existing_business_workspace,
+    get_business_runtime_context as get_vectra_business_runtime_context,
+    start_business_workspace_product_research as start_vectra_business_workspace_product_research,
+    capture_business_workspace_research_step as capture_vectra_business_workspace_research_step,
+    list_business_runtime_sessions as list_vectra_business_runtime_sessions,
+    verify_business_runtime_integration as verify_vectra_business_runtime_integration,
 )
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
@@ -9702,6 +9706,26 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_organization.list_roles', '/vectra/laboratory/facade/memory', list_vectra_digital_professional_roles(payload)))
         if operation_type in {'verify_digital_organization_registry', 'digital_organization_registry_verify'}:
             return json_response(_facade_response(operation_type, 'digital_organization.verify_registry', '/vectra/laboratory/facade/memory', verify_vectra_digital_organization_registry()))
+        if operation_type in {'business_runtime_integration_manifest', 'digital_business_analyst_runtime_manifest'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.runtime_integration_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_runtime_integration_manifest()))
+        if operation_type == 'connect_business_runtime':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.connect_business_runtime', '/vectra/laboratory/facade/memory', connect_vectra_business_runtime(payload), next_action='Execute existing Business Runtime commands in read-only mode.'))
+        if operation_type == 'execute_business_runtime_command':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.execute_business_runtime_command', '/vectra/laboratory/facade/memory', execute_vectra_business_runtime_command(payload)))
+        if operation_type == 'open_existing_business_workspace':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.open_existing_business_workspace', '/vectra/laboratory/facade/memory', open_vectra_existing_business_workspace(payload)))
+        if operation_type == 'navigate_existing_business_workspace':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.navigate_existing_business_workspace', '/vectra/laboratory/facade/memory', navigate_vectra_existing_business_workspace(payload)))
+        if operation_type in {'get_business_runtime_context', 'inspect_business_navigation_context'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.get_business_runtime_context', '/vectra/laboratory/facade/memory', get_vectra_business_runtime_context(payload)))
+        if operation_type == 'start_business_workspace_product_research':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.start_product_research', '/vectra/laboratory/facade/memory', start_vectra_business_workspace_product_research(payload)))
+        if operation_type == 'capture_business_workspace_research_step':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.capture_product_research_step', '/vectra/laboratory/facade/memory', capture_vectra_business_workspace_research_step(payload)))
+        if operation_type == 'list_business_runtime_sessions':
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.list_business_runtime_sessions', '/vectra/laboratory/facade/memory', list_vectra_business_runtime_sessions(payload)))
+        if operation_type in {'verify_business_runtime_integration', 'digital_business_analyst_runtime_verify'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_business_runtime_integration', '/vectra/laboratory/facade/memory', verify_vectra_business_runtime_integration()))
         if operation_type in {'digital_business_analyst_manifest', 'business_analyst_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_digital_business_analyst_manifest(), next_action='Create a Business Review through the reference Digital Professional Role.'))
         if operation_type in {'create_business_review', 'business_review_create'}:
@@ -9726,18 +9750,6 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_business_analyst.list_reviews', '/vectra/laboratory/facade/memory', list_vectra_business_reviews(payload)))
         if operation_type in {'verify_digital_business_analyst_foundation', 'digital_business_analyst_verify'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_digital_business_analyst_foundation()))
-        if operation_type in {'business_workspace_manifest', 'digital_business_workspace_manifest'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.workspace_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_workspace_manifest(), next_action='Build or open the current Business Workspace.'))
-        if operation_type in {'build_business_workspace', 'business_workspace_build'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.build_workspace', '/vectra/laboratory/facade/memory', build_vectra_business_workspace(payload), next_action='Open the Business Workspace and continue the professional conversation.'))
-        if operation_type in {'refresh_business_workspace', 'business_workspace_refresh'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.refresh_workspace', '/vectra/laboratory/facade/memory', refresh_vectra_business_workspace(payload), next_action='Open the refreshed Business Workspace.'))
-        if operation_type in {'get_business_workspace', 'business_workspace_get'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.get_workspace', '/vectra/laboratory/facade/memory', get_vectra_business_workspace(payload), next_action='Use Conversation Context for follow-up questions.'))
-        if operation_type in {'list_business_workspaces', 'business_workspaces_list'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.list_workspaces', '/vectra/laboratory/facade/memory', list_vectra_business_workspaces(payload)))
-        if operation_type in {'verify_business_workspace_foundation', 'business_workspace_verify'}:
-            return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_workspace', '/vectra/laboratory/facade/memory', verify_vectra_business_workspace_foundation()))
         if operation_type in {'evidence_platform_manifest', 'professional_evidence_manifest'}:
             return json_response(_facade_response(operation_type, 'professional_evidence.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_evidence_platform_manifest(), next_action='Register or query evidence through the shared platform.'))
         if operation_type in {'register_professional_evidence', 'evidence_register'}:

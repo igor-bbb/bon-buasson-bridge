@@ -36,7 +36,7 @@ from app.assistant_runtime.findings_platform import (
     list_professional_findings,
 )
 
-RELEASE_ID = "DIGITAL-BUSINESS-ANALYST-WORKSPACE-001"
+RELEASE_ID = "DIGITAL-BUSINESS-ANALYST-FOUNDATION-001"
 ROLE_ID = "digital_business_analyst"
 DEFAULT_BASE_PATH = "assistant_repository"
 SESSIONS_FILE = Path("runtime") / "digital_roles" / ROLE_ID / "business_reviews.json"
@@ -67,16 +67,17 @@ ROLE_CONTRACT = {
     "professional_activities": sorted(REVIEW_TYPES),
     "professional_context": [
         "business_domain", "business_core", "business_knowledge", "professional_knowledge",
-        "business_data", "decision_workspace", "professional_memory",
+        "business_data", "business_runtime", "existing_business_workspace", "navigation_context", "decision_workspace", "professional_memory",
     ],
     "platform_dependencies": [
         "professional_activity", "decision_orchestrator", "executive_controller",
         "professional_agenda", "professional_evidence_platform", "professional_findings_platform",
+        "business_runtime_integration",
     ],
     "professional_outputs": [
         "business_review_report", "business_diagnostics_report", "professional_findings",
         "business_risks", "business_opportunities", "executive_recommendations",
-        "business_impact_assessment", "business_workspace",
+        "business_impact_assessment",
     ],
     "supported_business_domains": ["*"],
     "interacting_roles": [],
@@ -131,6 +132,9 @@ def _find(items: List[Dict[str, Any]], review_id: str = "", activity_id: str = "
 
 
 def _ensure_role() -> Dict[str, Any]:
+    current = get_digital_professional_role({"role_id": ROLE_ID})
+    if current.get("status") == "PASS":
+        return current["role"]
     return register_digital_professional_role(ROLE_CONTRACT)["role"]
 
 
@@ -185,11 +189,15 @@ def get_digital_business_analyst_manifest() -> Dict[str, Any]:
             "get_business_review",
             "list_business_reviews",
             "verify_digital_business_analyst_foundation",
-            "build_business_workspace",
-            "get_business_workspace",
-            "list_business_workspaces",
-            "refresh_business_workspace",
-            "verify_business_workspace_foundation",
+            "business_runtime_integration_manifest",
+            "connect_business_runtime",
+            "execute_business_runtime_command",
+            "open_existing_business_workspace",
+            "navigate_existing_business_workspace",
+            "get_business_runtime_context",
+            "start_business_workspace_product_research",
+            "capture_business_workspace_research_step",
+            "verify_business_runtime_integration",
         ],
         "execution_policy": "The role uses shared Professional Activity and Foundation Services; no private queue, controller, evidence store or findings store exists.",
     }
@@ -447,21 +455,13 @@ def complete_business_review(payload: Dict[str, Any]) -> Dict[str, Any]:
     session["updated_at"] = report["completed_at"]
     session["history"].append({"event": "BUSINESS_REVIEW_COMPLETED", "at": report["completed_at"]})
     _write(items)
-    from app.assistant_runtime.business_workspace import build_business_workspace
-    workspace_result = build_business_workspace({
-        "business_review": deepcopy(session),
-        "executive_summary": payload.get("executive_summary"),
-        "narrative": payload.get("narrative"),
-        "priorities": payload.get("priorities"),
-    })
     return {
         "status": "PASS",
         "business_review": _compact(session),
         "business_review_report": deepcopy(report),
-        "business_workspace": workspace_result.get("business_workspace"),
         "quality_review": quality_review,
         "professional_activity": get_professional_activity({"activity_id": session["activity_id"]}).get("activity"),
-        "next_action": "open_business_workspace",
+        "next_action": "review_professional_agenda",
     }
 
 
