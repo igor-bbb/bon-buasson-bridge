@@ -155,6 +155,20 @@ from app.assistant_runtime.professional_orchestration import (
     get_professional_agenda as get_vectra_professional_agenda,
     verify_professional_orchestration_foundation as verify_vectra_professional_orchestration_foundation,
 )
+from app.assistant_runtime.research_engine import (
+    get_research_engine_manifest as get_vectra_research_engine_manifest,
+    create_research_session as create_vectra_research_session,
+    initialize_research_session as initialize_vectra_research_session,
+    update_research_working_context as update_vectra_research_working_context,
+    add_research_evidence as add_vectra_research_evidence,
+    validate_research_evidence as validate_vectra_research_evidence,
+    add_research_finding as add_vectra_research_finding,
+    advance_research_stage as advance_vectra_research_stage,
+    complete_research_session as complete_vectra_research_session,
+    get_research_session as get_vectra_research_session,
+    list_research_sessions as list_vectra_research_sessions,
+    verify_research_engine_foundation as verify_vectra_research_engine_foundation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9631,6 +9645,30 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'research_engine_manifest', 'research_manifest'}:
+            return json_response(_facade_response(operation_type, 'research_engine.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_research_engine_manifest(), next_action='Create a Research Session through the shared Professional Activity foundation.'))
+        if operation_type in {'create_research_session', 'research_session_create'}:
+            return json_response(_facade_response(operation_type, 'research_engine.create_session', '/vectra/laboratory/facade/memory', create_vectra_research_session(payload), next_action='Initialize the Research Session before collecting evidence.'))
+        if operation_type in {'initialize_research_session', 'research_session_initialize'}:
+            return json_response(_facade_response(operation_type, 'research_engine.initialize_session', '/vectra/laboratory/facade/memory', initialize_vectra_research_session(payload), next_action='Collect and validate evidence.'))
+        if operation_type in {'update_research_working_context', 'research_context_update'}:
+            return json_response(_facade_response(operation_type, 'research_engine.update_working_context', '/vectra/laboratory/facade/memory', update_vectra_research_working_context(payload)))
+        if operation_type in {'add_research_evidence', 'research_evidence_add'}:
+            return json_response(_facade_response(operation_type, 'research_engine.add_evidence', '/vectra/laboratory/facade/memory', add_vectra_research_evidence(payload), next_action='Validate evidence before using it for confirmed findings.'))
+        if operation_type in {'validate_research_evidence', 'research_evidence_validate'}:
+            return json_response(_facade_response(operation_type, 'research_engine.validate_evidence', '/vectra/laboratory/facade/memory', validate_vectra_research_evidence(payload)))
+        if operation_type in {'add_research_finding', 'research_finding_add'}:
+            return json_response(_facade_response(operation_type, 'research_engine.add_finding', '/vectra/laboratory/facade/memory', add_vectra_research_finding(payload)))
+        if operation_type in {'advance_research_stage', 'research_stage_advance'}:
+            return json_response(_facade_response(operation_type, 'research_engine.advance_stage', '/vectra/laboratory/facade/memory', advance_vectra_research_stage(payload)))
+        if operation_type in {'complete_research_session', 'research_session_complete'}:
+            return json_response(_facade_response(operation_type, 'research_engine.complete_session', '/vectra/laboratory/facade/memory', complete_vectra_research_session(payload), next_action='Use readiness_evaluation to select the next professional activity.'))
+        if operation_type in {'get_research_session', 'research_session_get'}:
+            return json_response(_facade_response(operation_type, 'research_engine.get_session', '/vectra/laboratory/facade/memory', get_vectra_research_session(payload)))
+        if operation_type in {'list_research_sessions', 'research_session_list'}:
+            return json_response(_facade_response(operation_type, 'research_engine.list_sessions', '/vectra/laboratory/facade/memory', list_vectra_research_sessions(payload)))
+        if operation_type in {'verify_research_engine_foundation', 'research_engine_verify'}:
+            return json_response(_facade_response(operation_type, 'research_engine.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_research_engine_foundation()))
         if operation_type in {'professional_orchestration_manifest', 'orchestration_manifest'}:
             return json_response(_facade_response(operation_type, 'professional_orchestration.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_orchestration_manifest(), next_action='Resolve a Product Owner request into a professional goal.'))
         if operation_type in {'resolve_professional_goal', 'professional_goal_resolve'}:
