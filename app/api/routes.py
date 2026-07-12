@@ -226,6 +226,31 @@ from app.assistant_runtime.framework_validation import (
     run_business_workspace_framework_validation as run_vectra_business_workspace_framework_validation,
     verify_business_workspace_framework_validation as verify_vectra_business_workspace_framework_validation,
 )
+from app.assistant_runtime.business_framework_research import (
+    get_business_framework_research_manifest as get_vectra_business_framework_research_manifest,
+    create_research_program as create_vectra_research_program,
+    transition_research_program as transition_vectra_research_program,
+    get_research_program as get_vectra_research_program,
+    list_research_programs as list_vectra_research_programs,
+    create_research_hypothesis as create_vectra_research_hypothesis,
+    transition_research_hypothesis as transition_vectra_research_hypothesis,
+    get_research_hypothesis as get_vectra_research_hypothesis,
+    list_research_hypotheses as list_vectra_research_hypotheses,
+    add_research_program_evidence as add_vectra_research_program_evidence,
+    add_research_program_finding as add_vectra_research_program_finding,
+    create_product_recommendation as create_vectra_product_recommendation,
+    record_product_owner_review as record_vectra_research_product_owner_review,
+    link_research_engineering_task as link_vectra_research_engineering_task,
+    record_research_product_verification as record_vectra_research_product_verification,
+    link_research_knowledge_capitalization as link_vectra_research_knowledge_capitalization,
+    register_professional_methodology as register_vectra_professional_methodology,
+    get_professional_methodology as get_vectra_professional_methodology,
+    list_professional_methodologies as list_vectra_professional_methodologies,
+    evaluate_research_maturity as evaluate_vectra_research_maturity,
+    get_research_traceability as get_vectra_research_traceability,
+    get_research_workspace as get_vectra_research_workspace,
+    verify_business_framework_research_foundation as verify_vectra_business_framework_research_foundation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -8065,8 +8090,6 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
     'executeVectraProductReviewOperation': '/vectra/laboratory/facade/product-review',
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
-    'executeVectraMemoryOperation': '/vectra/laboratory/facade/memory',
-    'runBusinessWorkspaceFrameworkValidation': '/vectra/laboratory/framework-validation/run',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
 }
@@ -8084,7 +8107,6 @@ _FACADE_ACTIONS = [
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
-    ('runBusinessWorkspaceFrameworkValidation', 'POST', '/vectra/laboratory/framework-validation/run', 'Run Business Workspace Framework Validation', 'Starts the read-only Digital Business Analyst Professional Activity and returns a complete evidence-based Framework Validation Report for the existing Business Workspace Framework.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
 ]
@@ -8296,40 +8318,6 @@ def _business_gpt_query_request_schema() -> dict:
     }
 
 
-def _framework_validation_action_request_schema() -> dict:
-    return {
-        'type': 'object',
-        'description': 'Optional parameters for the read-only Business Workspace Framework Validation Professional Activity.',
-        'properties': {
-            'period': {
-                'type': 'string',
-                'description': 'Optional reporting period in YYYY-MM format. If omitted, Runtime uses the latest available Business Data period.',
-                'pattern': '^\\d{4}-\\d{2}$',
-            },
-            'business_domain': {
-                'type': 'string',
-                'description': 'Optional active Business Domain. Default: bon_buasson.',
-                'default': 'bon_buasson',
-            },
-            'workspace_scenarios': {
-                'type': 'array',
-                'description': 'Optional explicit independent Workspace scenarios. Normally omitted so Runtime discovers available objects automatically.',
-                'items': {
-                    'type': 'object',
-                    'properties': {
-                        'workspace_type': {'type': 'string'},
-                        'owner_role': {'type': 'string'},
-                        'command': {'type': 'string'},
-                        'object': {'type': 'string'},
-                    },
-                    'additionalProperties': True,
-                },
-            },
-        },
-        'additionalProperties': False,
-    }
-
-
 def _business_gpt_openapi_schema() -> dict:
     """Return the compact OpenAPI schema for the working VECTRA Business GPT.
 
@@ -8435,15 +8423,9 @@ def _laboratory_facade_openapi_schema() -> dict:
             'responses': generic_response,
         }
         if method == 'POST':
-            if operation_id == 'runBusinessWorkspaceFrameworkValidation':
-                request_schema = _framework_validation_action_request_schema()
-                request_required = False
-            else:
-                request_schema = _facade_operation_request_schema()
-                request_required = True
             op['requestBody'] = {
-                'required': request_required,
-                'content': {'application/json': {'schema': request_schema}},
+                'required': True,
+                'content': {'application/json': {'schema': _facade_operation_request_schema()}},
             }
         elif operation_id == 'determineVectraLaboratoryNextAction':
             op['parameters'] = [
@@ -8455,7 +8437,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'DIGITAL-BUSINESS-ANALYST-RUNTIME-CAPABILITY-001',
+            'version': 'MEMORY-IMPL-0013-0015-PROFESSIONAL-MEMORY-V1',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8472,7 +8454,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'DIGITAL-BUSINESS-ANALYST-RUNTIME-CAPABILITY-001',
+        'x-vectra-release': 'MEMORY-IMPL-0013-0015',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -8757,25 +8739,6 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'affected_product_owner_command': [] if not incomplete else ['Лаборатория, продолжай работу.', 'Лаборатория, капитализируй подтверждённые знания.', 'Лаборатория, проверь комплектацию.'],
         'release_blocked': incomplete,
     }
-
-@router.post('/vectra/laboratory/framework-validation/run', summary='Run Business Workspace Framework Validation', operation_id='runBusinessWorkspaceFrameworkValidation')
-def vectra_laboratory_run_business_workspace_framework_validation(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
-    """Direct GPT Action entry point for the Framework Validation Professional Activity.
-
-    This route exists so Laboratory can invoke the capability as a first-class
-    Action without knowing or selecting an internal facade operation_type.
-    """
-    _verify_laboratory_api_key(x_vectra_laboratory_key)
-    payload = request if isinstance(request, dict) else {}
-    result = run_vectra_business_workspace_framework_validation(payload)
-    return json_response(_facade_response(
-        'run_business_workspace_framework_validation',
-        'digital_business_analyst.run_framework_validation',
-        '/vectra/laboratory/framework-validation/run',
-        result,
-        next_action='Review the Framework Validation Report and complete Product Review.',
-    ))
-
 
 @router.get('/vectra/laboratory/memory/verify', summary='Verify VECTRA Knowledge Memory Persistence')
 def vectra_laboratory_memory_verify(domain: str = 'bonboason', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
@@ -9780,6 +9743,52 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_business_analyst.run_framework_validation', '/vectra/laboratory/facade/memory', run_vectra_business_workspace_framework_validation(payload), next_action='Review the Framework Validation Report and complete Product Review.'))
         if operation_type in {'verify_business_workspace_framework_validation', 'framework_validation_verify'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_framework_validation', '/vectra/laboratory/facade/memory', verify_vectra_business_workspace_framework_validation()))
+        if operation_type in {'business_framework_research_manifest', 'research_foundation_manifest'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_framework_research_manifest(), next_action='Create or inspect a Research Program.'))
+        if operation_type in {'create_research_program', 'research_program_create'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.create_program', '/vectra/laboratory/facade/memory', create_vectra_research_program(payload), next_action='Approve the Research Program before activation.'))
+        if operation_type in {'transition_research_program', 'research_program_transition'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.transition_program', '/vectra/laboratory/facade/memory', transition_vectra_research_program(payload)))
+        if operation_type in {'get_research_program', 'research_program_get'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_program', '/vectra/laboratory/facade/memory', get_vectra_research_program(payload)))
+        if operation_type in {'list_research_programs', 'research_programs_list', 'research_backlog'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.list_programs', '/vectra/laboratory/facade/memory', list_vectra_research_programs(payload)))
+        if operation_type in {'create_research_hypothesis', 'research_hypothesis_create'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.create_hypothesis', '/vectra/laboratory/facade/memory', create_vectra_research_hypothesis(payload)))
+        if operation_type in {'transition_research_hypothesis', 'research_hypothesis_transition'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.transition_hypothesis', '/vectra/laboratory/facade/memory', transition_vectra_research_hypothesis(payload)))
+        if operation_type in {'get_research_hypothesis', 'research_hypothesis_get'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_hypothesis', '/vectra/laboratory/facade/memory', get_vectra_research_hypothesis(payload)))
+        if operation_type in {'list_research_hypotheses', 'research_hypotheses_list'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.list_hypotheses', '/vectra/laboratory/facade/memory', list_vectra_research_hypotheses(payload)))
+        if operation_type in {'add_research_program_evidence', 'research_program_evidence_add'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.add_evidence', '/vectra/laboratory/facade/memory', add_vectra_research_program_evidence(payload), next_action='Validate shared Research Evidence before confirming a hypothesis or finding.'))
+        if operation_type in {'add_research_program_finding', 'research_program_finding_add'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.add_finding', '/vectra/laboratory/facade/memory', add_vectra_research_program_finding(payload)))
+        if operation_type in {'create_product_recommendation', 'research_product_recommendation_create'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.create_product_recommendation', '/vectra/laboratory/facade/memory', create_vectra_product_recommendation(payload), next_action='Submit the recommendation for Product Owner Review.'))
+        if operation_type in {'record_research_product_owner_review', 'research_product_owner_review'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.record_product_owner_review', '/vectra/laboratory/facade/memory', record_vectra_research_product_owner_review(payload)))
+        if operation_type in {'link_research_engineering_task', 'research_engineering_task_link'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.link_engineering_task', '/vectra/laboratory/facade/memory', link_vectra_research_engineering_task(payload)))
+        if operation_type in {'record_research_product_verification', 'research_product_verification_record'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.record_product_verification', '/vectra/laboratory/facade/memory', record_vectra_research_product_verification(payload)))
+        if operation_type in {'link_research_knowledge_capitalization', 'research_knowledge_capitalization_link'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.link_knowledge_capitalization', '/vectra/laboratory/facade/memory', link_vectra_research_knowledge_capitalization(payload)))
+        if operation_type in {'register_professional_methodology', 'professional_methodology_register'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.register_methodology', '/vectra/laboratory/facade/memory', register_vectra_professional_methodology(payload)))
+        if operation_type in {'get_professional_methodology', 'professional_methodology_get'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_methodology', '/vectra/laboratory/facade/memory', get_vectra_professional_methodology(payload)))
+        if operation_type in {'list_professional_methodologies', 'professional_methodologies_list'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.list_methodologies', '/vectra/laboratory/facade/memory', list_vectra_professional_methodologies(payload)))
+        if operation_type in {'evaluate_research_maturity', 'research_maturity_evaluate'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.evaluate_maturity', '/vectra/laboratory/facade/memory', evaluate_vectra_research_maturity(payload)))
+        if operation_type in {'get_research_traceability', 'research_traceability_get'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_traceability', '/vectra/laboratory/facade/memory', get_vectra_research_traceability(payload)))
+        if operation_type in {'get_research_workspace', 'research_workspace'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.get_workspace', '/vectra/laboratory/facade/memory', get_vectra_research_workspace(payload), next_action='Continue the highest-priority approved Research Program.'))
+        if operation_type in {'verify_business_framework_research_foundation', 'research_foundation_verify'}:
+            return json_response(_facade_response(operation_type, 'business_framework_research.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_business_framework_research_foundation()))
         if operation_type in {'business_runtime_integration_manifest', 'digital_business_analyst_runtime_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.runtime_integration_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_runtime_integration_manifest()))
         if operation_type == 'connect_business_runtime':

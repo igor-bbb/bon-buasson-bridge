@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from app.assistant_runtime.evidence_platform import get_professional_evidence
 
-RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-001"
+RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-002"
 DEFAULT_BASE_PATH = "assistant_repository"
 FINDINGS_FILE = Path("runtime") / "professional_findings" / "findings.json"
 FINDING_TYPES = {"observation", "confirmed_fact", "hypothesis", "architectural_finding", "risk", "opportunity", "recommendation", "open_question"}
 LIFECYCLE = {"DRAFT", "SUPPORTED", "CONFIRMED", "APPLIED", "SUPERSEDED", "REJECTED", "ARCHIVED"}
 EVIDENCE_REQUIRED = {"confirmed_fact", "architectural_finding", "risk", "opportunity", "recommendation"}
+PROFESSIONAL_TYPES = {"business", "research", "architecture", "validation", "capability"}
 
 
 def _now(): return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -41,11 +42,13 @@ def _validated_evidence(ids):
     return [r for r in records if r.get("status") in {"VALIDATED","VERIFIED"}]
 
 def get_findings_platform_manifest():
-    return {"status":"PASS","release":RELEASE_ID,"capability":"Professional Findings Platform","finding_types":sorted(FINDING_TYPES),"lifecycle":sorted(LIFECYCLE),"supported_operations":["findings_platform_manifest","register_professional_finding","transition_professional_finding","get_professional_finding","list_professional_findings","link_professional_findings","verify_professional_findings_platform"]}
+    return {"status":"PASS","release":RELEASE_ID,"capability":"Professional Findings Platform","finding_types":sorted(FINDING_TYPES),"professional_types":sorted(PROFESSIONAL_TYPES),"lifecycle":sorted(LIFECYCLE),"supported_operations":["findings_platform_manifest","register_professional_finding","transition_professional_finding","get_professional_finding","list_professional_findings","link_professional_findings","verify_professional_findings_platform"]}
 
 def register_professional_finding(payload: Dict[str,Any]):
     payload=payload if isinstance(payload,dict) else {}; ftype=str(payload.get("finding_type") or "observation").lower().strip()
     if ftype not in FINDING_TYPES: raise ValueError(f"Unsupported finding_type: {ftype}")
+    professional_type=str(payload.get("professional_type") or "business").lower().strip()
+    if professional_type not in PROFESSIONAL_TYPES: raise ValueError(f"Unsupported professional_type: {professional_type}")
     statement=_required(payload,"statement"); evidence_ids=payload.get("evidence_ids") if isinstance(payload.get("evidence_ids"),list) else []
     validated=_validated_evidence(evidence_ids)
     requested=str(payload.get("status") or "").upper()
@@ -53,7 +56,7 @@ def register_professional_finding(payload: Dict[str,Any]):
         raise ValueError(f"{ftype} cannot be supported or confirmed without validated evidence")
     status=requested if requested in LIFECYCLE else ("SUPPORTED" if validated else "DRAFT")
     now=_now(); items=_read()
-    finding={"finding_id":str(payload.get("finding_id") or f"PF-{uuid.uuid4().hex[:12].upper()}"),"finding_type":ftype,"statement":statement,"professional_activity_id":payload.get("professional_activity_id") or payload.get("activity_id"),"business_domain":payload.get("business_domain") or payload.get("domain"),"object":payload.get("object"),"period":payload.get("period"),"digital_role":payload.get("digital_role"),"research_session_id":payload.get("research_session_id"),"research_version":payload.get("research_version"),"evidence_ids":evidence_ids,"related_finding_ids":payload.get("related_finding_ids") if isinstance(payload.get("related_finding_ids"),list) else [],"status":status,"confidence":str(payload.get("confidence") or ("HIGH" if validated else "LOW")).upper(),"author_engine":payload.get("author_engine") or "unknown","limitations":payload.get("limitations") if isinstance(payload.get("limitations"),list) else [],"applicability":payload.get("applicability"),"activity_outcome_reference":payload.get("activity_outcome_reference"),"business_impact_reference":payload.get("business_impact_reference"),"capitalization_readiness":"READY_FOR_REVIEW" if status=="CONFIRMED" else "NOT_READY","created_at":now,"updated_at":now,"history":[{"event":status,"at":now}]}
+    finding={"finding_id":str(payload.get("finding_id") or f"PF-{uuid.uuid4().hex[:12].upper()}"),"professional_type":professional_type,"finding_type":ftype,"statement":statement,"professional_activity_id":payload.get("professional_activity_id") or payload.get("activity_id"),"business_domain":payload.get("business_domain") or payload.get("domain"),"object":payload.get("object"),"period":payload.get("period"),"digital_role":payload.get("digital_role"),"research_session_id":payload.get("research_session_id"),"research_program_id":payload.get("research_program_id"),"research_version":payload.get("research_version"),"evidence_ids":evidence_ids,"related_finding_ids":payload.get("related_finding_ids") if isinstance(payload.get("related_finding_ids"),list) else [],"status":status,"confidence":str(payload.get("confidence") or ("HIGH" if validated else "LOW")).upper(),"author_engine":payload.get("author_engine") or "unknown","limitations":payload.get("limitations") if isinstance(payload.get("limitations"),list) else [],"applicability":payload.get("applicability"),"activity_outcome_reference":payload.get("activity_outcome_reference"),"business_impact_reference":payload.get("business_impact_reference"),"capitalization_readiness":"READY_FOR_REVIEW" if status=="CONFIRMED" else "NOT_READY","created_at":now,"updated_at":now,"history":[{"event":status,"at":now}]}
     items.append(finding); _write(items); return {"status":"PASS","created":True,"finding":deepcopy(finding)}
 
 def transition_professional_finding(payload):
@@ -75,7 +78,7 @@ def get_professional_finding(payload):
     return {"status":"PASS","finding":deepcopy(f)}
 
 def list_professional_findings(payload: Optional[Dict[str,Any]]=None):
-    payload=payload if isinstance(payload,dict) else {}; items=_read(); mappings={"business_domain":"business_domain","activity_id":"professional_activity_id","research_session_id":"research_session_id","object":"object","period":"period","finding_type":"finding_type","status":"status","digital_role":"digital_role"}
+    payload=payload if isinstance(payload,dict) else {}; items=_read(); mappings={"business_domain":"business_domain","activity_id":"professional_activity_id","research_session_id":"research_session_id","research_program_id":"research_program_id","object":"object","period":"period","professional_type":"professional_type","finding_type":"finding_type","status":"status","digital_role":"digital_role"}
     for arg,field in mappings.items():
         value=payload.get(arg)
         if value is not None and str(value)!="": items=[x for x in items if str(x.get(field) or "")==str(value)]

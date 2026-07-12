@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-001"
+RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-002"
 DEFAULT_BASE_PATH = "assistant_repository"
 EVIDENCE_FILE = Path("runtime") / "professional_evidence" / "evidence.json"
 SOURCE_TYPES = {
@@ -21,6 +21,7 @@ SOURCE_TYPES = {
     "product_owner_confirmation", "external_source",
 }
 LIFECYCLE = {"COLLECTED", "VALIDATED", "VERIFIED", "SUPERSEDED", "INVALIDATED", "ARCHIVED"}
+EVIDENCE_TYPES = {"business", "research", "platform", "validation", "capability"}
 
 
 def _now() -> str:
@@ -58,7 +59,7 @@ def get_evidence_platform_manifest() -> Dict[str, Any]:
     return {
         "status": "PASS", "release": RELEASE_ID,
         "capability": "Professional Evidence Platform",
-        "source_types": sorted(SOURCE_TYPES), "lifecycle": sorted(LIFECYCLE),
+        "source_types": sorted(SOURCE_TYPES), "evidence_types": sorted(EVIDENCE_TYPES), "lifecycle": sorted(LIFECYCLE),
         "supported_operations": [
             "evidence_platform_manifest", "register_professional_evidence",
             "transition_professional_evidence", "get_professional_evidence",
@@ -74,10 +75,12 @@ def register_professional_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
     source_type = str(payload.get("source_type") or "").strip().lower()
     if source_type not in SOURCE_TYPES: raise ValueError(f"Unsupported source_type: {source_type}")
     reference = _required(payload, "reference")
+    evidence_type = str(payload.get("evidence_type") or "business").strip().lower()
+    if evidence_type not in EVIDENCE_TYPES: raise ValueError(f"Unsupported evidence_type: {evidence_type}")
     items = _read()
     fingerprint = "|".join([
         str(payload.get("business_domain") or ""), str(payload.get("object") or ""),
-        str(payload.get("period") or ""), source_type, reference,
+        str(payload.get("period") or ""), evidence_type, source_type, reference,
     ])
     duplicate = next((x for x in items if x.get("fingerprint") == fingerprint and x.get("status") not in {"INVALIDATED", "ARCHIVED"}), None)
     if duplicate:
@@ -85,12 +88,13 @@ def register_professional_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
     now = _now()
     evidence = {
         "evidence_id": str(payload.get("evidence_id") or f"EV-{uuid.uuid4().hex[:12].upper()}"),
-        "source_type": source_type, "reference": reference,
+        "evidence_type": evidence_type, "source_type": source_type, "reference": reference,
         "title": str(payload.get("title") or reference).strip(),
         "excerpt_or_summary": payload.get("excerpt_or_summary") or payload.get("summary"),
         "business_domain": payload.get("business_domain") or payload.get("domain"),
         "professional_activity_id": payload.get("professional_activity_id") or payload.get("activity_id"),
         "research_session_id": payload.get("research_session_id"),
+        "research_program_id": payload.get("research_program_id"),
         "object": payload.get("object"), "period": payload.get("period"),
         "digital_role": payload.get("digital_role"), "research_version": payload.get("research_version"),
         "status": "VALIDATED" if bool(payload.get("validated")) else "COLLECTED",
@@ -143,7 +147,7 @@ def get_professional_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def list_professional_evidence(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}; items = _read()
-    mappings = {"business_domain": "business_domain", "activity_id": "professional_activity_id", "research_session_id": "research_session_id", "object": "object", "period": "period", "source_type": "source_type", "status": "status", "digital_role": "digital_role"}
+    mappings = {"business_domain": "business_domain", "activity_id": "professional_activity_id", "research_session_id": "research_session_id", "research_program_id": "research_program_id", "object": "object", "period": "period", "source_type": "source_type", "evidence_type": "evidence_type", "status": "status", "digital_role": "digital_role"}
     for arg, field in mappings.items():
         value = payload.get(arg)
         if value is not None and str(value) != "": items = [x for x in items if str(x.get(field) or "") == str(value)]
