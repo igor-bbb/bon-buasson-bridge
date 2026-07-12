@@ -187,6 +187,27 @@ from app.assistant_runtime.findings_platform import (
     link_professional_findings as link_vectra_professional_findings,
     verify_professional_findings_platform as verify_vectra_professional_findings_platform,
 )
+from app.assistant_runtime.digital_organization_registry import (
+    get_digital_organization_registry_manifest as get_vectra_digital_organization_registry_manifest,
+    register_digital_professional_role as register_vectra_digital_professional_role,
+    get_digital_professional_role as get_vectra_digital_professional_role,
+    list_digital_professional_roles as list_vectra_digital_professional_roles,
+    verify_digital_organization_registry as verify_vectra_digital_organization_registry,
+)
+from app.assistant_runtime.digital_business_analyst import (
+    get_digital_business_analyst_manifest as get_vectra_digital_business_analyst_manifest,
+    create_business_review as create_vectra_business_review,
+    initialize_business_review as initialize_vectra_business_review,
+    add_business_review_evidence as add_vectra_business_review_evidence,
+    validate_business_review_evidence as validate_vectra_business_review_evidence,
+    add_business_review_finding as add_vectra_business_review_finding,
+    confirm_business_review_finding as confirm_vectra_business_review_finding,
+    advance_business_review_stage as advance_vectra_business_review_stage,
+    complete_business_review as complete_vectra_business_review,
+    get_business_review as get_vectra_business_review,
+    list_business_reviews as list_vectra_business_reviews,
+    verify_digital_business_analyst_foundation as verify_vectra_digital_business_analyst_foundation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9663,6 +9684,40 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'digital_organization_registry_manifest', 'digital_roles_manifest'}:
+            return json_response(_facade_response(operation_type, 'digital_organization.get_registry_manifest', '/vectra/laboratory/facade/memory', get_vectra_digital_organization_registry_manifest(), next_action='Register or inspect Digital Professional Roles.'))
+        if operation_type in {'register_digital_professional_role', 'digital_role_register'}:
+            return json_response(_facade_response(operation_type, 'digital_organization.register_role', '/vectra/laboratory/facade/memory', register_vectra_digital_professional_role(payload)))
+        if operation_type in {'get_digital_professional_role', 'digital_role_get'}:
+            return json_response(_facade_response(operation_type, 'digital_organization.get_role', '/vectra/laboratory/facade/memory', get_vectra_digital_professional_role(payload)))
+        if operation_type in {'list_digital_professional_roles', 'digital_roles_list'}:
+            return json_response(_facade_response(operation_type, 'digital_organization.list_roles', '/vectra/laboratory/facade/memory', list_vectra_digital_professional_roles(payload)))
+        if operation_type in {'verify_digital_organization_registry', 'digital_organization_registry_verify'}:
+            return json_response(_facade_response(operation_type, 'digital_organization.verify_registry', '/vectra/laboratory/facade/memory', verify_vectra_digital_organization_registry()))
+        if operation_type in {'digital_business_analyst_manifest', 'business_analyst_manifest'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_digital_business_analyst_manifest(), next_action='Create a Business Review through the reference Digital Professional Role.'))
+        if operation_type in {'create_business_review', 'business_review_create'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.create_review', '/vectra/laboratory/facade/memory', create_vectra_business_review(payload), next_action='Initialize the Business Review and collect validated evidence.'))
+        if operation_type in {'initialize_business_review', 'business_review_initialize'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.initialize_review', '/vectra/laboratory/facade/memory', initialize_vectra_business_review(payload), next_action='Collect and validate business evidence.'))
+        if operation_type in {'add_business_review_evidence', 'business_review_evidence_add'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.add_evidence', '/vectra/laboratory/facade/memory', add_vectra_business_review_evidence(payload), next_action='Validate evidence before confirming professional findings.'))
+        if operation_type in {'validate_business_review_evidence', 'business_review_evidence_validate'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.validate_evidence', '/vectra/laboratory/facade/memory', validate_vectra_business_review_evidence(payload)))
+        if operation_type in {'add_business_review_finding', 'business_review_finding_add'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.add_finding', '/vectra/laboratory/facade/memory', add_vectra_business_review_finding(payload)))
+        if operation_type in {'confirm_business_review_finding', 'business_review_finding_confirm'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.confirm_finding', '/vectra/laboratory/facade/memory', confirm_vectra_business_review_finding(payload)))
+        if operation_type in {'advance_business_review_stage', 'business_review_stage_advance'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.advance_stage', '/vectra/laboratory/facade/memory', advance_vectra_business_review_stage(payload)))
+        if operation_type in {'complete_business_review', 'business_review_complete'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.complete_review', '/vectra/laboratory/facade/memory', complete_vectra_business_review(payload), next_action='Review Professional Agenda and determine the next activity.'))
+        if operation_type in {'get_business_review', 'business_review_get'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.get_review', '/vectra/laboratory/facade/memory', get_vectra_business_review(payload)))
+        if operation_type in {'list_business_reviews', 'business_reviews_list'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.list_reviews', '/vectra/laboratory/facade/memory', list_vectra_business_reviews(payload)))
+        if operation_type in {'verify_digital_business_analyst_foundation', 'digital_business_analyst_verify'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_digital_business_analyst_foundation()))
         if operation_type in {'evidence_platform_manifest', 'professional_evidence_manifest'}:
             return json_response(_facade_response(operation_type, 'professional_evidence.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_evidence_platform_manifest(), next_action='Register or query evidence through the shared platform.'))
         if operation_type in {'register_professional_evidence', 'evidence_register'}:
