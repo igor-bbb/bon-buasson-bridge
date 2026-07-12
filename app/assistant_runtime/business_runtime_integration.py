@@ -21,6 +21,7 @@ from app.assistant_runtime.research_engine import (
     validate_research_evidence,
     add_research_finding,
     update_research_working_context,
+    complete_research_session,
 )
 
 RELEASE_ID = "DIGITAL-BUSINESS-ANALYST-RUNTIME-INTEGRATION-001"
@@ -104,6 +105,7 @@ def get_business_runtime_integration_manifest() -> Dict[str, Any]:
             "execute_business_runtime_command", "open_existing_business_workspace",
             "navigate_existing_business_workspace", "get_business_runtime_context",
             "start_business_workspace_product_research", "capture_business_workspace_research_step",
+            "run_business_workspace_framework_product_research",
             "list_business_runtime_sessions", "verify_business_runtime_integration",
         ],
         "development_sequence": ["runtime_integration", "product_research", "product_owner_confirmation", "product_evolution"],
@@ -208,6 +210,235 @@ def capture_business_workspace_research_step(payload: Dict[str, Any]) -> Dict[st
     update_research_working_context({"research_session_id": rsid, "investigated_objects": [str((ws.get("context") or {}).get("level") or payload.get("command"))], "source_references": [ev.get("reference")] if ev.get("reference") else []})
     return {"status": "PASS", "integration_session_id": sid, "research_session_id": rsid, "runtime_execution": execution, "evidence_id": evid, "finding_ids": finding_ids}
 
+
+
+def _action_command(action: Dict[str, Any]) -> str:
+    if not isinstance(action, dict):
+        return ""
+    for key in ("command", "message", "query", "next_command", "value"):
+        value = str(action.get(key) or "").strip()
+        if value:
+            return value
+    label = str(action.get("label") or action.get("title") or "").strip()
+    return label if label and len(label) <= 160 else ""
+
+
+def _workspace_level(workspace: Dict[str, Any]) -> str:
+    context = workspace.get("context") if isinstance(workspace.get("context"), dict) else {}
+    state = (workspace.get("navigation_context") or {}).get("active_workspace_state")
+    state = state if isinstance(state, dict) else {}
+    return str(context.get("level") or state.get("level") or workspace.get("render_mode") or "unknown").strip().lower()
+
+
+def _research_finding(
+    research_session_id: str,
+    finding_type: str,
+    statement: str,
+    evidence_ids: List[str],
+    confidence: str = "HIGH",
+) -> Optional[str]:
+    result = add_research_finding({
+        "research_session_id": research_session_id,
+        "finding_type": finding_type,
+        "statement": statement,
+        "evidence_ids": [x for x in evidence_ids if x],
+        "confidence": confidence,
+    })
+    finding = result.get("finding") if isinstance(result, dict) else {}
+    return str((finding or {}).get("finding_id") or "") or None
+
+
+def run_business_workspace_framework_product_research(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Run the first practical Product Research as one read-only professional activity.
+
+    The operation intentionally orchestrates the already existing integration steps so
+    Laboratory can start immediately from one Release Brief command. It does not
+    mutate Business Data or Workspace state.
+    """
+    payload = payload if isinstance(payload, dict) else {}
+    status = get_business_data_status()
+    if not status.get("business_data_connected"):
+        return {
+            "status": "BLOCKED",
+            "reason": "business_data_not_connected",
+            "professional_activity_started": False,
+            "business_data_status": {
+                key: status.get(key)
+                for key in ("business_data_connected", "business_data_health", "source_configured", "rows_count", "latest_period")
+            },
+            "required_action": "Restore the production Business Data source, then repeat this same operation.",
+            "read_only": True,
+        }
+
+    connection = connect_business_runtime({
+        "business_domain": payload.get("business_domain") or payload.get("domain") or "bon_buasson",
+        "runtime_session_id": payload.get("runtime_session_id"),
+    })
+    integration = connection.get("integration_session") or {}
+    integration_session_id = str(integration.get("integration_session_id") or "")
+    if not integration_session_id:
+        raise RuntimeError("Business Runtime integration session was not created")
+
+    started = start_business_workspace_product_research({
+        "integration_session_id": integration_session_id,
+        "user_request": payload.get("user_request") or "Проведи Product Research существующего Business Workspace Framework.",
+        "professional_goal": payload.get("professional_goal") or (
+            "Исследовать существующий Business Data Mart, Workspace, навигацию Business → Руководитель → Контракт → SKU "
+            "и подготовить доказательный Product Research Report."
+        ),
+        "start": True,
+    })
+    research_session_id = str(started.get("research_session_id") or "")
+
+    period = str(payload.get("period") or status.get("latest_period") or "").strip()
+    supplied_commands = payload.get("commands") if isinstance(payload.get("commands"), list) else []
+    commands = [str(x).strip() for x in supplied_commands if str(x).strip()]
+    if not commands and period:
+        commands = [f"Бизнес {period}"]
+    max_steps = max(1, min(int(payload.get("max_steps") or 12), 25))
+
+    steps: List[Dict[str, Any]] = []
+    evidence_ids: List[str] = []
+    finding_ids: List[str] = []
+    visited_commands: set[str] = set()
+    covered_levels: List[str] = []
+    pending_commands = list(commands)
+
+    while pending_commands and len(steps) < max_steps:
+        command = pending_commands.pop(0)
+        if command in visited_commands:
+            continue
+        visited_commands.add(command)
+        captured = capture_business_workspace_research_step({
+            "integration_session_id": integration_session_id,
+            "research_session_id": research_session_id,
+            "command": command,
+            "title": f"Product Research Runtime step: {command}",
+        })
+        execution = captured.get("runtime_execution") or {}
+        workspace = execution.get("workspace") or {}
+        level = _workspace_level(workspace)
+        if level not in covered_levels:
+            covered_levels.append(level)
+        evid = str(captured.get("evidence_id") or "")
+        if evid:
+            evidence_ids.append(evid)
+        finding_ids.extend([str(x) for x in (captured.get("finding_ids") or []) if str(x)])
+        step = {
+            "step": len(steps) + 1,
+            "command": command,
+            "status": execution.get("status"),
+            "workspace_status": workspace.get("status"),
+            "reason": workspace.get("reason"),
+            "level": level,
+            "path": workspace.get("path") or [],
+            "workspace_markdown_length": workspace.get("workspace_markdown_length", 0),
+            "navigation_action_count": (workspace.get("navigation_context") or {}).get("action_count", 0),
+            "evidence_id": evid or None,
+        }
+        steps.append(step)
+
+        actions = (workspace.get("navigation_context") or {}).get("actions")
+        if isinstance(actions, list):
+            for action in actions:
+                candidate = _action_command(action)
+                if candidate and candidate not in visited_commands and candidate not in pending_commands:
+                    pending_commands.append(candidate)
+                if len(pending_commands) + len(steps) >= max_steps:
+                    break
+
+    successful = [s for s in steps if s.get("workspace_status") not in {"error", "blocked"} and s.get("workspace_markdown_length", 0) > 0]
+    blocked = [s for s in steps if s.get("workspace_status") in {"error", "blocked"}]
+    navigation_steps = [s for s in steps if int(s.get("navigation_action_count") or 0) > 0]
+
+    if evidence_ids:
+        if successful:
+            fid = _research_finding(
+                research_session_id, "confirmed_fact",
+                f"Существующий Business Runtime сформировал {len(successful)} читаемых Workspace в режиме read-only.",
+                evidence_ids,
+            )
+            if fid:
+                finding_ids.append(fid)
+        if navigation_steps:
+            fid = _research_finding(
+                research_session_id, "architectural_finding",
+                "Существующий Workspace Framework предоставляет Navigation Context и может быть исследован цифровой ролью без участия Product Owner.",
+                evidence_ids,
+            )
+            if fid:
+                finding_ids.append(fid)
+        if blocked:
+            fid = _research_finding(
+                research_session_id, "recommendation",
+                "Устранить выявленные блокировки Runtime/Business Context до расширения архитектуры Workspace.",
+                evidence_ids, "MEDIUM",
+            )
+            if fid:
+                finding_ids.append(fid)
+
+    strengths = []
+    limitations = []
+    recommendations = []
+    if successful:
+        strengths.append("Business Runtime возвращает существующие профессиональные Workspace в режиме чтения.")
+    if navigation_steps:
+        strengths.append("Navigation Context доступен и содержит переходы для исследования каркаса.")
+    if len({x for x in covered_levels if x and x != "unknown"}) >= 2:
+        strengths.append("Исследование подтвердило переходы между несколькими уровнями Workspace.")
+    if blocked:
+        limitations.append(f"Заблокировано шагов Runtime: {len(blocked)}.")
+    required_levels = {"business", "manager_top", "manager", "network", "contract", "sku"}
+    normalized_levels = {x.replace("management", "manager") for x in covered_levels}
+    missing_levels = sorted(required_levels - normalized_levels)
+    if missing_levels:
+        limitations.append("Не подтверждены автоматическим проходом уровни: " + ", ".join(missing_levels) + ".")
+        recommendations.append("Продолжить Product Research по неподтверждённым уровням через доступные Navigation Context actions.")
+    if not blocked:
+        recommendations.append("Использовать подтверждённые результаты Product Research как основание следующего Product Review.")
+
+    goal_achieved = bool(successful and evidence_ids)
+    completed = complete_research_session({
+        "research_session_id": research_session_id,
+        "goal_achieved": goal_achieved,
+        "allow_incomplete": not goal_achieved,
+        "limitations": limitations,
+        "improvements": recommendations,
+        "execution_result": f"Выполнено {len(steps)} шагов Product Research существующего Business Workspace Framework.",
+        "activity_outcome": f"Подтверждено читаемых Workspace: {len(successful)}; исследовано уровней: {len(covered_levels)}.",
+        "business_impact": "Создана фактическая доказательная база для решения о развитии существующего Workspace Framework.",
+        "recommended_next_activity": "product_owner_review_of_existing_business_workspace_framework",
+    })
+
+    report = {
+        "report_type": "business_workspace_framework_product_research",
+        "release": RELEASE_ID,
+        "integration_session_id": integration_session_id,
+        "research_session_id": research_session_id,
+        "period": period or None,
+        "read_only": True,
+        "steps_executed": len(steps),
+        "successful_workspace_steps": len(successful),
+        "blocked_steps": len(blocked),
+        "covered_levels": covered_levels,
+        "strengths": strengths,
+        "limitations": limitations,
+        "recommendations": recommendations,
+        "evidence_ids": evidence_ids,
+        "finding_ids": list(dict.fromkeys(finding_ids)),
+        "steps": steps,
+        "product_research_status": "PASS" if goal_achieved else "PASS_WITH_LIMITATIONS",
+        "next_professional_activity": "Product Owner Review существующего Business Workspace Framework",
+    }
+    return {
+        "status": "PASS" if goal_achieved else "PASS_WITH_LIMITATIONS",
+        "professional_activity_started": True,
+        "professional_activity_completed": True,
+        "product_research_report": report,
+        "research_completion": completed,
+        "additional_activation_required": False,
+        "ready_for_product_verification": True,
+    }
 
 def list_business_runtime_sessions(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}; items = _read(); limit = max(1, min(int(payload.get("limit") or 50), 100))

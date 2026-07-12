@@ -217,6 +217,7 @@ from app.assistant_runtime.business_runtime_integration import (
     get_business_runtime_context as get_vectra_business_runtime_context,
     start_business_workspace_product_research as start_vectra_business_workspace_product_research,
     capture_business_workspace_research_step as capture_vectra_business_workspace_research_step,
+    run_business_workspace_framework_product_research as run_vectra_business_workspace_framework_product_research,
     list_business_runtime_sessions as list_vectra_business_runtime_sessions,
     verify_business_runtime_integration as verify_vectra_business_runtime_integration,
 )
@@ -9722,6 +9723,8 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_business_analyst.start_product_research', '/vectra/laboratory/facade/memory', start_vectra_business_workspace_product_research(payload)))
         if operation_type == 'capture_business_workspace_research_step':
             return json_response(_facade_response(operation_type, 'digital_business_analyst.capture_product_research_step', '/vectra/laboratory/facade/memory', capture_vectra_business_workspace_research_step(payload)))
+        if operation_type in {'run_business_workspace_framework_product_research', 'product_research_existing_business_workspace'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.run_workspace_framework_product_research', '/vectra/laboratory/facade/memory', run_vectra_business_workspace_framework_product_research(payload), next_action='Review the completed Product Research Report and return Product Verification PASS or grounded findings.'))
         if operation_type == 'list_business_runtime_sessions':
             return json_response(_facade_response(operation_type, 'digital_business_analyst.list_business_runtime_sessions', '/vectra/laboratory/facade/memory', list_vectra_business_runtime_sessions(payload)))
         if operation_type in {'verify_business_runtime_integration', 'digital_business_analyst_runtime_verify'}:
