@@ -27,6 +27,17 @@ from app.assistant_runtime.professional_activity import (
     start_professional_activity,
 )
 from app.assistant_runtime.professional_orchestration import orchestrate_product_owner_goal
+from app.assistant_runtime.evidence_platform import (
+    register_professional_evidence,
+    transition_professional_evidence,
+    list_professional_evidence,
+    verify_professional_evidence_platform,
+)
+from app.assistant_runtime.findings_platform import (
+    register_professional_finding,
+    list_professional_findings,
+    verify_professional_findings_platform,
+)
 
 RELEASE_ID = "VECTRA-V2-RESEARCH-ENGINE-FOUNDATION-001"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -122,8 +133,20 @@ def _find_by_activity(items: Iterable[Dict[str, Any]], activity_id: str) -> Opti
     return None
 
 
+def _platform_evidence(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    result = list_professional_evidence({"research_session_id": session.get("research_session_id"), "limit": 500})
+    return result.get("evidence", []) if isinstance(result, dict) else []
+
+
+def _platform_findings(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    result = list_professional_findings({"research_session_id": session.get("research_session_id"), "limit": 500})
+    return result.get("findings", []) if isinstance(result, dict) else []
+
+
 def _compact(session: Dict[str, Any]) -> Dict[str, Any]:
     context = session.get("working_context") if isinstance(session.get("working_context"), dict) else {}
+    evidence = _platform_evidence(session)
+    findings = _platform_findings(session)
     return {
         "research_session_id": session.get("research_session_id"),
         "activity_id": session.get("activity_id"),
@@ -133,8 +156,8 @@ def _compact(session: Dict[str, Any]) -> Dict[str, Any]:
         "status": session.get("status"),
         "current_stage": session.get("current_stage"),
         "progress": session.get("progress"),
-        "evidence_count": len(session.get("evidence", [])),
-        "finding_count": len(session.get("findings", [])),
+        "evidence_count": len(evidence),
+        "finding_count": len(findings),
         "open_question_count": len(context.get("open_questions", [])),
         "updated_at": session.get("updated_at"),
     }
@@ -189,7 +212,8 @@ def get_research_engine_manifest() -> Dict[str, Any]:
             "verify_research_engine_foundation",
         ],
         "execution_policy": "Explicit Runtime calls only. No background execution is claimed.",
-        "evidence_policy": "Confirmed facts, architectural findings and recommendations require validated evidence.",
+        "evidence_policy": "Confirmed facts, architectural findings and recommendations require validated evidence from the shared Professional Evidence Platform.",
+        "foundation_services": ["Professional Evidence Platform", "Professional Findings Platform"],
     }
 
 
@@ -319,81 +343,63 @@ def update_research_working_context(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def add_research_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
     items, session = _get_session(payload)
-    source_type = str(payload.get("source_type") or "").strip().lower()
-    if source_type not in EVIDENCE_SOURCE_TYPES:
-        raise ValueError(f"Unsupported source_type: {source_type}")
-    reference = _required(payload, "reference")
-    evidence = {
-        "evidence_id": str(payload.get("evidence_id") or f"EV-{uuid.uuid4().hex[:12].upper()}"),
-        "source_type": source_type,
-        "reference": reference,
-        "title": str(payload.get("title") or reference).strip(),
-        "excerpt_or_summary": payload.get("excerpt_or_summary") or payload.get("summary"),
-        "object": payload.get("object"),
-        "period": payload.get("period"),
-        "reliability": str(payload.get("reliability") or "UNASSESSED").upper(),
-        "validation_status": "VALIDATED" if bool(payload.get("validated", False)) else "PENDING",
-        "validation_notes": payload.get("validation_notes"),
-        "captured_at": _now(),
-    }
-    if any(item.get("evidence_id") == evidence["evidence_id"] for item in session.get("evidence", [])):
-        raise ValueError(f"evidence_id already exists: {evidence['evidence_id']}")
-    session.setdefault("evidence", []).append(evidence)
+    registered = register_professional_evidence({
+        **payload,
+        "professional_activity_id": session.get("activity_id"),
+        "research_session_id": session.get("research_session_id"),
+        "business_domain": session.get("business_domain"),
+        "object": payload.get("object") or session.get("research_object"),
+        "author_engine": "research_engine",
+    })
+    evidence = registered.get("evidence")
+    reference = evidence.get("reference") if isinstance(evidence, dict) else None
     refs = session.setdefault("working_context", {}).setdefault("source_references", [])
-    if reference not in refs:
+    if reference and reference not in refs:
         refs.append(reference)
+    session["evidence_ids"] = [item.get("evidence_id") for item in _platform_evidence(session)]
+    session.pop("evidence", None)
     session["updated_at"] = _now()
-    session.setdefault("history", []).append({"event": "EVIDENCE_ADDED", "evidence_id": evidence["evidence_id"], "at": session["updated_at"]})
+    session.setdefault("history", []).append({"event": "EVIDENCE_REGISTERED_IN_PLATFORM", "evidence_id": evidence.get("evidence_id") if isinstance(evidence, dict) else None, "at": session["updated_at"]})
     _save_sessions(items)
-    return {"status": "PASS", "evidence": evidence, "research_session": _compact(session)}
-
+    return {"status": "PASS", "evidence": evidence, "research_session": _compact(session), "foundation_service": "professional_evidence_platform"}
 
 def validate_research_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
-    items, session = _get_session(payload)
-    evidence_id = _required(payload, "evidence_id")
-    evidence = next((item for item in session.get("evidence", []) if item.get("evidence_id") == evidence_id), None)
-    if evidence is None:
-        raise ValueError(f"Unknown evidence_id: {evidence_id}")
-    evidence["validation_status"] = "VALIDATED" if bool(payload.get("accepted", True)) else "REJECTED"
-    evidence["reliability"] = str(payload.get("reliability") or evidence.get("reliability") or "MEDIUM").upper()
-    evidence["validation_notes"] = payload.get("validation_notes")
-    evidence["validated_at"] = _now()
-    session["updated_at"] = evidence["validated_at"]
-    _save_sessions(items)
-    return {"status": "PASS", "evidence": evidence, "research_session": _compact(session)}
-
+    _, session = _get_session(payload)
+    result = transition_professional_evidence({
+        "evidence_id": _required(payload, "evidence_id"),
+        "target_status": "VALIDATED" if bool(payload.get("accepted", True)) else "INVALIDATED",
+        "reliability": payload.get("reliability"),
+        "validation_notes": payload.get("validation_notes"),
+        "reason": payload.get("reason") or "research_engine_validation",
+    })
+    return {"status": "PASS", "evidence": result.get("evidence"), "research_session": _compact(session), "foundation_service": "professional_evidence_platform"}
 
 def add_research_finding(payload: Dict[str, Any]) -> Dict[str, Any]:
     items, session = _get_session(payload)
     finding_type = str(payload.get("finding_type") or "observation").strip().lower()
-    if finding_type not in FINDING_TYPES:
-        raise ValueError(f"Unsupported finding_type: {finding_type}")
-    statement = _required(payload, "statement")
     evidence_ids = payload.get("evidence_ids") if isinstance(payload.get("evidence_ids"), list) else []
-    available = {item.get("evidence_id"): item for item in session.get("evidence", [])}
-    unknown = [item for item in evidence_ids if item not in available]
-    if unknown:
-        raise ValueError(f"Unknown evidence_ids: {unknown}")
-    validated = [item for item in evidence_ids if available[item].get("validation_status") == "VALIDATED"]
-    if finding_type != "observation" and not validated:
-        raise ValueError(f"{finding_type} requires at least one validated evidence reference")
-    finding = {
-        "finding_id": str(payload.get("finding_id") or f"RF-{uuid.uuid4().hex[:12].upper()}"),
+    status = payload.get("status")
+    if not status:
+        status = "SUPPORTED" if finding_type != "observation" and evidence_ids else "DRAFT"
+    registered = register_professional_finding({
+        **payload,
         "finding_type": finding_type,
-        "statement": statement,
-        "evidence_ids": evidence_ids,
-        "confidence": str(payload.get("confidence") or ("HIGH" if validated else "LOW")).upper(),
-        "limitations": payload.get("limitations") if isinstance(payload.get("limitations"), list) else [],
-        "status": "CONFIRMED" if finding_type != "observation" and validated else "OBSERVED",
-        "created_at": _now(),
-    }
-    session.setdefault("findings", []).append(finding)
-    session.setdefault("working_context", {}).setdefault("intermediate_findings", []).append(finding["finding_id"])
-    session["updated_at"] = finding["created_at"]
-    session.setdefault("history", []).append({"event": "FINDING_ADDED", "finding_id": finding["finding_id"], "at": session["updated_at"]})
+        "status": status,
+        "professional_activity_id": session.get("activity_id"),
+        "research_session_id": session.get("research_session_id"),
+        "business_domain": session.get("business_domain"),
+        "object": payload.get("object") or session.get("research_object"),
+        "author_engine": "research_engine",
+    })
+    finding = registered.get("finding")
+    session["finding_ids"] = [item.get("finding_id") for item in _platform_findings(session)]
+    session.pop("findings", None)
+    if isinstance(finding, dict):
+        session.setdefault("working_context", {}).setdefault("intermediate_findings", []).append(finding.get("finding_id"))
+    session["updated_at"] = _now()
+    session.setdefault("history", []).append({"event": "FINDING_REGISTERED_IN_PLATFORM", "finding_id": finding.get("finding_id") if isinstance(finding, dict) else None, "at": session["updated_at"]})
     _save_sessions(items)
-    return {"status": "PASS", "finding": finding, "research_session": _compact(session)}
-
+    return {"status": "PASS", "finding": finding, "research_session": _compact(session), "foundation_service": "professional_findings_platform"}
 
 def advance_research_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
     items, session = _get_session(payload)
@@ -420,10 +426,12 @@ def advance_research_stage(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _build_report(session: Dict[str, Any]) -> Dict[str, Any]:
+    evidence = _platform_evidence(session)
+    findings = _platform_findings(session)
     grouped = {name: [] for name in FINDING_TYPES}
-    for finding in session.get("findings", []):
+    for finding in findings:
         grouped.setdefault(finding.get("finding_type", "observation"), []).append(finding)
-    validated_count = sum(1 for item in session.get("evidence", []) if item.get("validation_status") == "VALIDATED")
+    validated_count = sum(1 for item in evidence if item.get("status") in {"VALIDATED", "VERIFIED"})
     return {
         "report_id": f"RR-{uuid.uuid4().hex[:12].upper()}",
         "research_session_id": session.get("research_session_id"),
@@ -436,21 +444,23 @@ def _build_report(session: Dict[str, Any]) -> Dict[str, Any]:
         "architectural_findings": grouped.get("architectural_finding", []),
         "recommendations": grouped.get("recommendation", []),
         "evidence_summary": {
-            "total": len(session.get("evidence", [])),
-            "validated": validated_count,
-            "rejected": sum(1 for item in session.get("evidence", []) if item.get("validation_status") == "REJECTED"),
-            "pending": sum(1 for item in session.get("evidence", []) if item.get("validation_status") == "PENDING"),
+            "total": len(evidence), "validated": validated_count,
+            "rejected": sum(1 for item in evidence if item.get("status") == "INVALIDATED"),
+            "pending": sum(1 for item in evidence if item.get("status") == "COLLECTED"),
         },
+        "evidence_platform": "professional_evidence_platform",
+        "findings_platform": "professional_findings_platform",
         "open_questions": session.get("working_context", {}).get("open_questions", []),
         "generated_at": _now(),
     }
 
-
 def complete_research_session(payload: Dict[str, Any]) -> Dict[str, Any]:
     items, session = _get_session(payload)
     _activity_for(session)
-    validated_evidence = [item for item in session.get("evidence", []) if item.get("validation_status") == "VALIDATED"]
-    substantiated_findings = [item for item in session.get("findings", []) if item.get("finding_type") != "observation"]
+    evidence_records = _platform_evidence(session)
+    finding_records = _platform_findings(session)
+    validated_evidence = [item for item in evidence_records if item.get("status") in {"VALIDATED", "VERIFIED"}]
+    substantiated_findings = [item for item in finding_records if item.get("finding_type") != "observation"]
     unsupported = [item.get("finding_id") for item in substantiated_findings if not item.get("evidence_ids")]
     goal_achieved = bool(payload.get("goal_achieved", bool(substantiated_findings or validated_evidence)))
     quality_review = {
@@ -545,8 +555,9 @@ def verify_research_engine_foundation() -> Dict[str, Any]:
         "shared_lifecycle_used": True,
         "shared_executive_queue_used": True,
         "working_context_persistent": True,
-        "evidence_model_available": True,
-        "finding_model_available": True,
+        "evidence_platform_available": verify_professional_evidence_platform().get("status") == "PASS",
+        "findings_platform_available": verify_professional_findings_platform().get("status") == "PASS",
+        "legacy_research_session_compatibility": True,
         "quality_review_available": True,
         "no_background_execution_claim": True,
     }

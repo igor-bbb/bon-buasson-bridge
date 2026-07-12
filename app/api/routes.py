@@ -169,6 +169,24 @@ from app.assistant_runtime.research_engine import (
     list_research_sessions as list_vectra_research_sessions,
     verify_research_engine_foundation as verify_vectra_research_engine_foundation,
 )
+from app.assistant_runtime.evidence_platform import (
+    get_evidence_platform_manifest as get_vectra_evidence_platform_manifest,
+    register_professional_evidence as register_vectra_professional_evidence,
+    transition_professional_evidence as transition_vectra_professional_evidence,
+    get_professional_evidence as get_vectra_professional_evidence,
+    list_professional_evidence as list_vectra_professional_evidence,
+    link_professional_evidence as link_vectra_professional_evidence,
+    verify_professional_evidence_platform as verify_vectra_professional_evidence_platform,
+)
+from app.assistant_runtime.findings_platform import (
+    get_findings_platform_manifest as get_vectra_findings_platform_manifest,
+    register_professional_finding as register_vectra_professional_finding,
+    transition_professional_finding as transition_vectra_professional_finding,
+    get_professional_finding as get_vectra_professional_finding,
+    list_professional_findings as list_vectra_professional_findings,
+    link_professional_findings as link_vectra_professional_findings,
+    verify_professional_findings_platform as verify_vectra_professional_findings_platform,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9645,6 +9663,34 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'evidence_platform_manifest', 'professional_evidence_manifest'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_evidence_platform_manifest(), next_action='Register or query evidence through the shared platform.'))
+        if operation_type in {'register_professional_evidence', 'evidence_register'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.register', '/vectra/laboratory/facade/memory', register_vectra_professional_evidence(payload)))
+        if operation_type in {'transition_professional_evidence', 'evidence_transition'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.transition', '/vectra/laboratory/facade/memory', transition_vectra_professional_evidence(payload)))
+        if operation_type in {'get_professional_evidence', 'evidence_get'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.get', '/vectra/laboratory/facade/memory', get_vectra_professional_evidence(payload)))
+        if operation_type in {'list_professional_evidence', 'evidence_list'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.list', '/vectra/laboratory/facade/memory', list_vectra_professional_evidence(payload)))
+        if operation_type in {'link_professional_evidence', 'evidence_link'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.link', '/vectra/laboratory/facade/memory', link_vectra_professional_evidence(payload)))
+        if operation_type in {'verify_professional_evidence_platform', 'evidence_platform_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_evidence.verify', '/vectra/laboratory/facade/memory', verify_vectra_professional_evidence_platform()))
+        if operation_type in {'findings_platform_manifest', 'professional_findings_manifest'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_findings_platform_manifest(), next_action='Register or query findings through the shared platform.'))
+        if operation_type in {'register_professional_finding', 'finding_register'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.register', '/vectra/laboratory/facade/memory', register_vectra_professional_finding(payload)))
+        if operation_type in {'transition_professional_finding', 'finding_transition'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.transition', '/vectra/laboratory/facade/memory', transition_vectra_professional_finding(payload)))
+        if operation_type in {'get_professional_finding', 'finding_get'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.get', '/vectra/laboratory/facade/memory', get_vectra_professional_finding(payload)))
+        if operation_type in {'list_professional_findings', 'finding_list'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.list', '/vectra/laboratory/facade/memory', list_vectra_professional_findings(payload)))
+        if operation_type in {'link_professional_findings', 'finding_link'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.link', '/vectra/laboratory/facade/memory', link_vectra_professional_findings(payload)))
+        if operation_type in {'verify_professional_findings_platform', 'findings_platform_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_findings.verify', '/vectra/laboratory/facade/memory', verify_vectra_professional_findings_platform()))
         if operation_type in {'research_engine_manifest', 'research_manifest'}:
             return json_response(_facade_response(operation_type, 'research_engine.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_research_engine_manifest(), next_action='Create a Research Session through the shared Professional Activity foundation.'))
         if operation_type in {'create_research_session', 'research_session_create'}:
