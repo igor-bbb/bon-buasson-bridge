@@ -221,6 +221,11 @@ from app.assistant_runtime.business_runtime_integration import (
     list_business_runtime_sessions as list_vectra_business_runtime_sessions,
     verify_business_runtime_integration as verify_vectra_business_runtime_integration,
 )
+from app.assistant_runtime.framework_validation import (
+    get_framework_validation_manifest as get_vectra_framework_validation_manifest,
+    run_business_workspace_framework_validation as run_vectra_business_workspace_framework_validation,
+    verify_business_workspace_framework_validation as verify_vectra_business_workspace_framework_validation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9707,6 +9712,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_organization.list_roles', '/vectra/laboratory/facade/memory', list_vectra_digital_professional_roles(payload)))
         if operation_type in {'verify_digital_organization_registry', 'digital_organization_registry_verify'}:
             return json_response(_facade_response(operation_type, 'digital_organization.verify_registry', '/vectra/laboratory/facade/memory', verify_vectra_digital_organization_registry()))
+        if operation_type in {'framework_validation_manifest', 'digital_business_analyst_framework_validation_manifest'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.framework_validation_manifest', '/vectra/laboratory/facade/memory', get_vectra_framework_validation_manifest(), next_action='Run professional validation of the existing Business Workspace Framework.'))
+        if operation_type in {'run_business_workspace_framework_validation', 'validate_existing_business_workspace_framework'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.run_framework_validation', '/vectra/laboratory/facade/memory', run_vectra_business_workspace_framework_validation(payload), next_action='Review the Framework Validation Report and complete Product Review.'))
+        if operation_type in {'verify_business_workspace_framework_validation', 'framework_validation_verify'}:
+            return json_response(_facade_response(operation_type, 'digital_business_analyst.verify_framework_validation', '/vectra/laboratory/facade/memory', verify_vectra_business_workspace_framework_validation()))
         if operation_type in {'business_runtime_integration_manifest', 'digital_business_analyst_runtime_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.runtime_integration_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_runtime_integration_manifest()))
         if operation_type == 'connect_business_runtime':
