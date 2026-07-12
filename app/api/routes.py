@@ -8092,6 +8092,9 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
+    'create_research_program': '/vectra/laboratory/research/programs',
+    'get_research_workspace': '/vectra/laboratory/research/workspace',
+    'verify_business_framework_research_foundation': '/vectra/laboratory/research/foundation/verify',
 }
 
 _FACADE_ACTIONS = [
@@ -8109,6 +8112,9 @@ _FACADE_ACTIONS = [
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
     ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
+    ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
+    ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
+    ('verify_business_framework_research_foundation', 'GET', '/vectra/laboratory/research/foundation/verify', 'Verify Business Framework Research Foundation', 'Verifies Research Program, Backlog, Hypothesis, Traceability, Methodology Repository, Research Workspace and Research Maturity capabilities.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8437,7 +8443,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'MEMORY-IMPL-0013-0015-PROFESSIONAL-MEMORY-V1',
+            'version': 'BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8454,7 +8460,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'MEMORY-IMPL-0013-0015',
+        'x-vectra-release': 'BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9720,6 +9726,52 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
     except Exception as exc:
         logger.exception('product_review_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='product_review_facade'))
+
+
+
+# BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001:
+# Explicit GPT Actions for the first Laboratory Research Professional Activity.
+# These routes make the capabilities directly visible in the compact OpenAPI
+# instead of requiring Laboratory to infer hidden operation_type values.
+@router.post('/vectra/laboratory/research/programs', summary='Create Business Framework Research Program')
+def vectra_create_research_program_action(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    result = create_vectra_research_program(payload)
+    return json_response(_facade_response(
+        'create_research_program',
+        'business_framework_research.create_research_program',
+        '/vectra/laboratory/research/programs',
+        result,
+        next_action='Open the Research Workspace and continue the approved Research Program.',
+    ))
+
+
+@router.post('/vectra/laboratory/research/workspace', summary='Get Digital Business Analyst Research Workspace')
+def vectra_get_research_workspace_action(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request if isinstance(request, dict) else {}
+    result = get_vectra_research_workspace(payload)
+    return json_response(_facade_response(
+        'get_research_workspace',
+        'business_framework_research.get_research_workspace',
+        '/vectra/laboratory/research/workspace',
+        result,
+        next_action='Continue the highest-priority approved Research Program.',
+    ))
+
+
+@router.get('/vectra/laboratory/research/foundation/verify', summary='Verify Business Framework Research Foundation')
+def vectra_verify_business_framework_research_foundation_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_business_framework_research_foundation()
+    return json_response(_facade_response(
+        'verify_business_framework_research_foundation',
+        'business_framework_research.verify_business_framework_research_foundation',
+        '/vectra/laboratory/research/foundation/verify',
+        result,
+        next_action='Create the first Research Program or open the Research Workspace.',
+    ))
 
 
 @router.post('/vectra/laboratory/facade/memory', summary='Execute VECTRA Memory facade operation')
