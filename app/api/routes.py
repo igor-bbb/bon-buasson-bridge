@@ -128,6 +128,23 @@ from app.assistant_runtime.natural_commands import (
     execute_natural_command as execute_vectra_natural_command,
     classify_natural_command as classify_vectra_natural_command,
 )
+from app.assistant_runtime.professional_activity import (
+    get_professional_activity_manifest as get_vectra_professional_activity_manifest,
+    create_professional_activity as create_vectra_professional_activity,
+    plan_professional_activity as plan_vectra_professional_activity,
+    queue_professional_activity as queue_vectra_professional_activity,
+    start_professional_activity as start_vectra_professional_activity,
+    pause_professional_activity as pause_vectra_professional_activity,
+    complete_professional_activity as complete_vectra_professional_activity,
+    fail_professional_activity as fail_vectra_professional_activity,
+    cancel_professional_activity as cancel_vectra_professional_activity,
+    archive_professional_activity as archive_vectra_professional_activity,
+    get_professional_activity as get_vectra_professional_activity,
+    list_professional_activities as list_vectra_professional_activities,
+    get_executive_activity_status as get_vectra_executive_activity_status,
+    activate_next_professional_activity as activate_next_vectra_professional_activity,
+    verify_professional_activity_foundation as verify_vectra_professional_activity_foundation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9604,6 +9621,36 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'professional_activity_manifest', 'activity_manifest'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_professional_activity_manifest(), next_action='Create a professional activity only when a concrete Product Owner goal exists.'))
+        if operation_type in {'create_professional_activity', 'activity_create'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.create', '/vectra/laboratory/facade/memory', create_vectra_professional_activity(payload), next_action='Plan the activity before queueing or starting it.'))
+        if operation_type in {'plan_professional_activity', 'activity_plan'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.plan', '/vectra/laboratory/facade/memory', plan_vectra_professional_activity(payload), next_action='Queue or start the planned activity.'))
+        if operation_type in {'queue_professional_activity', 'activity_queue'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.queue', '/vectra/laboratory/facade/memory', queue_vectra_professional_activity(payload), next_action='The Executive Controller may activate the next queued activity.'))
+        if operation_type in {'start_professional_activity', 'activity_start'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.start', '/vectra/laboratory/facade/memory', start_vectra_professional_activity(payload), next_action='Execute the current activity stage through an appropriate engine or tool.'))
+        if operation_type in {'pause_professional_activity', 'activity_pause'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.pause', '/vectra/laboratory/facade/memory', pause_vectra_professional_activity(payload)))
+        if operation_type in {'complete_professional_activity', 'activity_complete'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.complete', '/vectra/laboratory/facade/memory', complete_vectra_professional_activity(payload), next_action='Review the completed professional result and archive when accepted.'))
+        if operation_type in {'fail_professional_activity', 'activity_fail'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.fail', '/vectra/laboratory/facade/memory', fail_vectra_professional_activity(payload), next_action='Retry only when recoverable; otherwise prepare a grounded engineering task.'))
+        if operation_type in {'cancel_professional_activity', 'activity_cancel'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.cancel', '/vectra/laboratory/facade/memory', cancel_vectra_professional_activity(payload)))
+        if operation_type in {'archive_professional_activity', 'activity_archive'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.archive', '/vectra/laboratory/facade/memory', archive_vectra_professional_activity(payload)))
+        if operation_type in {'get_professional_activity', 'activity_get'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.get', '/vectra/laboratory/facade/memory', get_vectra_professional_activity(payload)))
+        if operation_type in {'list_professional_activities', 'activity_list'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.list', '/vectra/laboratory/facade/memory', list_vectra_professional_activities(payload)))
+        if operation_type in {'get_executive_activity_status', 'executive_activity_status'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.get_executive_status', '/vectra/laboratory/facade/memory', get_vectra_executive_activity_status()))
+        if operation_type in {'activate_next_professional_activity', 'executive_activate_next'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.activate_next', '/vectra/laboratory/facade/memory', activate_next_vectra_professional_activity(payload)))
+        if operation_type in {'verify_professional_activity_foundation', 'activity_foundation_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_activity.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_professional_activity_foundation()))
         if operation_type in {'professional_intelligence_status', 'pi_status'}:
             return json_response(_facade_response(operation_type, 'professional_intelligence.get_status', '/vectra/professional-intelligence/status', get_vectra_professional_intelligence_status()))
         if operation_type in {'create_session_archive', 'session_archive_create'}:
