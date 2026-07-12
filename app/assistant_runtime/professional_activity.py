@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RELEASE_ID = "VECTRA-V2-PA-FOUNDATION-001"
+RELEASE_ID = "VECTRA-V2-PA-FOUNDATION-002"
 DEFAULT_BASE_PATH = "assistant_repository"
 ACTIVITY_DIR = Path("runtime") / "professional_activity"
 ACTIVITIES_FILE = ACTIVITY_DIR / "activities.json"
@@ -160,6 +160,8 @@ def _compact(item: Dict[str, Any]) -> Dict[str, Any]:
         "activity_id": item.get("activity_id"),
         "activity_type": item.get("activity_type"),
         "title": item.get("title"),
+        "user_request": item.get("user_request"),
+        "professional_goal": item.get("professional_goal") or item.get("goal"),
         "goal": item.get("goal"),
         "object": item.get("object"),
         "business_domain": item.get("business_domain"),
@@ -167,6 +169,8 @@ def _compact(item: Dict[str, Any]) -> Dict[str, Any]:
         "status": item.get("status"),
         "current_stage": item.get("current_stage"),
         "progress": item.get("progress"),
+        "dependencies": item.get("dependencies", []),
+        "readiness": item.get("readiness"),
         "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),
     }
@@ -227,6 +231,8 @@ def create_professional_activity(payload: Dict[str, Any]) -> Dict[str, Any]:
         "release": RELEASE_ID,
         "activity_type": _normalize_type(payload.get("activity_type")),
         "title": _required_text(payload, "title"),
+        "user_request": str(payload.get("user_request") or "").strip() or None,
+        "professional_goal": str(payload.get("professional_goal") or payload.get("goal") or "").strip(),
         "goal": _required_text(payload, "goal"),
         "object": payload.get("object"),
         "business_domain": payload.get("business_domain") or payload.get("domain"),
@@ -239,6 +245,14 @@ def create_professional_activity(payload: Dict[str, Any]) -> Dict[str, Any]:
         "progress": 0,
         "results": [],
         "recommendations": [],
+        "execution_result": None,
+        "activity_outcome": None,
+        "business_impact": None,
+        "dependencies": payload.get("dependencies") if isinstance(payload.get("dependencies"), list) else [],
+        "required_context": payload.get("required_context") if isinstance(payload.get("required_context"), list) else [],
+        "working_context": payload.get("working_context") if isinstance(payload.get("working_context"), dict) else {"investigated_objects": [], "confirmed_hypotheses": [], "open_questions": [], "intermediate_findings": [], "evidence_references": []},
+        "findings": payload.get("findings") if isinstance(payload.get("findings"), dict) else {"observations": [], "confirmed_facts": [], "architectural_findings": [], "recommendations": []},
+        "readiness": "NOT_EVALUATED",
         "limitations": [],
         "created_by": str(payload.get("created_by") or "product_owner_or_orchestrator"),
         "created_at": now,
@@ -283,6 +297,11 @@ def _transition(activity_id: str, target: str, payload: Optional[Dict[str, Any]]
         item["progress"] = 100
         item["results"] = payload.get("results") if isinstance(payload.get("results"), list) else item.get("results", [])
         item["recommendations"] = payload.get("recommendations") if isinstance(payload.get("recommendations"), list) else item.get("recommendations", [])
+        item["execution_result"] = payload.get("execution_result") or item.get("execution_result") or "activity_completed"
+        item["activity_outcome"] = payload.get("activity_outcome")
+        item["business_impact"] = payload.get("business_impact")
+        if isinstance(payload.get("findings"), dict):
+            item["findings"] = payload["findings"]
     if target == "FAILED":
         item["failure"] = {
             "stage": payload.get("stage"),

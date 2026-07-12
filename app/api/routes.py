@@ -145,6 +145,16 @@ from app.assistant_runtime.professional_activity import (
     activate_next_professional_activity as activate_next_vectra_professional_activity,
     verify_professional_activity_foundation as verify_vectra_professional_activity_foundation,
 )
+
+from app.assistant_runtime.professional_orchestration import (
+    get_orchestration_manifest as get_vectra_orchestration_manifest,
+    resolve_professional_goal as resolve_vectra_professional_goal,
+    orchestrate_product_owner_goal as orchestrate_vectra_product_owner_goal,
+    evaluate_activity_readiness as evaluate_vectra_activity_readiness,
+    executive_controller_tick as run_vectra_executive_controller_tick,
+    get_professional_agenda as get_vectra_professional_agenda,
+    verify_professional_orchestration_foundation as verify_vectra_professional_orchestration_foundation,
+)
 from app.assistant_runtime.business_data import (
     get_business_data_status as get_vectra_business_data_status,
     get_business_data_entities as get_vectra_business_data_entities,
@@ -9621,6 +9631,20 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'professional_orchestration_manifest', 'orchestration_manifest'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_orchestration_manifest(), next_action='Resolve a Product Owner request into a professional goal.'))
+        if operation_type in {'resolve_professional_goal', 'professional_goal_resolve'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.resolve_goal', '/vectra/laboratory/facade/memory', resolve_vectra_professional_goal(payload), next_action='Create and plan the required professional activity.'))
+        if operation_type in {'orchestrate_product_owner_goal', 'decision_orchestrator_run'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.orchestrate_goal', '/vectra/laboratory/facade/memory', orchestrate_vectra_product_owner_goal(payload), next_action='Review Professional Agenda or let Executive Controller select ready work.'))
+        if operation_type in {'evaluate_activity_readiness', 'activity_readiness'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.evaluate_readiness', '/vectra/laboratory/facade/memory', evaluate_vectra_activity_readiness(payload)))
+        if operation_type in {'executive_controller_tick', 'executive_controller_review'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.executive_controller_tick', '/vectra/laboratory/facade/memory', run_vectra_executive_controller_tick(payload), next_action='Activate ready work only through an explicit call.'))
+        if operation_type in {'get_professional_agenda', 'professional_agenda'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.get_agenda', '/vectra/laboratory/facade/memory', get_vectra_professional_agenda(payload)))
+        if operation_type in {'verify_professional_orchestration_foundation', 'orchestration_foundation_verify'}:
+            return json_response(_facade_response(operation_type, 'professional_orchestration.verify_foundation', '/vectra/laboratory/facade/memory', verify_vectra_professional_orchestration_foundation()))
         if operation_type in {'professional_activity_manifest', 'activity_manifest'}:
             return json_response(_facade_response(operation_type, 'professional_activity.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_professional_activity_manifest(), next_action='Create a professional activity only when a concrete Product Owner goal exists.'))
         if operation_type in {'create_professional_activity', 'activity_create'}:
