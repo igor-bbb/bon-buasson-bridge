@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.config import EMPTY_SKU_LABEL, LOW_VOLUME_THRESHOLD, SHEET_URL
-from app.models.request_models import VectraQueryRequest
+from app.models.request_models import VectraQueryRequest, ResearchProgramCreateRequest
 from app.domain.summary import (
     get_business_summary,
     get_manager_top_summary,
@@ -8408,6 +8408,85 @@ def _business_gpt_openapi_schema() -> dict:
     return schema
 
 
+def _research_program_create_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': [
+            'title',
+            'research_question',
+            'professional_goal',
+            'program_type',
+            'business_domain',
+        ],
+        'properties': {
+            'title': {
+                'type': 'string',
+                'description': 'Short professional title of the Research Program.',
+                'examples': ['KPI Methodology Research'],
+            },
+            'research_question': {
+                'type': 'string',
+                'description': 'Research question to be answered by Digital Business Analyst.',
+                'examples': ['Какой временной горизонт обеспечивает устойчивую оценку SKU?'],
+            },
+            'professional_goal': {
+                'type': 'string',
+                'description': 'Professional result the Research Program must achieve.',
+                'examples': ['Определить методологически обоснованный временной горизонт для устойчивой оценки SKU.'],
+            },
+            'program_type': {
+                'type': 'string',
+                'enum': [
+                    'business_ontology_research',
+                    'kpi_methodology_research',
+                    'decision_architecture_research',
+                    'contract_research',
+                    'sku_research',
+                    'time_horizon_research',
+                    'conversation_architecture_research',
+                    'business_framework_research',
+                ],
+                'description': 'Supported professional Research Program type.',
+                'examples': ['kpi_methodology_research'],
+            },
+            'business_domain': {
+                'type': 'string',
+                'description': 'Business Domain identifier.',
+                'examples': ['bon_buasson'],
+            },
+            'research_object': {
+                'type': 'string',
+                'description': 'Optional research object or methodology.',
+                'examples': ['SKU evaluation methodology'],
+            },
+            'priority': {
+                'type': 'string',
+                'enum': ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+                'default': 'MEDIUM',
+                'description': 'Optional priority of the Research Program.',
+            },
+            'initial_hypotheses': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'maxItems': 10,
+                'description': 'Optional compact initial hypothesis statements.',
+            },
+            'tags': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'maxItems': 20,
+                'description': 'Optional compact tags.',
+            },
+            'allow_duplicate': {
+                'type': 'boolean',
+                'default': False,
+                'description': 'Allow an intentional duplicate. Defaults to false.',
+            },
+        },
+        'additionalProperties': False,
+    }
+
+
 def _laboratory_facade_openapi_schema() -> dict:
     server_url = os.getenv('VECTRA_PUBLIC_RUNTIME_URL') or os.getenv('VECTRA_RUNTIME_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'https://bon-buasson-api.onrender.com'
     api_key_required = bool(os.getenv('VECTRA_LABORATORY_API_KEY'))
@@ -8429,9 +8508,14 @@ def _laboratory_facade_openapi_schema() -> dict:
             'responses': generic_response,
         }
         if method == 'POST':
+            request_schema = (
+                _research_program_create_request_schema()
+                if operation_id == 'create_research_program'
+                else _facade_operation_request_schema()
+            )
             op['requestBody'] = {
                 'required': True,
-                'content': {'application/json': {'schema': _facade_operation_request_schema()}},
+                'content': {'application/json': {'schema': request_schema}},
             }
         elif operation_id == 'determineVectraLaboratoryNextAction':
             op['parameters'] = [
@@ -8443,7 +8527,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001',
+            'version': 'DIGITAL-BUSINESS-ANALYST-RESEARCH-CAPABILITY-REQUEST-CONTRACT-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8460,7 +8544,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001',
+        'x-vectra-release': 'DIGITAL-BUSINESS-ANALYST-RESEARCH-CAPABILITY-REQUEST-CONTRACT-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9734,16 +9818,19 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
 # These routes make the capabilities directly visible in the compact OpenAPI
 # instead of requiring Laboratory to infer hidden operation_type values.
 @router.post('/vectra/laboratory/research/programs', summary='Create Business Framework Research Program')
-def vectra_create_research_program_action(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+def vectra_create_research_program_action(request: ResearchProgramCreateRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
-    payload = request if isinstance(request, dict) else {}
+    payload = request.model_dump(exclude_none=True)
     result = create_vectra_research_program(payload)
+    next_action = 'Open the Research Workspace and continue the approved Research Program.'
+    if str(result.get('status') or '').upper() == 'VALIDATION_ERROR':
+        next_action = 'Correct the compact public request fields and call create_research_program again.'
     return json_response(_facade_response(
         'create_research_program',
         'business_framework_research.create_research_program',
         '/vectra/laboratory/research/programs',
         result,
-        next_action='Open the Research Workspace and continue the approved Research Program.',
+        next_action=next_action,
     ))
 
 

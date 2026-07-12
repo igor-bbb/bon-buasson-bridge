@@ -88,6 +88,19 @@ RESEARCH_PROGRAM_TYPES = {
     "conversation_architecture",
     "business_framework_research",
 }
+RESEARCH_PROGRAM_TYPE_ALIASES = {
+    "business_ontology_research": "business_ontology",
+    "kpi_methodology_research": "kpi_methodology",
+    "decision_architecture_research": "decision_architecture",
+    "conversation_architecture_research": "conversation_architecture",
+}
+RESEARCH_PROGRAM_REQUIRED_FIELDS = (
+    "title",
+    "research_question",
+    "professional_goal",
+    "program_type",
+    "business_domain",
+)
 METHODOLOGY_STATUSES = {"DRAFT", "CONFIRMED", "SUPERSEDED", "ARCHIVED"}
 
 
@@ -251,26 +264,87 @@ def get_business_framework_research_manifest() -> Dict[str, Any]:
 
 def create_research_program(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
-    program_type = str(payload.get("program_type") or "business_framework_research").strip().lower()
-    if program_type not in RESEARCH_PROGRAM_TYPES:
-        raise ValueError(f"Unsupported program_type: {program_type}")
-    title = _required(payload, "title")
-    professional_goal = _required(payload, "professional_goal")
-    now = _now()
 
+    missing_fields = [
+        field for field in RESEARCH_PROGRAM_REQUIRED_FIELDS
+        if not str(payload.get(field) or "").strip()
+    ]
+    if missing_fields:
+        return {
+            "status": "VALIDATION_ERROR",
+            "stage": "request_validation",
+            "missing_fields": missing_fields,
+            "research_program_created": False,
+        }
+
+    requested_program_type = str(payload.get("program_type") or "").strip().lower()
+    program_type = RESEARCH_PROGRAM_TYPE_ALIASES.get(requested_program_type, requested_program_type)
+    if program_type not in RESEARCH_PROGRAM_TYPES:
+        return {
+            "status": "VALIDATION_ERROR",
+            "stage": "request_validation",
+            "reason": "unsupported_program_type",
+            "requested_program_type": requested_program_type,
+            "supported_program_types": sorted(RESEARCH_PROGRAM_TYPES | set(RESEARCH_PROGRAM_TYPE_ALIASES)),
+            "research_program_created": False,
+        }
+
+    title = str(payload.get("title") or "").strip()
+    research_question = str(payload.get("research_question") or "").strip()
+    professional_goal = str(payload.get("professional_goal") or "").strip()
+    business_domain = str(payload.get("business_domain") or "").strip()
+    research_object = str(payload.get("research_object") or payload.get("object") or "Business Framework").strip()
+    priority = str(payload.get("priority") or "MEDIUM").strip().upper()
+    if priority not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
+        return {
+            "status": "VALIDATION_ERROR",
+            "stage": "request_validation",
+            "reason": "unsupported_priority",
+            "supported_priorities": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            "research_program_created": False,
+        }
+
+    allow_duplicate = bool(payload.get("allow_duplicate", False))
+    items = _programs()
+    if not allow_duplicate:
+        duplicate = next((
+            item for item in items
+            if str(item.get("business_domain") or "").strip().lower() == business_domain.lower()
+            and str(item.get("title") or "").strip().casefold() == title.casefold()
+            and str(item.get("research_question") or "").strip().casefold() == research_question.casefold()
+            and str(item.get("program_type") or "").strip().lower() == program_type
+            and str(item.get("status") or "").upper() != "ARCHIVED"
+        ), None)
+        if duplicate is not None:
+            return {
+                "status": "PASS",
+                "research_program_created": False,
+                "created": False,
+                "duplicate_protected": True,
+                "existing_research_program_id": duplicate.get("research_program_id"),
+                "professional_activity_id": duplicate.get("professional_activity_id"),
+                "program_status": duplicate.get("status"),
+                "business_domain": duplicate.get("business_domain"),
+                "research_workspace_updated": True,
+                "next_allowed_action": "review_or_approve_research_program",
+                "research_program": _compact_program(duplicate),
+            }
+
+    now = _now()
     activity_result = create_professional_activity({
         "title": title,
         "goal": professional_goal,
         "professional_goal": professional_goal,
-        "user_request": payload.get("research_question") or payload.get("user_request"),
+        "user_request": research_question,
         "activity_type": "research_session",
-        "object": payload.get("object") or "Business Framework",
-        "business_domain": payload.get("business_domain") or payload.get("domain"),
-        "priority": payload.get("priority") or "MEDIUM",
+        "object": research_object,
+        "business_domain": business_domain,
+        "priority": priority,
         "professional_context": {
             "research_program_type": program_type,
-            "research_scope": payload.get("research_scope"),
-            "success_criteria": payload.get("success_criteria") or [],
+            "research_scope": {},
+            "success_criteria": [],
+            "tags": [str(tag).strip() for tag in (payload.get("tags") or []) if str(tag).strip()],
         },
         "created_by": "digital_business_analyst",
     })
@@ -279,8 +353,8 @@ def create_research_program(payload: Dict[str, Any]) -> Dict[str, Any]:
         "activity_id": activity["activity_id"],
         "plan": {
             "workflow_type": "business_framework_research_program",
-            "workflow_version": "1.0",
-            "research_question": payload.get("research_question"),
+            "workflow_version": "1.1",
+            "research_question": research_question,
         },
         "stages": [
             "Research Question",
@@ -300,13 +374,15 @@ def create_research_program(payload: Dict[str, Any]) -> Dict[str, Any]:
         "release": RELEASE_ID,
         "title": title,
         "program_type": program_type,
-        "research_question": payload.get("research_question"),
+        "requested_program_type": requested_program_type,
+        "research_question": research_question,
         "professional_goal": professional_goal,
-        "business_domain": payload.get("business_domain") or payload.get("domain"),
-        "object": payload.get("object") or "Business Framework",
-        "research_scope": payload.get("research_scope") if isinstance(payload.get("research_scope"), dict) else {},
-        "success_criteria": payload.get("success_criteria") if isinstance(payload.get("success_criteria"), list) else [],
-        "priority": str(payload.get("priority") or "MEDIUM").upper(),
+        "business_domain": business_domain,
+        "object": research_object,
+        "research_scope": {},
+        "success_criteria": [],
+        "tags": [str(tag).strip() for tag in (payload.get("tags") or []) if str(tag).strip()],
+        "priority": priority,
         "status": "PROPOSED",
         "professional_activity_id": activity["activity_id"],
         "hypothesis_ids": [],
@@ -328,15 +404,37 @@ def create_research_program(payload: Dict[str, Any]) -> Dict[str, Any]:
         "closed_at": None,
         "history": [{"event": "PROGRAM_CREATED", "status": "PROPOSED", "at": now}],
     }
-    items = _programs()
     items.append(program)
     _save_programs(items)
+
+    hypothesis_ids: List[str] = []
+    for statement in payload.get("initial_hypotheses") or []:
+        statement = str(statement or "").strip()
+        if not statement:
+            continue
+        result = create_research_hypothesis({
+            "research_program_id": program["research_program_id"],
+            "statement": statement,
+        })
+        hypothesis = result.get("hypothesis") if isinstance(result, dict) else None
+        if isinstance(hypothesis, dict) and hypothesis.get("hypothesis_id"):
+            hypothesis_ids.append(hypothesis["hypothesis_id"])
+
+    refreshed = _find(_programs(), "research_program_id", program["research_program_id"]) or program
     return {
         "status": "PASS",
+        "research_program_created": True,
         "created": True,
-        "research_program": _compact_program(program),
+        "duplicate_protected": False,
+        "research_program_id": refreshed["research_program_id"],
+        "professional_activity_id": refreshed["professional_activity_id"],
+        "program_status": refreshed["status"],
+        "business_domain": refreshed["business_domain"],
+        "research_workspace_updated": True,
+        "initial_hypothesis_ids": hypothesis_ids,
+        "next_allowed_action": "review_or_approve_research_program",
+        "research_program": _compact_program(refreshed),
         "professional_activity": activity,
-        "next_action": "transition_research_program to APPROVED after Product Owner approval",
     }
 
 
