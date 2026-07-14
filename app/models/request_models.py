@@ -98,15 +98,22 @@ class BusinessObjectDiscoveryRequest(BaseModel):
     summary_only: bool = Field(default=False, description='Return counts and available types without object records.')
 
 
-class ResearchWorkspaceSnapshotRequest(BaseModel):
-    """Compact public read-only request for a complete Workspace research snapshot."""
+class CanonicalResearchSnapshotObject(BaseModel):
+    """Canonical Runtime Object owned by Business Object Discovery."""
 
-    workspace_id: Optional[str] = Field(default=None, description='Existing Business Workspace identifier.')
-    object_id: Optional[str] = Field(default=None, description='Stable public Business object identifier returned by Business Object Discovery.')
-    business_domain: Optional[str] = Field(default=None, description='Optional Business Domain selector when workspace_id is omitted.')
-    business_object: Optional[str] = Field(default=None, description='Optional managed business object selector when workspace_id is omitted.')
-    period: Optional[str] = Field(default=None, description='Optional business period selector when workspace_id is omitted.')
-    object_type: Optional[str] = Field(default=None, description='Optional professional object type for snapshot identity.')
+    contract_version: Literal['1.0'] = Field(description='Canonical contract version.')
+    object_type: Literal['business','top_manager','manager','network','category','tmc_group','sku']
+    object_id: str = Field(description='Stable public Business object identifier.')
+    business_domain: Literal['bon_buasson'] = Field(description='Canonical Business Domain identifier.')
+    business_object: Optional[str] = Field(default=None, description='Runtime-owned object selector. Pass unchanged.')
+    period: Optional[str] = Field(default=None, description='Runtime-selected period. Pass unchanged.')
+    workspace_id: Optional[str] = Field(default=None, description='Optional persistent Workspace identifier.')
+
+
+class ResearchWorkspaceSnapshotRequest(BaseModel):
+    """Public canonical request. The nested object is passed unchanged."""
+
+    research_snapshot_request: CanonicalResearchSnapshotObject
 
 
 class BusinessDecisionFrameworkValidationRequest(BaseModel):

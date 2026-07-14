@@ -15,8 +15,14 @@ from typing import Any, Dict, Iterable, List, Optional
 from app.data.reader import load_raw_rows
 from app.assistant_runtime.business_data import DIMENSION_FIELDS, get_business_data_status
 from app.assistant_runtime.business_workspace import list_business_workspaces
+from app.assistant_runtime.business_domain_profile import (
+    get_business_domain_profile,
+    get_business_root_registry,
+    validate_single_business_root,
+)
+from app.assistant_runtime.canonical_runtime_objects import build_research_snapshot_request
 
-RELEASE_ID = "BUSINESS-OBJECT-DISCOVERY-SCALABILITY-001"
+RELEASE_ID = "BUSINESS-ROOT-OBJECT-NORMALIZATION-001"
 BUSINESS_DOMAIN = "bon_buasson"
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
@@ -57,6 +63,12 @@ def _config(object_type: str) -> Optional[Dict[str, str]]:
 
 
 def _stable_id(object_type: str, source_value: str) -> str:
+    if object_type == "business":
+        profile = get_business_domain_profile(BUSINESS_DOMAIN) or {}
+        root = profile.get("root_business") if isinstance(profile, dict) else {}
+        root_id = str((root or {}).get("object_id") or "").strip()
+        if root_id:
+            return root_id
     digest = sha256(f"{BUSINESS_DOMAIN}|{object_type}|{source_value}".encode("utf-8")).hexdigest()[:16].upper()
     prefix = {
         "business": "BUS",
@@ -117,6 +129,13 @@ def get_business_object_discovery_manifest() -> Dict[str, Any]:
             "maximum_limit": MAX_LIMIT,
         },
         "safe_default": "When object_type is omitted Runtime returns summary_only metadata.",
+        "business_root_registry": get_business_root_registry(),
+        "semantic_rules": {
+            "single_business_root": True,
+            "root_source_of_truth": "business_domain_profile",
+            "automatic_object_level_promotion": False,
+            "business_segments_are_internal": True,
+        },
         "usage": "Request one object type per page, select an object, then submit its research_snapshot_request to get_research_workspace_snapshot.",
     }
 
@@ -150,15 +169,14 @@ def _build_object(item: Dict[str, str], source_value: str, period: Optional[str]
     object_type = item["object_type"]
     existing_workspace = workspace_index.get(source_value)
     stable_id = _stable_id(object_type, source_value)
-    snapshot_request: Dict[str, Any] = {
-        "object_type": object_type,
-        "object_id": stable_id,
-        "business_domain": BUSINESS_DOMAIN,
-        "business_object": source_value,
-        "period": period,
-    }
-    if existing_workspace and existing_workspace.get("workspace_id"):
-        snapshot_request["workspace_id"] = existing_workspace.get("workspace_id")
+    snapshot_request = build_research_snapshot_request(
+        object_type=object_type,
+        object_id=stable_id,
+        business_domain=BUSINESS_DOMAIN,
+        business_object=source_value,
+        period=period,
+        workspace_id=existing_workspace.get("workspace_id") if existing_workspace else None,
+    )
     readiness = existing_workspace.get("readiness") if isinstance(existing_workspace, dict) else {}
     return {
         "object_type": object_type,
@@ -217,6 +235,16 @@ def discover_business_objects(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "read_only": True,
         }
 
+    root_validation = validate_single_business_root(BUSINESS_DOMAIN)
+    if root_validation.get("status") != "PASS":
+        return {
+            **root_validation,
+            "operation": "discover_business_objects",
+            "read_only": True,
+        }
+    domain_profile = get_business_domain_profile(BUSINESS_DOMAIN) or {}
+    root_profile = domain_profile.get("root_business") if isinstance(domain_profile, dict) else {}
+
     period_filter = _clean(payload.get("period"))
     name_contains = _clean(payload.get("name_contains") or payload.get("search")).casefold()
     offset = _safe_int(payload.get("offset"), 0, 0, 10_000_000)
@@ -231,9 +259,11 @@ def discover_business_objects(payload: Optional[Dict[str, Any]] = None) -> Dict[
     counts_by_type: Dict[str, int] = {}
     values_by_type: Dict[str, List[str]] = {}
     for item in OBJECT_TYPES:
-        values = _unique(row.get(item["field"]) for row in filtered_rows)
-        if item["object_type"] == "business" and not values:
-            values = ["Бон Буассон"]
+        if item["object_type"] == "business":
+            root_name = _clean((root_profile or {}).get("display_name") or domain_profile.get("display_name") or "Бон Буассон")
+            values = [root_name] if root_name else []
+        else:
+            values = _unique(row.get(item["field"]) for row in filtered_rows)
         if name_contains:
             values = [value for value in values if name_contains in value.casefold()]
         values_by_type[item["object_type"]] = values
@@ -245,6 +275,11 @@ def discover_business_objects(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "counts_by_type": counts_by_type,
         "period_filter": period_filter or None,
         "latest_period": latest_period,
+        "root_business": {
+            "object_id": (root_profile or {}).get("object_id"),
+            "display_name": (root_profile or {}).get("display_name"),
+            "source_of_truth": "business_domain_profile",
+        },
     }
 
     if summary_only:
@@ -335,6 +370,12 @@ def verify_business_object_discovery() -> Dict[str, Any]:
     checks["pagination_metadata"] = all(key in (sku_first.get("pagination") or {}) for key in ["requested_count", "returned_count", "total_count", "has_more", "next_offset"])
     checks["runtime_diagnostics"] = all(key in (sku_first.get("runtime_diagnostics") or {}) for key in ["response_size_bytes", "pagination_applied", "result_truncated"])
     checks["snapshot_request_ready"] = all(bool(item.get("research_snapshot_request")) for item in sku_first.get("objects", []))
+    business_page = discover_business_objects({"object_type": "business", "offset": 0, "limit": 10})
+    business_objects = business_page.get("objects") or []
+    checks["single_business_root"] = (business_page.get("pagination") or {}).get("total_count") == 1 and len(business_objects) == 1
+    checks["canonical_business_name"] = bool(business_objects and business_objects[0].get("display_name") == "Бон Буассон")
+    checks["stable_business_root_id"] = bool(business_objects and business_objects[0].get("object_id") == "BUSINESS-BON-BUASSON")
+    checks["canonical_contract_version"] = bool(business_objects and (business_objects[0].get("research_snapshot_request") or {}).get("contract_version") == "1.0")
 
     passed = all(checks.values())
     return {

@@ -5,6 +5,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.assistant_runtime.business_domain_profile import get_business_domain_profile, validate_single_business_root
+
 from app.assistant_runtime.business_data import (
     get_business_data_entities,
     get_business_data_manifest,
@@ -120,12 +122,15 @@ def discover_business_runtime_objects(limit_per_level: int = MAX_OBJECTS_PER_LEV
     objects: Dict[str, List[Dict[str, Any]]] = {}
     for item in LEVELS:
         field = item["entity_field"]
-        values = previews.get(field) if isinstance(previews.get(field), list) else []
-        if item["level"] == "business" and not values:
-            values = ["Business"]
+        if item["level"] == "business":
+            profile = get_business_domain_profile("bon_buasson") or {}
+            root = profile.get("root_business") if isinstance(profile, dict) else {}
+            values = [str((root or {}).get("display_name") or "Бон Буассон")]
+        else:
+            values = previews.get(field) if isinstance(previews.get(field), list) else []
         objects[item["level"]] = [
             {
-                "object_id": str(value),
+                "object_id": (str(((get_business_domain_profile("bon_buasson") or {}).get("root_business") or {}).get("object_id")) if item["level"] == "business" else str(value)),
                 "display_name": str(value),
                 "object_type": item["level"],
                 "workspace_available": True,
@@ -136,7 +141,7 @@ def discover_business_runtime_objects(limit_per_level: int = MAX_OBJECTS_PER_LEV
         "status": "PASS" if entities.get("status") == "ok" else "HOLD",
         "read_only": True,
         "limit_per_level": safe_limit,
-        "object_counts": {item["level"]: int(counts.get(item["entity_field"]) or 0) for item in LEVELS},
+        "object_counts": {item["level"]: (1 if item["level"] == "business" else int(counts.get(item["entity_field"]) or 0)) for item in LEVELS},
         "objects": objects,
         "diagnostic": None if entities.get("status") == "ok" else _diagnostic(
             "discover_business_runtime_objects", "HOLD", str(entities.get("error") or "entity_discovery_failed"), "Check Business Data connection and retry."
@@ -159,6 +164,24 @@ def open_business_workspace_direct(object_type: str, object_id: str = "", period
             "diagnostic": _diagnostic("open_business_workspace_direct", "HOLD", "unsupported_object_type", "Use an object type declared in Runtime Manifest."),
             "read_only": True,
         }
+    if config["level"] == "business":
+        root_validation = validate_single_business_root("bon_buasson")
+        if root_validation.get("status") != "PASS":
+            return {
+                "status": "HOLD",
+                "diagnostic": _diagnostic("open_business_workspace_direct", "HOLD", str(root_validation.get("reason")), "Check Business Domain Profile and Business Root Registry."),
+                "read_only": True,
+            }
+        root = (get_business_domain_profile("bon_buasson") or {}).get("root_business") or {}
+        expected_root_id = str(root.get("object_id") or "")
+        if str(object_id or expected_root_id).strip() != expected_root_id:
+            return {
+                "status": "HOLD",
+                "diagnostic": _diagnostic("open_business_workspace_direct", "HOLD", "invalid_business_root_id", "Use the canonical Root Business id returned by Business Object Discovery."),
+                "read_only": True,
+            }
+        object_id = expected_root_id
+
     status = get_business_data_status()
     selected_period = str(period or status.get("latest_period") or "").strip()
     if not selected_period:

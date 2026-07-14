@@ -11,8 +11,10 @@ from typing import Any, Dict, List
 
 from app.assistant_runtime.business_workspace import get_business_workspace
 from app.assistant_runtime.business_runtime_access import open_business_workspace_direct
+from app.assistant_runtime.canonical_runtime_objects import parse_research_snapshot_request
+from app.assistant_runtime.business_domain_profile import get_business_domain_profile, validate_single_business_root
 
-RELEASE_ID = "BUSINESS-WORKSPACE-RESEARCH-CONTRACT-001"
+RELEASE_ID = "BUSINESS-ROOT-OBJECT-NORMALIZATION-001"
 CONTRACT_VERSION = "1.0"
 
 
@@ -61,12 +63,55 @@ def get_workspace_research_contract_manifest() -> Dict[str, Any]:
 
 
 def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    payload = payload if isinstance(payload, dict) else {}
+    parsed = parse_research_snapshot_request(payload, allow_legacy=True)
+    if parsed.get("status") != "PASS":
+        return {
+            **parsed,
+            "operation": "research_workspace_snapshot",
+            "read_only": True,
+        }
+    payload = _as_dict(parsed.get("research_snapshot_request"))
+    contract_mode = parsed.get("contract_mode")
+    object_type = str(payload.get("object_type") or "").strip().lower()
+    object_id = str(payload.get("object_id") or "").strip()
+    business_domain = str(payload.get("business_domain") or "").strip().lower()
+
+    if business_domain != "bon_buasson":
+        return {
+            "status": "HOLD",
+            "operation": "research_workspace_snapshot",
+            "reason": "unsupported_business_domain",
+            "business_domain": business_domain or None,
+            "recommendation": "Refresh the canonical request through Business Object Discovery.",
+            "read_only": True,
+        }
+
+    if object_type == "business":
+        root_validation = validate_single_business_root(business_domain)
+        if root_validation.get("status") != "PASS":
+            return {**root_validation, "operation": "research_workspace_snapshot", "read_only": True}
+        profile = get_business_domain_profile(business_domain) or {}
+        root = profile.get("root_business") if isinstance(profile, dict) else {}
+        expected_id = str((root or {}).get("object_id") or "").strip()
+        if object_id != expected_id:
+            return {
+                "status": "HOLD",
+                "operation": "research_workspace_snapshot",
+                "reason": "invalid_business_root_id",
+                "expected_object_id": expected_id,
+                "received_object_id": object_id,
+                "recommendation": "Use the unmodified research_snapshot_request returned by Business Object Discovery.",
+                "read_only": True,
+            }
+        payload["business_object"] = str((root or {}).get("display_name") or "Бон Буассон")
+
     direct_runtime_workspace = False
+    workspace_id = str(payload.get("workspace_id") or "").strip()
     try:
-        result = get_business_workspace(payload)
+        if not workspace_id:
+            raise ValueError("direct workspace requested")
+        result = get_business_workspace({"workspace_id": workspace_id})
     except ValueError:
-        object_type = str(payload.get("object_type") or "").strip()
         business_object = str(payload.get("business_object") or payload.get("object") or "").strip()
         period = str(payload.get("period") or "").strip()
         if not object_type or (object_type != "business" and not business_object):
@@ -77,7 +122,7 @@ def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "recommendation": "Use Business Object Discovery and submit the returned research_snapshot_request.",
                 "read_only": True,
             }
-        direct = open_business_workspace_direct(object_type, object_id=business_object, period=period)
+        direct = open_business_workspace_direct(object_type, object_id=object_id if object_type == "business" else business_object, period=period)
         if direct.get("status") != "PASS":
             return {
                 "status": "HOLD",
@@ -92,10 +137,11 @@ def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
         business_context = _as_dict(runtime_workspace.get("business_context"))
         navigation_context = _as_dict(runtime_workspace.get("navigation_context"))
         workspace = {
-            "workspace_id": payload.get("object_id") or f"DIRECT-{object_type}-{business_object}",
+            "workspace_id": object_id or f"DIRECT-{object_type}-{business_object}",
+            "object_id": object_id,
             "workspace_type": runtime_workspace.get("workspace_type"),
-            "business_domain": payload.get("business_domain") or "bon_buasson",
-            "managed_object": business_object or "business",
+            "business_domain": business_domain,
+            "managed_object": business_object or "Бон Буассон",
             "period": runtime_workspace.get("period"),
             "owner_role_id": "digital_business_analyst",
             "status": "ACTIVE_READ_ONLY",
@@ -114,9 +160,9 @@ def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "recommendations": runtime_response.get("recommendations") or runtime_response.get("decisions") or [],
                 },
                 "conversation_context": {
-                    "business_domain": payload.get("business_domain") or "bon_buasson",
+                    "business_domain": business_domain,
                     "business_context": business_context,
-                    "research_context": {"source": "business_object_discovery", "object_id": payload.get("object_id")},
+                    "research_context": {"source": "business_object_discovery", "object_id": object_id},
                     "available_transitions": navigation_context.get("allowed_transitions") or [],
                     "recommended_transitions": [],
                 },
@@ -210,13 +256,15 @@ def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = {
         "snapshot_id": f"RWS-{workspace.get('workspace_id')}",
         "contract_version": CONTRACT_VERSION,
+        "contract_mode": contract_mode,
         "generated_from_workspace_version": workspace.get("version"),
         "read_only": True,
         "workspace_identity": {
             "workspace_id": workspace.get("workspace_id"),
             "workspace_type": workspace.get("workspace_type"),
             "object_type": payload.get("object_type") or "business_object",
-            "object_id": workspace.get("managed_object"),
+            "object_id": workspace.get("object_id") or workspace.get("managed_object"),
+            "display_name": workspace.get("managed_object"),
             "business_domain": workspace.get("business_domain"),
             "period": workspace.get("period"),
             "owner_role_id": workspace.get("owner_role_id"),
