@@ -12,7 +12,11 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.config import EMPTY_SKU_LABEL, LOW_VOLUME_THRESHOLD, SHEET_URL
-from app.models.request_models import VectraQueryRequest, ResearchProgramCreateRequest, BusinessRuntimeAccessVerificationRequest
+from app.models.request_models import (
+    VectraQueryRequest, ResearchProgramCreateRequest, BusinessRuntimeAccessVerificationRequest,
+    BusinessResearchExecutionStartRequest, BusinessResearchTaskExecuteRequest,
+    BusinessResearchFindingRequest, BusinessResearchExecutionReferenceRequest,
+)
 from app.domain.summary import (
     get_business_summary,
     get_manager_top_summary,
@@ -144,6 +148,17 @@ from app.assistant_runtime.professional_activity import (
     get_executive_activity_status as get_vectra_executive_activity_status,
     activate_next_professional_activity as activate_next_vectra_professional_activity,
     verify_professional_activity_foundation as verify_vectra_professional_activity_foundation,
+)
+
+from app.assistant_runtime.business_research_execution import (
+    start_business_research_execution as start_vectra_business_research_execution,
+    get_business_research_execution_manifest as get_vectra_business_research_execution_manifest,
+    execute_business_research_task as execute_vectra_business_research_task,
+    record_business_research_finding as record_vectra_business_research_finding,
+    pause_business_research_execution as pause_vectra_business_research_execution,
+    resume_business_research_execution as resume_vectra_business_research_execution,
+    complete_business_research_execution as complete_vectra_business_research_execution,
+    verify_business_research_execution as verify_vectra_business_research_execution,
 )
 
 from app.assistant_runtime.professional_orchestration import (
@@ -8102,6 +8117,14 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'get_research_workspace': '/vectra/laboratory/research/workspace',
     'verify_business_framework_research_foundation': '/vectra/laboratory/research/foundation/verify',
     'verify_business_runtime_access': '/vectra/laboratory/business-runtime/access/verify',
+    'start_business_research_execution': '/vectra/laboratory/business-research/executions/start',
+    'get_business_research_execution_manifest': '/vectra/laboratory/business-research/executions/manifest',
+    'execute_business_research_task': '/vectra/laboratory/business-research/executions/task',
+    'record_business_research_finding': '/vectra/laboratory/business-research/executions/finding',
+    'pause_business_research_execution': '/vectra/laboratory/business-research/executions/pause',
+    'resume_business_research_execution': '/vectra/laboratory/business-research/executions/resume',
+    'complete_business_research_execution': '/vectra/laboratory/business-research/executions/complete',
+    'verify_business_research_execution': '/vectra/laboratory/business-research/executions/verify',
 }
 
 _FACADE_ACTIONS = [
@@ -8123,6 +8146,14 @@ _FACADE_ACTIONS = [
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_framework_research_foundation', 'GET', '/vectra/laboratory/research/foundation/verify', 'Verify Business Framework Research Foundation', 'Verifies Research Program, Backlog, Hypothesis, Traceability, Methodology Repository, Research Workspace and Research Maturity capabilities.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
+    ('start_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/start', 'Start Business Research Execution', 'Creates and starts a guided Research Program from a professional research question and hypothesis.'),
+    ('get_business_research_execution_manifest', 'POST', '/vectra/laboratory/business-research/executions/manifest', 'Get Business Research Execution Manifest', 'Restores the complete professional state, progress and Decision Lineage of an active research execution.'),
+    ('execute_business_research_task', 'POST', '/vectra/laboratory/business-research/executions/task', 'Execute Business Research Task', 'Executes the next or selected read-only Research Task against the existing Business Runtime and captures validated Evidence.'),
+    ('record_business_research_finding', 'POST', '/vectra/laboratory/business-research/executions/finding', 'Record Business Research Finding', 'Creates an evidence-backed Research Finding and records its Decision Lineage.'),
+    ('pause_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/pause', 'Pause Business Research Execution', 'Pauses the current guided research execution while preserving its professional context.'),
+    ('resume_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/resume', 'Resume Business Research Execution', 'Restores a paused or held research execution from its Manifest.'),
+    ('complete_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/complete', 'Complete Business Research Execution', 'Completes a guided research execution after all tasks and at least one evidence-backed Finding are present.'),
+    ('verify_business_research_execution', 'GET', '/vectra/laboratory/business-research/executions/verify', 'Verify Business Research Execution', 'Verifies Stage 2 guided research execution, persistence, Decision Lineage and read-only guarantees.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8506,6 +8537,74 @@ def _business_runtime_access_request_schema() -> dict:
     }
 
 
+def _business_research_execution_start_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['research_question', 'professional_goal', 'business_domain'],
+        'properties': {
+            'research_question': {'type': 'string', 'description': 'Professional research question.'},
+            'professional_goal': {'type': 'string', 'description': 'Professional outcome the research must achieve.'},
+            'business_domain': {'type': 'string', 'description': 'Business Domain identifier.', 'examples': ['bon_buasson']},
+            'professional_hypothesis': {'type': 'string', 'description': 'Optional active hypothesis that determines the dynamic research route.'},
+            'title': {'type': 'string'},
+            'program_type': {'type': 'string', 'default': 'business_framework_research'},
+            'research_object': {'type': 'string', 'default': 'Existing Business Framework'},
+            'priority': {'type': 'string', 'enum': ['LOW','MEDIUM','HIGH','CRITICAL'], 'default': 'HIGH'},
+            'period': {'type': 'string'},
+            'research_program_id': {'type': 'string', 'description': 'Optional existing Research Program id.'},
+            'open_questions': {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 10},
+            'tags': {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 20},
+            'allow_duplicate': {'type': 'boolean', 'default': False},
+        },
+        'additionalProperties': False,
+    }
+
+
+def _business_research_task_execute_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['research_execution_id'],
+        'properties': {
+            'research_execution_id': {'type': 'string'},
+            'task_id': {'type': 'string', 'description': 'Optional task id. Next recommended task is used when omitted.'},
+            'object_id': {'type': 'string', 'description': 'Optional direct Business object identifier.'},
+            'period': {'type': 'string'},
+        },
+        'additionalProperties': False,
+    }
+
+
+def _business_research_finding_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['research_execution_id', 'task_id', 'statement'],
+        'properties': {
+            'research_execution_id': {'type': 'string'},
+            'task_id': {'type': 'string'},
+            'statement': {'type': 'string'},
+            'finding_type': {'type': 'string', 'enum': ['observation','confirmed_fact','hypothesis','architectural_finding','risk','opportunity','recommendation','open_question'], 'default': 'confirmed_fact'},
+            'evidence_ids': {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 20},
+            'confidence': {'type': 'string', 'enum': ['LOW','MEDIUM','HIGH','VERIFIED'], 'default': 'HIGH'},
+            'business_impact': {'type': 'string'},
+            'recommendation': {'type': 'string'},
+            'limitations': {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 10},
+            'object': {'type': 'string'},
+        },
+        'additionalProperties': False,
+    }
+
+
+def _business_research_execution_reference_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['research_execution_id'],
+        'properties': {
+            'research_execution_id': {'type': 'string'},
+            'reason': {'type': 'string'},
+        },
+        'additionalProperties': False,
+    }
+
 def _laboratory_facade_openapi_schema() -> dict:
     server_url = os.getenv('VECTRA_PUBLIC_RUNTIME_URL') or os.getenv('VECTRA_RUNTIME_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'https://bon-buasson-api.onrender.com'
     api_key_required = bool(os.getenv('VECTRA_LABORATORY_API_KEY'))
@@ -8531,6 +8630,14 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _research_program_create_request_schema()
             elif operation_id == 'verify_business_runtime_access':
                 request_schema = _business_runtime_access_request_schema()
+            elif operation_id == 'start_business_research_execution':
+                request_schema = _business_research_execution_start_request_schema()
+            elif operation_id == 'execute_business_research_task':
+                request_schema = _business_research_task_execute_request_schema()
+            elif operation_id == 'record_business_research_finding':
+                request_schema = _business_research_finding_request_schema()
+            elif operation_id in {'get_business_research_execution_manifest', 'pause_business_research_execution', 'resume_business_research_execution', 'complete_business_research_execution'}:
+                request_schema = _business_research_execution_reference_request_schema()
             else:
                 request_schema = _facade_operation_request_schema()
             op['requestBody'] = {
@@ -8547,7 +8654,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'BUSINESS-RUNTIME-ACCESS-VERIFICATION-001',
+            'version': 'BUSINESS-RESEARCH-EXECUTION-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8564,7 +8671,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'BUSINESS-RUNTIME-ACCESS-VERIFICATION-001',
+        'x-vectra-release': 'BUSINESS-RESEARCH-EXECUTION-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9896,6 +10003,64 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
         result,
         next_action='Proceed to BUSINESS-RESEARCH-EXECUTION-001 only when operational_readiness.status is PASS.',
     ))
+
+
+# BUSINESS-RESEARCH-EXECUTION-001: explicit compact GPT Actions for guided
+# professional research. All Business Runtime access remains read-only.
+@router.post('/vectra/laboratory/business-research/executions/start', summary='Start guided Business Research Execution')
+def vectra_start_business_research_execution_action(request: BusinessResearchExecutionStartRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = start_vectra_business_research_execution(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('start_business_research_execution','business_research_execution.start_business_research_execution','/vectra/laboratory/business-research/executions/start',result,next_action='Execute the next recommended Research Task from the returned Research Execution Manifest.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/manifest', summary='Get Business Research Execution Manifest')
+def vectra_get_business_research_execution_manifest_action(request: BusinessResearchExecutionReferenceRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = get_vectra_business_research_execution_manifest(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('get_business_research_execution_manifest','business_research_execution.get_business_research_execution_manifest','/vectra/laboratory/business-research/executions/manifest',result,next_action='Continue the next recommended Research Task or form an evidence-backed Finding.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/task', summary='Execute guided Business Research Task')
+def vectra_execute_business_research_task_action(request: BusinessResearchTaskExecuteRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = execute_vectra_business_research_task(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('execute_business_research_task','business_research_execution.execute_business_research_task','/vectra/laboratory/business-research/executions/task',result,next_action='Review captured Evidence, form a Finding when justified, then execute the next recommended Research Task.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/finding', summary='Record evidence-backed Business Research Finding')
+def vectra_record_business_research_finding_action(request: BusinessResearchFindingRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = record_vectra_business_research_finding(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('record_business_research_finding','business_research_execution.record_business_research_finding','/vectra/laboratory/business-research/executions/finding',result,next_action='Continue the Research Program using the updated Decision Lineage.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/pause', summary='Pause Business Research Execution')
+def vectra_pause_business_research_execution_action(request: BusinessResearchExecutionReferenceRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = pause_vectra_business_research_execution(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('pause_business_research_execution','business_research_execution.pause_business_research_execution','/vectra/laboratory/business-research/executions/pause',result,next_action='Resume the same execution later using its Research Execution Manifest.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/resume', summary='Resume Business Research Execution')
+def vectra_resume_business_research_execution_action(request: BusinessResearchExecutionReferenceRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = resume_vectra_business_research_execution(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('resume_business_research_execution','business_research_execution.resume_business_research_execution','/vectra/laboratory/business-research/executions/resume',result,next_action='Execute the next recommended Research Task.'))
+
+
+@router.post('/vectra/laboratory/business-research/executions/complete', summary='Complete Business Research Execution')
+def vectra_complete_business_research_execution_action(request: BusinessResearchExecutionReferenceRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = complete_vectra_business_research_execution(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('complete_business_research_execution','business_research_execution.complete_business_research_execution','/vectra/laboratory/business-research/executions/complete',result,next_action='Proceed to BUSINESS-FRAMEWORK-PRODUCT-RESEARCH-001 only when completion status is PASS.'))
+
+
+@router.get('/vectra/laboratory/business-research/executions/verify', summary='Verify guided Business Research Execution foundation')
+def vectra_verify_business_research_execution_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_business_research_execution()
+    return json_response(_facade_response('verify_business_research_execution','business_research_execution.verify_business_research_execution','/vectra/laboratory/business-research/executions/verify',result,next_action='Start Product Verification with a real professional research question when status is PASS.'))
 
 
 @router.post('/vectra/laboratory/facade/memory', summary='Execute VECTRA Memory facade operation')
