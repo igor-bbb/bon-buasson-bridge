@@ -137,3 +137,15 @@ class BusinessDecisionFrameworkValidationReportRequest(BaseModel):
 class BusinessResearchExecutionReferenceRequest(BaseModel):
     research_execution_id: str = Field(description='Research Execution identifier.')
     reason: Optional[str] = Field(default=None, description='Optional pause or resume reason.')
+
+class BusinessFrameworkServiceRequest(BaseModel):
+    """Unified read-only facade for Business Framework Services."""
+
+    operation_type: Optional[str] = Field(default='manifest', description='manifest, registry, resolve_workspace, build_route, navigate or verify.')
+    object_type: Optional[str] = Field(default=None)
+    start_object_type: Optional[str] = Field(default=None)
+    end_object_type: Optional[str] = Field(default=None)
+    current_object_type: Optional[str] = Field(default=None)
+    previous_object_type: Optional[str] = Field(default=None)
+    related_object_type: Optional[str] = Field(default=None)
+    direction: Optional[str] = Field(default=None)

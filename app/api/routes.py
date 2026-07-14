@@ -16,7 +16,7 @@ from app.models.request_models import (
     VectraQueryRequest, ResearchProgramCreateRequest, BusinessRuntimeAccessVerificationRequest,
     BusinessResearchExecutionStartRequest, BusinessResearchTaskExecuteRequest,
     BusinessResearchFindingRequest, BusinessResearchExecutionReferenceRequest,
-    BusinessDecisionFrameworkValidationRequest, BusinessDecisionFrameworkValidationReportRequest,
+    BusinessDecisionFrameworkValidationRequest, BusinessDecisionFrameworkValidationReportRequest, BusinessFrameworkServiceRequest,
     ResearchWorkspaceSnapshotRequest, BusinessObjectDiscoveryRequest,
 )
 from app.domain.summary import (
@@ -268,6 +268,7 @@ from app.assistant_runtime.framework_validation import (
     run_business_workspace_framework_validation as run_vectra_business_workspace_framework_validation,
     verify_business_workspace_framework_validation as verify_vectra_business_workspace_framework_validation,
 )
+from app.assistant_runtime.business_framework_services import execute_framework_service as execute_vectra_framework_service
 from app.assistant_runtime.business_framework_research import (
     get_business_framework_research_manifest as get_vectra_business_framework_research_manifest,
     create_research_program as create_vectra_research_program,
@@ -8176,6 +8177,7 @@ _FACADE_ACTIONS = [
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
+    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute Business Framework Service', 'Unified read-only facade for Framework Manifest, Registry, Workspace Resolver, Research Routing and Navigation.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Facade for Business Domain restore, activation, profile and knowledge operations.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
@@ -10141,6 +10143,23 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
         '/vectra/laboratory/business-runtime/access/verify',
         result,
         next_action='Proceed to BUSINESS-RESEARCH-EXECUTION-001 only when operational_readiness.status is PASS.',
+    ))
+
+
+
+
+# BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001: unified Framework Services facade.
+@router.post('/vectra/laboratory/framework-services', summary='Execute Business Framework Service')
+def vectra_execute_framework_service_action(request: BusinessFrameworkServiceRequest = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request.model_dump(exclude_none=True) if request is not None else {}
+    result = execute_vectra_framework_service(payload)
+    return json_response(_facade_response(
+        'execute_business_framework_service',
+        'business_framework_services.execute_framework_service',
+        '/vectra/laboratory/framework-services',
+        result,
+        next_action='Read manifest, build a route, then discover and open each registered Framework level.',
     ))
 
 
