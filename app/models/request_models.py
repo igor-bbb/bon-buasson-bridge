@@ -86,10 +86,22 @@ class BusinessResearchFindingRequest(BaseModel):
 
 
 
+class BusinessObjectDiscoveryRequest(BaseModel):
+    """Compact read-only contract for autonomous Business object discovery."""
+
+    object_type: Optional[str] = Field(default=None, description='Optional object type: business, top_manager, manager, network, category, tmc_group or sku.')
+    period: Optional[str] = Field(default=None, description='Optional period filter. Latest period remains available in metadata when omitted.')
+    search: Optional[str] = Field(default=None, description='Optional case-insensitive name filter.')
+    offset: int = Field(default=0, ge=0, description='Pagination offset within each requested object type.')
+    limit: int = Field(default=50, ge=1, le=200, description='Maximum objects returned per requested type.')
+    include_all_types: bool = Field(default=True, description='Return all supported object types when object_type is omitted.')
+
+
 class ResearchWorkspaceSnapshotRequest(BaseModel):
     """Compact public read-only request for a complete Workspace research snapshot."""
 
     workspace_id: Optional[str] = Field(default=None, description='Existing Business Workspace identifier.')
+    object_id: Optional[str] = Field(default=None, description='Stable public Business object identifier returned by Business Object Discovery.')
     business_domain: Optional[str] = Field(default=None, description='Optional Business Domain selector when workspace_id is omitted.')
     business_object: Optional[str] = Field(default=None, description='Optional managed business object selector when workspace_id is omitted.')
     period: Optional[str] = Field(default=None, description='Optional business period selector when workspace_id is omitted.')

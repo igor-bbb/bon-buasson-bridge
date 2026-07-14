@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 from app.assistant_runtime.business_workspace import get_business_workspace
+from app.assistant_runtime.business_runtime_access import open_business_workspace_direct
 
 RELEASE_ID = "BUSINESS-WORKSPACE-RESEARCH-CONTRACT-001"
 CONTRACT_VERSION = "1.0"
@@ -61,17 +62,78 @@ def get_workspace_research_contract_manifest() -> Dict[str, Any]:
 
 def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
+    direct_runtime_workspace = False
     try:
         result = get_business_workspace(payload)
-    except ValueError as exc:
-        return {
-            "status": "HOLD",
-            "operation": "research_workspace_snapshot",
-            "reason": "workspace_not_found",
-            "message": str(exc),
-            "recommendation": "Provide an existing workspace_id or a valid business_domain/business_object/period selector.",
-            "read_only": True,
+    except ValueError:
+        object_type = str(payload.get("object_type") or "").strip()
+        business_object = str(payload.get("business_object") or payload.get("object") or "").strip()
+        period = str(payload.get("period") or "").strip()
+        if not object_type or (object_type != "business" and not business_object):
+            return {
+                "status": "HOLD",
+                "operation": "research_workspace_snapshot",
+                "reason": "workspace_not_found",
+                "recommendation": "Use Business Object Discovery and submit the returned research_snapshot_request.",
+                "read_only": True,
+            }
+        direct = open_business_workspace_direct(object_type, object_id=business_object, period=period)
+        if direct.get("status") != "PASS":
+            return {
+                "status": "HOLD",
+                "operation": "research_workspace_snapshot",
+                "reason": "direct_workspace_unavailable",
+                "diagnostic": direct.get("diagnostic") or {},
+                "recommendation": "Select another discovered object or period and retry.",
+                "read_only": True,
+            }
+        runtime_workspace = _as_dict(direct.get("workspace"))
+        runtime_response = _as_dict(runtime_workspace.get("runtime_response"))
+        business_context = _as_dict(runtime_workspace.get("business_context"))
+        navigation_context = _as_dict(runtime_workspace.get("navigation_context"))
+        workspace = {
+            "workspace_id": payload.get("object_id") or f"DIRECT-{object_type}-{business_object}",
+            "workspace_type": runtime_workspace.get("workspace_type"),
+            "business_domain": payload.get("business_domain") or "bon_buasson",
+            "managed_object": business_object or "business",
+            "period": runtime_workspace.get("period"),
+            "owner_role_id": "digital_business_analyst",
+            "status": "ACTIVE_READ_ONLY",
+            "version": 1,
+            "updated_at": None,
+            "professional_state": {"source": "existing_business_runtime", "activity_outcome": "Direct research snapshot opened."},
+            "sections": {
+                "executive_summary": runtime_response.get("executive_summary") or runtime_response.get("human_summary") or runtime_response.get("summary"),
+                "narrative": runtime_response.get("narrative") or runtime_response.get("interpretation") or runtime_response.get("human_summary"),
+                "priorities": runtime_response.get("priorities") or runtime_response.get("focus_block") or [],
+                "evidence_view": runtime_response.get("evidence") or [],
+                "decision_view": runtime_response.get("decision_view") or {
+                    "causes": runtime_response.get("causes") or runtime_response.get("reasons") or [],
+                    "risks": runtime_response.get("risks") or [],
+                    "opportunities": runtime_response.get("opportunities") or [],
+                    "recommendations": runtime_response.get("recommendations") or runtime_response.get("decisions") or [],
+                },
+                "conversation_context": {
+                    "business_domain": payload.get("business_domain") or "bon_buasson",
+                    "business_context": business_context,
+                    "research_context": {"source": "business_object_discovery", "object_id": payload.get("object_id")},
+                    "available_transitions": navigation_context.get("allowed_transitions") or [],
+                    "recommended_transitions": [],
+                },
+            },
+            "business_metrics": runtime_response.get("metrics") or runtime_response.get("business_metrics") or {},
+            "derived_metrics": runtime_response.get("derived_metrics") or {},
+            "navigation": navigation_context,
+            "readiness": {
+                "structural_readiness": "READY",
+                "evidence_readiness": "PARTIAL",
+                "decision_readiness": "READY" if runtime_response.get("recommendations") or runtime_response.get("decisions") else "PARTIAL",
+                "conversation_readiness": "READY",
+            },
+            "manifest": {"evidence_ids": [], "finding_ids": [], "source": "direct_business_runtime"},
         }
+        result = {"status": "PASS", "business_workspace": workspace}
+        direct_runtime_workspace = True
 
     if result.get("status") != "PASS":
         return {
@@ -204,6 +266,7 @@ def get_research_workspace_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
             "audit_ready": bool(executive_summary and narrative and evidence_view and decision_view),
         },
         "source_workspace": workspace,
+        "snapshot_source": "direct_business_runtime" if direct_runtime_workspace else "persistent_business_workspace",
     }
 
     return {

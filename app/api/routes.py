@@ -17,7 +17,7 @@ from app.models.request_models import (
     BusinessResearchExecutionStartRequest, BusinessResearchTaskExecuteRequest,
     BusinessResearchFindingRequest, BusinessResearchExecutionReferenceRequest,
     BusinessDecisionFrameworkValidationRequest, BusinessDecisionFrameworkValidationReportRequest,
-    ResearchWorkspaceSnapshotRequest,
+    ResearchWorkspaceSnapshotRequest, BusinessObjectDiscoveryRequest,
 )
 from app.domain.summary import (
     get_business_summary,
@@ -238,6 +238,11 @@ from app.assistant_runtime.workspace_research_contract import (
     get_workspace_research_contract_manifest as get_vectra_workspace_research_contract_manifest,
     get_research_workspace_snapshot as get_vectra_research_workspace_snapshot,
     verify_workspace_research_contract as verify_vectra_workspace_research_contract,
+)
+from app.assistant_runtime.business_object_discovery import (
+    get_business_object_discovery_manifest as get_vectra_business_object_discovery_manifest,
+    discover_business_objects as discover_vectra_business_objects,
+    verify_business_object_discovery as verify_vectra_business_object_discovery,
 )
 from app.assistant_runtime.business_runtime_access import (
     get_business_runtime_manifest as get_vectra_business_runtime_access_manifest,
@@ -8196,7 +8201,7 @@ _FACADE_ACTIONS = [
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
     ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
     ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Returns one complete read-only professional snapshot for auditing an existing Business Workspace.'),
-    ('verify_workspace_research_contract', 'GET', '/vectra/laboratory/business-workspace/research-contract/verify', 'Verify Business Workspace Research Contract', 'Verifies the full read-only Workspace research snapshot contract.'),
+    ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a read-only catalogue of Business, managers, contracts, categories, TMC groups and SKU with stable ids and ready-to-use Research Workspace Snapshot selectors.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8569,6 +8574,21 @@ def _research_program_create_request_schema() -> dict:
     }
 
 
+def _business_object_discovery_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'properties': {
+            'object_type': {'type': 'string', 'enum': ['business','top_manager','manager','network','category','tmc_group','sku'], 'description': 'Optional object type filter.'},
+            'period': {'type': 'string', 'description': 'Optional period filter.', 'examples': ['2026-02']},
+            'search': {'type': 'string', 'description': 'Optional case-insensitive name search.'},
+            'offset': {'type': 'integer', 'minimum': 0, 'default': 0},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200, 'default': 50},
+            'include_all_types': {'type': 'boolean', 'default': True},
+        },
+        'additionalProperties': False,
+    }
+
+
 def _business_runtime_access_request_schema() -> dict:
     return {
         'type': 'object',
@@ -8713,6 +8733,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _research_program_create_request_schema()
             elif operation_id == 'verify_business_runtime_access':
                 request_schema = _business_runtime_access_request_schema()
+            elif operation_id == 'discover_business_objects':
+                request_schema = _business_object_discovery_request_schema()
             elif operation_id == 'start_business_research_execution':
                 request_schema = _business_research_execution_start_request_schema()
             elif operation_id == 'execute_business_research_task':
@@ -8741,7 +8763,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'GPT-ACTIONS-COMPACT-CONTRACT-001',
+            'version': 'BUSINESS-OBJECT-DISCOVERY-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract is intentionally limited to 30 public operations for GPT Actions Editor compatibility; diagnostic Runtime routes remain available internally.',
         },
         'servers': [{'url': server_url}],
@@ -8758,7 +8780,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'GPT-ACTIONS-COMPACT-CONTRACT-001',
+        'x-vectra-release': 'BUSINESS-OBJECT-DISCOVERY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -10093,6 +10115,34 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
     ))
 
 
+# BUSINESS-OBJECT-DISCOVERY-001: autonomous read-only object catalogue.
+@router.post('/vectra/laboratory/business-objects/discover', summary='Discover Business Framework research objects')
+def vectra_discover_business_objects_action(request: BusinessObjectDiscoveryRequest = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request.model_dump(exclude_none=True) if request is not None else {}
+    result = discover_vectra_business_objects(payload)
+    return json_response(_facade_response(
+        'discover_business_objects',
+        'business_object_discovery.discover_business_objects',
+        '/vectra/laboratory/business-objects/discover',
+        result,
+        next_action='Select one returned object and call get_research_workspace_snapshot with its research_snapshot_request.',
+    ))
+
+
+@router.get('/vectra/laboratory/business-objects/discover/verify', summary='Verify Business Object Discovery')
+def vectra_verify_business_object_discovery_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_business_object_discovery()
+    return json_response(_facade_response(
+        'verify_business_object_discovery',
+        'business_object_discovery.verify_business_object_discovery',
+        '/vectra/laboratory/business-objects/discover/verify',
+        result,
+        next_action='Run discover_business_objects and select an object for Research Workspace Snapshot.',
+    ))
+
+
 # BUSINESS-WORKSPACE-RESEARCH-CONTRACT-001: complete read-only Workspace snapshot.
 @router.post('/vectra/laboratory/business-workspace/research-snapshot', summary='Get complete Business Workspace Research Snapshot')
 def vectra_get_research_workspace_snapshot_action(request: ResearchWorkspaceSnapshotRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
@@ -10230,6 +10280,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_organization.verify_registry', '/vectra/laboratory/facade/memory', verify_vectra_digital_organization_registry()))
         if operation_type in {'framework_validation_manifest', 'digital_business_analyst_framework_validation_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.framework_validation_manifest', '/vectra/laboratory/facade/memory', get_vectra_framework_validation_manifest(), next_action='Run professional validation of the existing Business Workspace Framework.'))
+        if operation_type in {'discover_business_objects', 'business_object_discovery'}:
+            return json_response(_facade_response(operation_type, 'business_object_discovery.discover_business_objects', '/vectra/laboratory/facade/memory', discover_vectra_business_objects(payload), next_action='Select one returned object and request its Research Workspace Snapshot.'))
+        if operation_type in {'business_object_discovery_manifest'}:
+            return json_response(_facade_response(operation_type, 'business_object_discovery.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_business_object_discovery_manifest(), next_action='Discover Business objects.'))
+        if operation_type in {'verify_business_object_discovery'}:
+            return json_response(_facade_response(operation_type, 'business_object_discovery.verify', '/vectra/laboratory/facade/memory', verify_vectra_business_object_discovery(), next_action='Discover Business objects.'))
         if operation_type in {'get_research_workspace_snapshot', 'research_workspace_snapshot'}:
             return json_response(_facade_response(operation_type, 'workspace_research_contract.get_research_workspace_snapshot', '/vectra/laboratory/facade/memory', get_vectra_research_workspace_snapshot(payload), next_action='Audit the Workspace using the returned snapshot.'))
         if operation_type in {'verify_workspace_research_contract', 'workspace_research_contract_verify'}:
