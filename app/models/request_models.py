@@ -86,6 +86,15 @@ class BusinessResearchFindingRequest(BaseModel):
 
 
 
+class ResearchWorkspaceSnapshotRequest(BaseModel):
+    """Compact public read-only request for a complete Workspace research snapshot."""
+
+    workspace_id: Optional[str] = Field(default=None, description='Existing Business Workspace identifier.')
+    business_domain: Optional[str] = Field(default=None, description='Optional Business Domain selector when workspace_id is omitted.')
+    business_object: Optional[str] = Field(default=None, description='Optional managed business object selector when workspace_id is omitted.')
+    period: Optional[str] = Field(default=None, description='Optional business period selector when workspace_id is omitted.')
+    object_type: Optional[str] = Field(default=None, description='Optional professional object type for snapshot identity.')
+
 
 class BusinessDecisionFrameworkValidationRequest(BaseModel):
     """Compact public contract for Stage 3 Decision Framework validation.

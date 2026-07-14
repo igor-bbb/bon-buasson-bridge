@@ -17,6 +17,7 @@ from app.models.request_models import (
     BusinessResearchExecutionStartRequest, BusinessResearchTaskExecuteRequest,
     BusinessResearchFindingRequest, BusinessResearchExecutionReferenceRequest,
     BusinessDecisionFrameworkValidationRequest, BusinessDecisionFrameworkValidationReportRequest,
+    ResearchWorkspaceSnapshotRequest,
 )
 from app.domain.summary import (
     get_business_summary,
@@ -232,6 +233,11 @@ from app.assistant_runtime.digital_business_analyst import (
     get_business_review as get_vectra_business_review,
     list_business_reviews as list_vectra_business_reviews,
     verify_digital_business_analyst_foundation as verify_vectra_digital_business_analyst_foundation,
+)
+from app.assistant_runtime.workspace_research_contract import (
+    get_workspace_research_contract_manifest as get_vectra_workspace_research_contract_manifest,
+    get_research_workspace_snapshot as get_vectra_research_workspace_snapshot,
+    verify_workspace_research_contract as verify_vectra_workspace_research_contract,
 )
 from app.assistant_runtime.business_runtime_access import (
     get_business_runtime_manifest as get_vectra_business_runtime_access_manifest,
@@ -8139,6 +8145,8 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'run_business_decision_framework_validation': '/vectra/laboratory/business-decision-framework/validate',
     'get_business_decision_framework_validation_report': '/vectra/laboratory/business-decision-framework/report',
     'verify_business_decision_framework_validation': '/vectra/laboratory/business-decision-framework/verify',
+    'get_research_workspace_snapshot': '/vectra/laboratory/business-workspace/research-snapshot',
+    'verify_workspace_research_contract': '/vectra/laboratory/business-workspace/research-contract/verify',
 }
 
 _FACADE_ACTIONS = [
@@ -8172,6 +8180,8 @@ _FACADE_ACTIONS = [
     ('run_business_decision_framework_validation', 'POST', '/vectra/laboratory/business-decision-framework/validate', 'Run Business Decision Framework Validation', 'Runs Stage 3 read-only validation of decision scenarios, Guided/Autonomous Decision readiness, Decision Traceability and Recommendation Quality.'),
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
     ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
+    ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Returns one complete read-only professional snapshot for auditing an existing Business Workspace.'),
+    ('verify_workspace_research_contract', 'GET', '/vectra/laboratory/business-workspace/research-contract/verify', 'Verify Business Workspace Research Contract', 'Verifies the full read-only Workspace research snapshot contract.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -10067,6 +10077,33 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
     ))
 
 
+# BUSINESS-WORKSPACE-RESEARCH-CONTRACT-001: complete read-only Workspace snapshot.
+@router.post('/vectra/laboratory/business-workspace/research-snapshot', summary='Get complete Business Workspace Research Snapshot')
+def vectra_get_research_workspace_snapshot_action(request: ResearchWorkspaceSnapshotRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = get_vectra_research_workspace_snapshot(request.model_dump(exclude_none=True))
+    return json_response(_facade_response(
+        'get_research_workspace_snapshot',
+        'workspace_research_contract.get_research_workspace_snapshot',
+        '/vectra/laboratory/business-workspace/research-snapshot',
+        result,
+        next_action='Audit the Workspace using the returned snapshot without additional Runtime calls.',
+    ))
+
+
+@router.get('/vectra/laboratory/business-workspace/research-contract/verify', summary='Verify Business Workspace Research Contract')
+def vectra_verify_workspace_research_contract_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_workspace_research_contract()
+    return json_response(_facade_response(
+        'verify_workspace_research_contract',
+        'workspace_research_contract.verify_workspace_research_contract',
+        '/vectra/laboratory/business-workspace/research-contract/verify',
+        result,
+        next_action='Request a Research Workspace Snapshot for an existing Business Workspace.',
+    ))
+
+
 # PROFESSIONAL-RUNTIME-CONTINUATION-001: platform-level durability check.
 @router.get('/vectra/laboratory/runtime/continuation/verify', summary='Verify Professional Runtime continuation after pauses')
 def vectra_verify_professional_runtime_continuation_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
@@ -10177,6 +10214,10 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'digital_organization.verify_registry', '/vectra/laboratory/facade/memory', verify_vectra_digital_organization_registry()))
         if operation_type in {'framework_validation_manifest', 'digital_business_analyst_framework_validation_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.framework_validation_manifest', '/vectra/laboratory/facade/memory', get_vectra_framework_validation_manifest(), next_action='Run professional validation of the existing Business Workspace Framework.'))
+        if operation_type in {'get_research_workspace_snapshot', 'research_workspace_snapshot'}:
+            return json_response(_facade_response(operation_type, 'workspace_research_contract.get_research_workspace_snapshot', '/vectra/laboratory/facade/memory', get_vectra_research_workspace_snapshot(payload), next_action='Audit the Workspace using the returned snapshot.'))
+        if operation_type in {'verify_workspace_research_contract', 'workspace_research_contract_verify'}:
+            return json_response(_facade_response(operation_type, 'workspace_research_contract.verify_workspace_research_contract', '/vectra/laboratory/facade/memory', verify_vectra_workspace_research_contract()))
         if operation_type in {'run_business_workspace_framework_validation', 'validate_existing_business_workspace_framework'}:
             return json_response(_facade_response(operation_type, 'digital_business_analyst.run_framework_validation', '/vectra/laboratory/facade/memory', run_vectra_business_workspace_framework_validation(payload), next_action='Review the Framework Validation Report and complete Product Review.'))
         if operation_type in {'verify_business_workspace_framework_validation', 'framework_validation_verify'}:
