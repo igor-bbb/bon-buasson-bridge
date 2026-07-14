@@ -34,7 +34,7 @@ from app.assistant_runtime.evidence_platform import (
 from app.assistant_runtime.findings_platform import (
     register_professional_finding,
 )
-from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state
+from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state, update_json_state
 from app.assistant_runtime.professional_activity import (
     complete_professional_activity,
     get_professional_activity,
@@ -42,9 +42,10 @@ from app.assistant_runtime.professional_activity import (
     start_professional_activity,
 )
 
-RELEASE_ID = "BUSINESS-RESEARCH-EXECUTION-001"
+RELEASE_ID = "PROFESSIONAL-RESEARCH-PERSISTENCE-001"
 DEFAULT_BASE_PATH = "assistant_repository"
 EXECUTIONS_FILE = Path("runtime") / "business_research_execution" / "executions.json"
+EXECUTION_REGISTRY_FILE = Path("runtime") / "business_research_execution" / "execution_registry.json"
 EXECUTION_STATUSES = {
     "ACTIVE",
     "PAUSED",
@@ -78,9 +79,42 @@ def _path() -> Path:
     return _base_path() / EXECUTIONS_FILE
 
 
+def _registry_path() -> Path:
+    return _base_path() / EXECUTION_REGISTRY_FILE
+
+
+def _registry_from_items(items: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    registry: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        execution_id = str(item.get("research_execution_id") or "").strip().upper()
+        if execution_id:
+            item["research_execution_id"] = execution_id
+            registry[execution_id] = item
+    return registry
+
+
+def _read_registry_with_diagnostic() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
+    registry, diagnostic = read_json_state(_registry_path(), dict, dict)
+    if registry:
+        return registry, diagnostic
+    legacy, legacy_diagnostic = read_json_state(_path(), list, list)
+    if legacy:
+        migrated = _registry_from_items(legacy)
+        write_json_state(_registry_path(), _json_safe_value(migrated))
+        return migrated, {
+            "status": "PASS",
+            "source": "legacy_migration",
+            "path": str(_registry_path()),
+            "legacy_source": legacy_diagnostic.get("source"),
+            "recovered": bool(legacy_diagnostic.get("recovered")),
+            "read_at": _now(),
+        }
+    return {}, diagnostic
+
+
 def _read_with_diagnostic() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    value, diagnostic = read_json_state(_path(), list, list)
-    return value, diagnostic
+    registry, diagnostic = _read_registry_with_diagnostic()
+    return list(registry.values()), diagnostic
 
 
 def _read() -> List[Dict[str, Any]]:
@@ -89,7 +123,37 @@ def _read() -> List[Dict[str, Any]]:
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    write_json_state(_path(), _json_safe_value(items))
+    safe_items = _json_safe_value(items)
+    registry = _registry_from_items(safe_items)
+    write_json_state(_registry_path(), registry)
+    # Compatibility mirror for diagnostics and previous releases.  The
+    # canonical source of truth is execution_registry.json.
+    write_json_state(_path(), list(registry.values()))
+
+
+def _commit_execution(execution: Dict[str, Any]) -> Dict[str, Any]:
+    execution = _json_safe_value(execution)
+    execution_id = str(execution.get("research_execution_id") or "").strip().upper()
+    if not execution_id:
+        raise ValueError("research_execution_id is required for persistence commit")
+    execution["research_execution_id"] = execution_id
+
+    def upsert(registry: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        updated = dict(registry)
+        updated[execution_id] = execution
+        return updated
+
+    committed, diagnostic = update_json_state(_registry_path(), dict, dict, upsert)
+    readback = committed.get(execution_id)
+    if not isinstance(readback, dict):
+        raise RuntimeError(f"Research Execution readback missing after commit: {execution_id}")
+    if str(readback.get("research_execution_id") or "").upper() != execution_id:
+        raise RuntimeError(f"Research Execution id mismatch after commit: {execution_id}")
+    try:
+        write_json_state(_path(), list(committed.values()))
+    except Exception:
+        pass
+    return {"execution": readback, "diagnostic": diagnostic}
 
 
 def _required(payload: Dict[str, Any], key: str) -> str:
@@ -100,11 +164,12 @@ def _required(payload: Dict[str, Any], key: str) -> str:
 
 
 def _find(items: List[Dict[str, Any]], execution_id: str) -> Optional[Dict[str, Any]]:
-    return next((item for item in items if str(item.get("research_execution_id")) == execution_id), None)
+    normalized = str(execution_id or "").strip().upper()
+    return next((item for item in items if str(item.get("research_execution_id") or "").strip().upper() == normalized), None)
 
 
 def _get_execution(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    execution_id = _required(payload, "research_execution_id")
+    execution_id = _required(payload, "research_execution_id").upper()
     items, diagnostic = _read_with_diagnostic()
     if diagnostic.get("status") == "HOLD":
         raise RuntimeError(f"Research Execution Repository unavailable: {diagnostic}")
@@ -437,11 +502,48 @@ def start_business_research_execution(payload: Dict[str, Any]) -> Dict[str, Any]
         "updated_at": now,
         "history": [{"event": "RESEARCH_EXECUTION_STARTED", "at": now}],
     }
-    items = _read()
-    items.append(execution)
-    _write(items)
-    result = _execution_manifest(execution)
-    result.update({"research_execution_created": True, "next_allowed_action": "execute_next_business_research_task"})
+    try:
+        commit = _commit_execution(execution)
+        persisted_execution = commit["execution"]
+        # Mandatory immediate readback through the same public repository path.
+        _, readback_execution = _get_execution({"research_execution_id": execution["research_execution_id"]})
+        persisted_program = get_research_program({"research_program_id": program_id}).get("research_program") or {}
+        persisted_activity = get_professional_activity({"activity_id": activity_id}).get("activity") or {}
+        consistency = {
+            "research_execution_id_consistent": readback_execution.get("research_execution_id") == execution.get("research_execution_id"),
+            "research_program_id_consistent": readback_execution.get("research_program_id") == program_id and persisted_program.get("research_program_id") == program_id,
+            "professional_activity_id_consistent": readback_execution.get("professional_activity_id") == activity_id and persisted_activity.get("activity_id") == activity_id,
+            "manifest_available": True,
+            "persistent_repository_readback": True,
+        }
+        if not all(consistency.values()):
+            raise RuntimeError(f"Research Execution consistency verification failed: {consistency}")
+    except Exception as exc:
+        return {
+            "status": "PERSISTENCE_ERROR",
+            "research_execution_created": False,
+            "reason": "research_execution_persistence_commit_failed",
+            "diagnostic": {
+                "current_step": "create_persist_readback",
+                "reason": str(exc),
+                "continuation_possible": False,
+                "recommended_action": "Verify the persistent Runtime repository and retry creation. No successful creation was reported.",
+            },
+        }
+
+    result = _execution_manifest(readback_execution)
+    result.update({
+        "research_execution_id": readback_execution.get("research_execution_id"),
+        "professional_activity_id": readback_execution.get("professional_activity_id"),
+        "research_program_id": readback_execution.get("research_program_id"),
+        "research_execution_created": True,
+        "persistence_commit": "PASS",
+        "repository_readback": "PASS",
+        "manifest_available": True,
+        "consistency_verification": consistency,
+        "repository_diagnostic": commit.get("diagnostic"),
+        "next_allowed_action": "get_business_research_execution_manifest",
+    })
     return result
 
 
@@ -753,11 +855,11 @@ def complete_business_research_execution(payload: Dict[str, Any]) -> Dict[str, A
 
 
 def verify_business_research_execution() -> Dict[str, Any]:
-    path = _path()
+    path = _registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        _write([])
-    repository_diagnostic = inspect_json_state(path, list)
+        write_json_state(path, {})
+    repository_diagnostic = inspect_json_state(path, dict)
     dependency_checks = {
         "execution_repository_readable": repository_diagnostic.get("status") in {"PASS", "RECOVERED", "EMPTY"},
         "research_program_foundation_available": callable(create_research_program),
@@ -771,6 +873,9 @@ def verify_business_research_execution() -> Dict[str, Any]:
         "manifest_recovery_supported": True,
         "transport_session_independence": True,
         "atomic_repository_writes": True,
+        "create_persist_readback_contract": True,
+        "canonical_execution_registry": True,
+        "single_execution_id_across_subsystems": True,
         "backup_recovery_supported": True,
         "read_only_guarantee": True,
     }

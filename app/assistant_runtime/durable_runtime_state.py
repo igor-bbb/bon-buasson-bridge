@@ -151,3 +151,45 @@ def inspect_json_state(path: Path, expected_type: type) -> Dict[str, Any]:
         "item_count": count,
         "transport_session_independent": True,
     }
+
+
+def update_json_state(path: Path, default_factory: Callable[[], Any], expected_type: type, updater: Callable[[Any], Any]) -> Tuple[Any, Dict[str, Any]]:
+    """Atomically read, update, persist and read back a JSON state object.
+
+    The entire mutation is protected by one file lock.  A successful return
+    therefore means the committed state was read back from the same canonical
+    repository path, rather than merely accepted in process memory.
+    """
+    with _file_lock(path):
+        current, primary_error = _decode(path, expected_type)
+        source = "primary"
+        recovered = False
+        if current is None:
+            backup_path = path.with_suffix(path.suffix + ".bak")
+            current, backup_error = _decode(backup_path, expected_type)
+            if current is not None:
+                source = "backup"
+                recovered = True
+            elif primary_error == "not_found" and backup_error == "not_found":
+                current = default_factory()
+                source = "default"
+            else:
+                raise RuntimeError(
+                    f"Persistent repository unavailable: primary={primary_error}; backup={backup_error}"
+                )
+        updated = updater(current)
+        if not isinstance(updated, expected_type):
+            raise TypeError(f"updater returned {type(updated).__name__}, expected {expected_type.__name__}")
+        write_diagnostic = _write_json_state_locked(path, updated, create_backup=True)
+        readback, readback_error = _decode(path, expected_type)
+        if readback is None:
+            raise RuntimeError(f"Repository readback failed after commit: {readback_error}")
+        return readback, {
+            "status": "PASS",
+            "source_before_commit": source,
+            "recovered_before_commit": recovered,
+            "path": str(path),
+            "write": write_diagnostic,
+            "readback_verified": True,
+            "committed_at": _now(),
+        }
