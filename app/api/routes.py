@@ -8200,7 +8200,7 @@ _FACADE_ACTIONS = [
     ('run_business_decision_framework_validation', 'POST', '/vectra/laboratory/business-decision-framework/validate', 'Run Business Decision Framework Validation', 'Runs Stage 3 read-only validation of decision scenarios, Guided/Autonomous Decision readiness, Decision Traceability and Recommendation Quality.'),
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
     ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
-    ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Returns one complete read-only professional snapshot for auditing an existing Business Workspace.'),
+    ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Accepts the canonical research_snapshot_request returned by Business Object Discovery without transformation and returns one complete read-only professional snapshot.'),
     ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a scalable read-only catalogue with type filtering, pagination, search, sorting and summary-only mode.'),
 ]
 
@@ -8590,6 +8590,32 @@ def _business_object_discovery_request_schema() -> dict:
     }
 
 
+def _research_workspace_snapshot_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['research_snapshot_request'],
+        'properties': {
+            'research_snapshot_request': {
+                'type': 'object',
+                'required': ['contract_version', 'object_type', 'object_id', 'business_domain'],
+                'properties': {
+                    'contract_version': {'type': 'string', 'enum': ['1.0'], 'description': 'Canonical Runtime Object contract version.'},
+                    'object_type': {'type': 'string', 'enum': ['business','top_manager','manager','network','category','tmc_group','sku']},
+                    'object_id': {'type': 'string', 'description': 'Stable public identifier returned by Business Object Discovery.'},
+                    'business_domain': {'type': 'string', 'enum': ['bon_buasson']},
+                    'business_object': {'type': 'string', 'description': 'Runtime-owned selector. Pass unchanged.'},
+                    'period': {'type': 'string', 'description': 'Runtime-selected period. Pass unchanged.'},
+                    'workspace_id': {'type': 'string', 'description': 'Optional persistent Workspace id. Pass unchanged.'},
+                },
+                'additionalProperties': True,
+                'description': 'Canonical Runtime Object returned by discover_business_objects. Pass the object unchanged; do not extract or duplicate its fields.',
+            },
+        },
+        'additionalProperties': False,
+        'description': 'Canonical mode only for GPT Actions. Legacy compatibility remains available internally, but mixed mode is rejected.',
+    }
+
+
 def _business_runtime_access_request_schema() -> dict:
     return {
         'type': 'object',
@@ -8736,6 +8762,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_runtime_access_request_schema()
             elif operation_id == 'discover_business_objects':
                 request_schema = _business_object_discovery_request_schema()
+            elif operation_id == 'get_research_workspace_snapshot':
+                request_schema = _research_workspace_snapshot_request_schema()
             elif operation_id == 'start_business_research_execution':
                 request_schema = _business_research_execution_start_request_schema()
             elif operation_id == 'execute_business_research_task':
@@ -8764,7 +8792,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'BUSINESS-OBJECT-DISCOVERY-001',
+            'version': 'WORKSPACE-RESEARCH-SNAPSHOT-CONTRACT-ALIGNMENT-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract is intentionally limited to 30 public operations for GPT Actions Editor compatibility; diagnostic Runtime routes remain available internally.',
         },
         'servers': [{'url': server_url}],
@@ -8781,7 +8809,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'BUSINESS-OBJECT-DISCOVERY-001',
+        'x-vectra-release': 'WORKSPACE-RESEARCH-SNAPSHOT-CONTRACT-ALIGNMENT-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -10127,7 +10155,7 @@ def vectra_discover_business_objects_action(request: BusinessObjectDiscoveryRequ
         'business_object_discovery.discover_business_objects',
         '/vectra/laboratory/business-objects/discover',
         result,
-        next_action='Select one returned object and call get_research_workspace_snapshot with its research_snapshot_request.',
+        next_action='Pass one returned research_snapshot_request unchanged to get_research_workspace_snapshot.',
     ))
 
 
