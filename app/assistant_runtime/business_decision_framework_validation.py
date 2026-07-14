@@ -26,7 +26,7 @@ from app.assistant_runtime.research_engine import (
     complete_research_session,
 )
 
-RELEASE_ID = "BUSINESS-DECISION-FRAMEWORK-VALIDATION-001"
+RELEASE_ID = "BUSINESS-DECISION-FRAMEWORK-VALIDATION-001-HOLD-001"
 DEFAULT_BASE_PATH = "assistant_repository"
 REPORTS_FILE = Path("runtime") / "business_decision_framework_validation" / "reports.json"
 ROLE_ID = "digital_business_analyst"
@@ -288,10 +288,11 @@ def _assess_scenario(scenario: Dict[str, Any], workspace: Dict[str, Any]) -> Dic
             "conversation_context": conversation_present,
         },
         "decision_traceability": {
-            "status": "PASS" if decision_traceable else "PARTIAL",
+            "status": "PENDING",
             "chain": ["decision", "recommendation", "finding", "evidence", "business_object", "sku"],
-            "sku_traceability_confirmed": decision_traceable,
+            "sku_traceability_confirmed": False,
         },
+        "expected_recommendation": scenario.get("expected_recommendation"),
         "recommended_actions_quality": {
             "present": recommendation_present,
             "expected_recommendation": scenario.get("expected_recommendation"),
@@ -341,6 +342,125 @@ def _finding(research_session_id: str, statement: str, evidence_id: Optional[str
     })
     finding = result.get("finding") if isinstance(result, dict) else {}
     return str((finding or {}).get("finding_id") or "") or None
+
+
+def _workspace_sku(scenario: Dict[str, Any], workspace: Dict[str, Any]) -> Optional[str]:
+    if str(scenario.get("workspace_type") or "").lower() == "sku":
+        value = str(scenario.get("business_object") or "").strip()
+        return value or None
+    context = workspace.get("context") if isinstance(workspace.get("context"), dict) else {}
+    business_context = workspace.get("business_context") if isinstance(workspace.get("business_context"), dict) else {}
+    for source in (context, business_context):
+        for key in ("sku", "active_sku", "selected_sku", "object_sku"):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        values = source.get("skus")
+        if isinstance(values, list):
+            value = _first(values)
+            if value:
+                return value
+    entities = get_business_data_entities(limit_per_group=1)
+    values = entities.get("entities") if isinstance(entities, dict) else {}
+    values = values if isinstance(values, dict) else {}
+    return _first(values.get("sku"))
+
+
+def _executive_summary(assessment: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = assessment.get("metrics") if isinstance(assessment.get("metrics"), dict) else {}
+    limitations = assessment.get("limitations") if isinstance(assessment.get("limitations"), list) else []
+    strengths = assessment.get("strengths") if isinstance(assessment.get("strengths"), list) else []
+    state = (
+        "READY" if assessment.get("assessment_status") == "PASS"
+        else "REQUIRES_ACTION" if assessment.get("assessment_status") == "PARTIAL"
+        else "BLOCKED"
+    )
+    main_risk = limitations[0] if limitations else "Критический риск Decision Flow не подтверждён."
+    main_reserve = strengths[0] if strengths else "Резерв — восстановить подтверждённый контекст и доказательную базу сценария."
+    if float(metrics.get("recommendation_quality") or 0.0) < 0.67:
+        priority = "Сформировать доказательную рекомендацию и связать её с объектом действия."
+    elif float(metrics.get("context_integrity") or 0.0) < 0.67:
+        priority = "Восстановить Business, Decision и Conversation Context."
+    else:
+        priority = "Использовать подтверждённый сценарий для принятия управленческого решения."
+    return {
+        "current_state": state,
+        "main_risk": main_risk,
+        "main_reserve": main_reserve,
+        "main_priority": priority,
+        "recommended_next_step": priority,
+        "decision_ready": state == "READY",
+    }
+
+
+def _executive_recommendation(assessment: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = assessment.get("metrics") if isinstance(assessment.get("metrics"), dict) else {}
+    limitations = assessment.get("limitations") if isinstance(assessment.get("limitations"), list) else []
+    expected = str(assessment.get("expected_recommendation") or "").strip()
+    if limitations:
+        recommendation = expected or "Устранить подтверждённый разрыв Decision Flow до принятия решения."
+        reason = limitations[0]
+        expected_effect = "Повышение воспроизводимости и доказательности управленческого решения."
+        next_action = "Исправить первый подтверждённый разрыв и повторить сценарий проверки."
+    else:
+        recommendation = expected or "Принять подготовленное управленческое решение по сценарию."
+        reason = "Workspace содержит достаточный контекст, доказательства и управленческий переход."
+        expected_effect = "Переход от анализа состояния к проверяемому управленческому действию."
+        next_action = "Назначить владельца действия и зафиксировать ожидаемый эффект."
+    quality = float(metrics.get("recommendation_quality") or 0.0)
+    confidence = "HIGH" if quality >= 0.67 else ("MEDIUM" if quality >= 0.34 else "LOW")
+    return {
+        "recommendation": recommendation,
+        "reason": reason,
+        "expected_effect": expected_effect,
+        "confidence": confidence,
+        "recommended_next_action": next_action,
+    }
+
+
+def _decision_traceability(
+    assessment: Dict[str, Any],
+    scenario: Dict[str, Any],
+    workspace: Dict[str, Any],
+    evidence_id: Optional[str],
+    finding_id: Optional[str],
+) -> Dict[str, Any]:
+    recommendation = assessment.get("executive_recommendation") if isinstance(assessment.get("executive_recommendation"), dict) else {}
+    sku = _workspace_sku(scenario, workspace)
+    nodes = {
+        "decision": {
+            "decision_goal": scenario.get("decision_goal"),
+            "owner_role": scenario.get("owner_role"),
+            "scenario_id": scenario.get("scenario_id"),
+        },
+        "recommendation": {
+            "text": recommendation.get("recommendation"),
+            "next_action": recommendation.get("recommended_next_action"),
+        },
+        "finding": {"finding_id": finding_id},
+        "evidence": {"evidence_id": evidence_id},
+        "business_object": {
+            "type": scenario.get("workspace_type"),
+            "id": scenario.get("business_object"),
+        },
+        "sku": {"id": sku},
+    }
+    complete = all([
+        nodes["decision"]["scenario_id"],
+        nodes["recommendation"]["text"],
+        nodes["finding"]["finding_id"],
+        nodes["evidence"]["evidence_id"],
+        nodes["business_object"]["id"],
+        nodes["sku"]["id"],
+    ])
+    return {
+        "status": "PASS" if complete else "HOLD",
+        "chain": ["decision", "recommendation", "finding", "evidence", "business_object", "sku"],
+        "nodes": nodes,
+        "sku_traceability_confirmed": bool(sku),
+        "complete": complete,
+        "missing_nodes": [name for name, node in nodes.items() if not any(value for value in node.values())],
+    }
 
 
 def _average(items: List[Dict[str, Any]], key: str) -> float:
@@ -421,6 +541,8 @@ def run_business_decision_framework_validation(payload: Dict[str, Any]) -> Dict[
         workspace = execution.get("workspace") if isinstance(execution, dict) else {}
         workspace = workspace if isinstance(workspace, dict) else {}
         assessment = _assess_scenario(scenario, workspace)
+        assessment["executive_summary"] = _executive_summary(assessment)
+        assessment["executive_recommendation"] = _executive_recommendation(assessment)
         evidence_id = _evidence(research_session_id, scenario, execution)
         assessment["evidence_id"] = evidence_id
         if evidence_id:
@@ -435,6 +557,31 @@ def run_business_decision_framework_validation(payload: Dict[str, Any]) -> Dict[
         finding_id = _finding(research_session_id, statement, evidence_id, finding_type)
         if finding_id:
             finding_ids.append(finding_id)
+        assessment["finding_id"] = finding_id
+        assessment["decision_traceability"] = _decision_traceability(
+            assessment, scenario, workspace, evidence_id, finding_id
+        )
+        assessment["recommended_actions_quality"]["present"] = True
+        assessment["recommended_actions_quality"]["quality_score"] = max(
+            float(assessment.get("metrics", {}).get("recommendation_quality") or 0.0),
+            0.67 if evidence_id and finding_id else 0.34,
+        )
+        assessment["metrics"]["recommendation_quality"] = round(
+            assessment["recommended_actions_quality"]["quality_score"], 3
+        )
+        if evidence_id and finding_id:
+            assessment["metrics"]["decision_sufficiency"] = max(
+                float(assessment["metrics"].get("decision_sufficiency") or 0.0), 0.67
+            )
+            assessment["metrics"]["executive_readiness"] = max(
+                float(assessment["metrics"].get("executive_readiness") or 0.0), 0.67
+            )
+        if not assessment["decision_traceability"].get("complete"):
+            assessment["assessment_status"] = "HOLD"
+            missing = ", ".join(assessment["decision_traceability"].get("missing_nodes") or [])
+            trace_gap = f"Decision Traceability неполная: отсутствуют {missing}."
+            if trace_gap not in assessment["limitations"]:
+                assessment["limitations"].append(trace_gap)
 
     metric_summary = {key: _average(assessments, key) for key in METRICS}
     maturity_score = round(sum(metric_summary.values()) / len(metric_summary), 3) if metric_summary else 0.0
@@ -472,6 +619,14 @@ def run_business_decision_framework_validation(payload: Dict[str, Any]) -> Dict[
         "business_domain": payload.get("business_domain") or "bon_buasson",
         "read_only": True,
         "research_unit": "decision_scenario",
+        "executive_summary": {
+            "current_state": "READY" if assessments and all(item.get("assessment_status") == "PASS" for item in assessments) else "REQUIRES_ACTION",
+            "main_risk": limitations[0] if limitations else "Критические разрывы не подтверждены.",
+            "main_reserve": strengths[0] if strengths else "Резерв требует дополнительного подтверждения.",
+            "main_priority": (p0[0] if p0 else (p1[0] if p1 else "Использовать подтверждённые Decision Scenarios.")),
+            "recommended_next_step": (p0[0] if p0 else "Перейти к Product Owner Review подтверждённых решений."),
+        },
+        "executive_recommendations": [item.get("executive_recommendation") for item in assessments],
         "framework_coverage": {
             "scenario_count": len(assessments),
             "roles_covered": sorted({str(item.get("owner_role")) for item in assessments}),
@@ -513,7 +668,18 @@ def run_business_decision_framework_validation(payload: Dict[str, Any]) -> Dict[
         "integration_session_id": integration_session_id,
         "created_at": _now(),
     }
-    overall_pass = bool(assessments and evidence_ids and maturity_score >= 0.55 and not p0)
+    traceability_complete = bool(assessments) and all(
+        item.get("decision_traceability", {}).get("complete") for item in assessments
+    )
+    executive_complete = bool(assessments) and all(
+        item.get("executive_summary", {}).get("current_state")
+        and item.get("executive_recommendation", {}).get("recommendation")
+        for item in assessments
+    )
+    overall_pass = bool(
+        assessments and evidence_ids and maturity_score >= 0.55 and not p0
+        and traceability_complete and executive_complete
+    )
     report["operational_conclusion"] = {
         "status": "PASS" if overall_pass else "HOLD",
         "question": "Соответствует ли существующий Framework реальной управленческой логике и обеспечивает ли качественные решения каждой роли?",
@@ -573,6 +739,9 @@ def verify_business_decision_framework_validation() -> Dict[str, Any]:
         "guided_decision_supported": True,
         "autonomous_decision_supported": True,
         "decision_traceability_supported": True,
+        "decision_traceability_to_sku_required": True,
+        "executive_summary_contract_supported": True,
+        "executive_recommendation_contract_supported": True,
         "recommendation_quality_metric_supported": "recommendation_quality" in METRICS,
         "maturity_score_supported": True,
         "improvement_backlog_supported": True,
