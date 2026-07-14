@@ -8201,7 +8201,7 @@ _FACADE_ACTIONS = [
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
     ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
     ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Returns one complete read-only professional snapshot for auditing an existing Business Workspace.'),
-    ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a read-only catalogue of Business, managers, contracts, categories, TMC groups and SKU with stable ids and ready-to-use Research Workspace Snapshot selectors.'),
+    ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a scalable read-only catalogue with type filtering, pagination, search, sorting and summary-only mode.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8578,12 +8578,13 @@ def _business_object_discovery_request_schema() -> dict:
     return {
         'type': 'object',
         'properties': {
-            'object_type': {'type': 'string', 'enum': ['business','top_manager','manager','network','category','tmc_group','sku'], 'description': 'Optional object type filter.'},
+            'object_type': {'type': 'string', 'enum': ['business','top_manager','manager','network','category','tmc_group','sku'], 'description': 'Object type filter. Required when summary_only is false.'},
             'period': {'type': 'string', 'description': 'Optional period filter.', 'examples': ['2026-02']},
-            'search': {'type': 'string', 'description': 'Optional case-insensitive name search.'},
+            'name_contains': {'type': 'string', 'description': 'Optional case-insensitive display-name search.'},
             'offset': {'type': 'integer', 'minimum': 0, 'default': 0},
-            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200, 'default': 50},
-            'include_all_types': {'type': 'boolean', 'default': True},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 50},
+            'sort_by': {'type': 'string', 'enum': ['name','priority','default_business_order'], 'default': 'default_business_order'},
+            'summary_only': {'type': 'boolean', 'default': False, 'description': 'Return only counts and available types without object records.'},
         },
         'additionalProperties': False,
     }

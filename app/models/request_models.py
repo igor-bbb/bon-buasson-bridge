@@ -87,14 +87,15 @@ class BusinessResearchFindingRequest(BaseModel):
 
 
 class BusinessObjectDiscoveryRequest(BaseModel):
-    """Compact read-only contract for autonomous Business object discovery."""
+    """Scalable read-only contract for Business Object Discovery v2."""
 
-    object_type: Optional[str] = Field(default=None, description='Optional object type: business, top_manager, manager, network, category, tmc_group or sku.')
+    object_type: Optional[str] = Field(default=None, description='Optional object type: business, top_manager, manager, network, category, tmc_group or sku. Required for object listing.')
     period: Optional[str] = Field(default=None, description='Optional period filter. Latest period remains available in metadata when omitted.')
-    search: Optional[str] = Field(default=None, description='Optional case-insensitive name filter.')
-    offset: int = Field(default=0, ge=0, description='Pagination offset within each requested object type.')
-    limit: int = Field(default=50, ge=1, le=200, description='Maximum objects returned per requested type.')
-    include_all_types: bool = Field(default=True, description='Return all supported object types when object_type is omitted.')
+    name_contains: Optional[str] = Field(default=None, description='Optional case-insensitive display-name search.')
+    offset: int = Field(default=0, ge=0, description='Pagination offset for the requested object type.')
+    limit: int = Field(default=50, ge=1, le=100, description='Maximum objects returned in one page.')
+    sort_by: str = Field(default='default_business_order', description='Sorting: name, priority or default_business_order.')
+    summary_only: bool = Field(default=False, description='Return counts and available types without object records.')
 
 
 class ResearchWorkspaceSnapshotRequest(BaseModel):

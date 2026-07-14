@@ -16,10 +16,10 @@ from app.data.reader import load_raw_rows
 from app.assistant_runtime.business_data import DIMENSION_FIELDS, get_business_data_status
 from app.assistant_runtime.business_workspace import list_business_workspaces
 
-RELEASE_ID = "BUSINESS-OBJECT-DISCOVERY-001"
+RELEASE_ID = "BUSINESS-OBJECT-DISCOVERY-SCALABILITY-001"
 BUSINESS_DOMAIN = "bon_buasson"
 DEFAULT_LIMIT = 50
-MAX_LIMIT = 200
+MAX_LIMIT = 100
 
 OBJECT_TYPES: List[Dict[str, str]] = [
     {"object_type": "business", "field": "business", "display_name": "Business", "workspace_type": "business_workspace"},
@@ -102,13 +102,74 @@ def get_business_object_discovery_manifest() -> Dict[str, Any]:
     return {
         "status": "PASS",
         "release": RELEASE_ID,
-        "capability": "business_object_discovery",
+        "capability": "business_object_discovery_v2",
         "access_mode": "read-only",
         "business_domain": BUSINESS_DOMAIN,
         "supported_object_types": [item["object_type"] for item in OBJECT_TYPES],
-        "supported_parameters": ["object_type", "period", "search", "offset", "limit", "include_all_types"],
-        "pagination": {"supported": True, "default_limit": DEFAULT_LIMIT, "maximum_limit": MAX_LIMIT},
-        "usage": "Discover objects, select one returned object, then submit its research_snapshot_request to get_research_workspace_snapshot.",
+        "supported_parameters": [
+            "object_type", "period", "name_contains", "offset", "limit",
+            "sort_by", "summary_only"
+        ],
+        "sorting": ["name", "priority", "default_business_order"],
+        "pagination": {
+            "supported": True,
+            "default_limit": DEFAULT_LIMIT,
+            "maximum_limit": MAX_LIMIT,
+        },
+        "safe_default": "When object_type is omitted Runtime returns summary_only metadata.",
+        "usage": "Request one object type per page, select an object, then submit its research_snapshot_request to get_research_workspace_snapshot.",
+    }
+
+
+def _safe_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return min(max(number, minimum), maximum)
+
+
+def _object_priority(item: Dict[str, Any]) -> tuple:
+    return (
+        0 if item.get("decision_support_supported") else 1,
+        0 if item.get("persistent_workspace_id") else 1,
+        _clean(item.get("display_name")).casefold(),
+    )
+
+
+def _sort_objects(objects: List[Dict[str, Any]], sort_by: str) -> List[Dict[str, Any]]:
+    if sort_by == "priority":
+        return sorted(objects, key=_object_priority)
+    if sort_by == "default_business_order":
+        order = {item["object_type"]: index for index, item in enumerate(OBJECT_TYPES)}
+        return sorted(objects, key=lambda item: (order.get(item.get("object_type"), 999), _clean(item.get("display_name")).casefold()))
+    return sorted(objects, key=lambda item: _clean(item.get("display_name")).casefold())
+
+
+def _build_object(item: Dict[str, str], source_value: str, period: Optional[str], workspace_index: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    object_type = item["object_type"]
+    existing_workspace = workspace_index.get(source_value)
+    stable_id = _stable_id(object_type, source_value)
+    snapshot_request: Dict[str, Any] = {
+        "object_type": object_type,
+        "object_id": stable_id,
+        "business_domain": BUSINESS_DOMAIN,
+        "business_object": source_value,
+        "period": period,
+    }
+    if existing_workspace and existing_workspace.get("workspace_id"):
+        snapshot_request["workspace_id"] = existing_workspace.get("workspace_id")
+    readiness = existing_workspace.get("readiness") if isinstance(existing_workspace, dict) else {}
+    return {
+        "object_type": object_type,
+        "object_id": stable_id,
+        "display_name": source_value,
+        "workspace_available": True,
+        "snapshot_supported": True,
+        "navigation_supported": True,
+        "decision_support_supported": bool(isinstance(readiness, dict) and readiness.get("decision_readiness") == "READY"),
+        "persistent_workspace_id": existing_workspace.get("workspace_id") if existing_workspace else None,
+        "research_snapshot_request": snapshot_request,
     }
 
 
@@ -124,135 +185,171 @@ def discover_business_objects(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "read_only": True,
         }
 
+    sort_by = _clean(payload.get("sort_by") or "default_business_order").lower()
+    if sort_by not in {"name", "priority", "default_business_order"}:
+        return {
+            "status": "VALIDATION_ERROR",
+            "reason": "unsupported_sort_by",
+            "supported_sorting": ["name", "priority", "default_business_order"],
+            "read_only": True,
+        }
+
+    summary_only = bool(payload.get("summary_only", not bool(requested_type)))
+    if not requested_type and not summary_only:
+        return {
+            "status": "VALIDATION_ERROR",
+            "reason": "object_type_required_for_object_listing",
+            "recommendation": "Set object_type or use summary_only=true.",
+            "read_only": True,
+        }
+
     try:
         rows = load_raw_rows()
     except Exception as exc:
         return {
             "status": "HOLD",
             "reason": "business_data_unavailable",
-            "diagnostic": {"operation": "discover_business_objects", "reason": str(exc), "recommendation": "Restore Business Data connection and retry."},
+            "diagnostic": {
+                "operation": "discover_business_objects",
+                "reason": str(exc),
+                "recommendation": "Restore Business Data connection and retry.",
+            },
             "read_only": True,
         }
 
     period_filter = _clean(payload.get("period"))
-    search = _clean(payload.get("search")).casefold()
-    offset = max(int(payload.get("offset") or 0), 0)
-    limit = min(max(int(payload.get("limit") or DEFAULT_LIMIT), 1), MAX_LIMIT)
-    include_all_types = bool(payload.get("include_all_types", not bool(config)))
+    name_contains = _clean(payload.get("name_contains") or payload.get("search")).casefold()
+    offset = _safe_int(payload.get("offset"), 0, 0, 10_000_000)
+    limit = _safe_int(payload.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT)
 
     filtered_rows = [row for row in rows if not period_filter or _clean(row.get("period")) == period_filter]
     periods = _unique(row.get("period") for row in rows)
     latest_period = periods[-1] if periods else None
+    effective_period = period_filter or latest_period
     workspace_index = _workspace_index()
 
-    selected_configs = OBJECT_TYPES if include_all_types and config is None else [config or OBJECT_TYPES[0]]
-    catalog: Dict[str, Any] = {}
-    flat_objects: List[Dict[str, Any]] = []
-
-    for item in selected_configs:
-        object_type = item["object_type"]
+    counts_by_type: Dict[str, int] = {}
+    values_by_type: Dict[str, List[str]] = {}
+    for item in OBJECT_TYPES:
         values = _unique(row.get(item["field"]) for row in filtered_rows)
-        if object_type == "business" and not values:
+        if item["object_type"] == "business" and not values:
             values = ["Бон Буассон"]
-        if search:
-            values = [value for value in values if search in value.casefold()]
-        total = len(values)
-        page_values = values[offset: offset + limit]
-        objects: List[Dict[str, Any]] = []
-        for source_value in page_values:
-            existing_workspace = workspace_index.get(source_value)
-            stable_id = _stable_id(object_type, source_value)
-            snapshot_request = {
-                "object_type": object_type,
-                "object_id": stable_id,
-                "business_domain": BUSINESS_DOMAIN,
-                "business_object": source_value,
-                "period": period_filter or latest_period,
-            }
-            if existing_workspace and existing_workspace.get("workspace_id"):
-                snapshot_request["workspace_id"] = existing_workspace.get("workspace_id")
-            obj = {
-                "object_type": object_type,
-                "object_id": stable_id,
-                "display_name": source_value,
-                "business_domain": BUSINESS_DOMAIN,
-                "workspace_type": item["workspace_type"],
-                "workspace_available": True,
-                "persistent_workspace_id": existing_workspace.get("workspace_id") if existing_workspace else None,
-                "snapshot_supported": True,
-                "navigation_supported": True,
-                "decision_support_available": bool(existing_workspace and (existing_workspace.get("readiness") or {}).get("decision_readiness") == "READY"),
-                "available_period": period_filter or latest_period,
-                "research_snapshot_request": snapshot_request,
-            }
-            objects.append(obj)
-            flat_objects.append(obj)
-        catalog[object_type] = {
-            "display_name": item["display_name"],
-            "total": total,
-            "offset": offset,
-            "count": len(objects),
-            "has_more": offset + len(objects) < total,
-            "next_offset": offset + len(objects) if offset + len(objects) < total else None,
-            "objects": objects,
-        }
+        if name_contains:
+            values = [value for value in values if name_contains in value.casefold()]
+        values_by_type[item["object_type"]] = values
+        counts_by_type[item["object_type"]] = len(values)
 
-    status = get_business_data_status()
-    return {
+    summary = {
+        "total_count": sum(counts_by_type.values()),
+        "available_types": [item["object_type"] for item in OBJECT_TYPES],
+        "counts_by_type": counts_by_type,
+        "period_filter": period_filter or None,
+        "latest_period": latest_period,
+    }
+
+    if summary_only:
+        response = {
+            "status": "PASS",
+            "release": RELEASE_ID,
+            "capability": "business_object_discovery_v2",
+            "read_only": True,
+            "summary_only": True,
+            "business_domain": BUSINESS_DOMAIN,
+            "summary": summary,
+            "pagination": {
+                "requested_count": 0,
+                "returned_count": 0,
+                "total_count": summary["total_count"],
+                "has_more": False,
+                "next_offset": None,
+            },
+            "runtime_diagnostics": {
+                "pagination_applied": False,
+                "result_truncated": False,
+                "response_size_bytes": 0,
+            },
+            "next_allowed_action": "Choose object_type and request a compact page.",
+        }
+        import json
+        response["runtime_diagnostics"]["response_size_bytes"] = len(json.dumps(response, ensure_ascii=False, default=str).encode("utf-8"))
+        return response
+
+    assert config is not None
+    values = values_by_type[config["object_type"]]
+    all_objects = [_build_object(config, value, effective_period, workspace_index) for value in values]
+    all_objects = _sort_objects(all_objects, sort_by)
+    total_count = len(all_objects)
+    page = all_objects[offset: offset + limit]
+    returned_count = len(page)
+    has_more = offset + returned_count < total_count
+    next_offset = offset + returned_count if has_more else None
+
+    response = {
         "status": "PASS",
         "release": RELEASE_ID,
+        "capability": "business_object_discovery_v2",
         "read_only": True,
+        "summary_only": False,
         "business_domain": BUSINESS_DOMAIN,
+        "object_type": config["object_type"],
         "period_filter": period_filter or None,
-        "available_periods": periods,
-        "latest_period": latest_period,
-        "object_type_filter": requested_type or None,
-        "search": _clean(payload.get("search")) or None,
-        "catalog": catalog,
-        "selected_objects": flat_objects,
-        "discovery_metadata": {
-            "business_data_connected": bool(status.get("business_data_connected")),
-            "object_types_returned": [item["object_type"] for item in selected_configs],
-            "total_objects_returned": len(flat_objects),
-            "stable_object_ids": True,
-            "snapshot_request_embedded": True,
-            "product_owner_input_required": False,
+        "name_contains": _clean(payload.get("name_contains") or payload.get("search")) or None,
+        "sort_by": sort_by,
+        "objects": page,
+        "pagination": {
+            "requested_count": limit,
+            "returned_count": returned_count,
+            "total_count": total_count,
+            "offset": offset,
+            "has_more": has_more,
+            "next_offset": next_offset,
         },
-        "next_allowed_action": "Select an object and call get_research_workspace_snapshot with research_snapshot_request.",
+        "summary": summary,
+        "runtime_diagnostics": {
+            "pagination_applied": True,
+            "result_truncated": has_more,
+            "response_size_bytes": 0,
+        },
+        "next_allowed_action": "Select one returned object and call get_research_workspace_snapshot with its research_snapshot_request.",
     }
+    import json
+    response["runtime_diagnostics"]["response_size_bytes"] = len(json.dumps(response, ensure_ascii=False, default=str).encode("utf-8"))
+    return response
 
 
 def verify_business_object_discovery() -> Dict[str, Any]:
-    result = discover_business_objects({"limit": 1, "include_all_types": True})
-    catalog = result.get("catalog") if isinstance(result.get("catalog"), dict) else {}
-    checks: Dict[str, bool] = {
-        "discovery_available": result.get("status") == "PASS",
-        "read_only_confirmed": result.get("read_only") is True,
-        "stable_object_ids": bool((result.get("discovery_metadata") or {}).get("stable_object_ids")),
-        "snapshot_request_embedded": bool((result.get("discovery_metadata") or {}).get("snapshot_request_embedded")),
-    }
-    for item in OBJECT_TYPES:
-        block = catalog.get(item["object_type"]) if isinstance(catalog.get(item["object_type"]), dict) else {}
-        objects = block.get("objects") if isinstance(block.get("objects"), list) else []
-        checks[f"{item['object_type']}_discoverable"] = bool(objects) or int(block.get("total") or 0) == 0
-        if objects:
-            first = objects[0]
-            checks[f"{item['object_type']}_stable_id"] = bool(first.get("object_id"))
-            checks[f"{item['object_type']}_snapshot_supported"] = bool(first.get("snapshot_supported") and first.get("research_snapshot_request"))
+    checks: Dict[str, bool] = {}
+    summary = discover_business_objects({"summary_only": True})
+    checks["summary_only"] = summary.get("status") == "PASS" and summary.get("summary_only") is True
+    checks["read_only_confirmed"] = summary.get("read_only") is True
+
+    scenarios = ["business", "top_manager", "network", "category"]
+    for object_type in scenarios:
+        result = discover_business_objects({"object_type": object_type, "offset": 0, "limit": 10, "sort_by": "default_business_order"})
+        checks[f"{object_type}_page"] = result.get("status") == "PASS" and (result.get("pagination") or {}).get("returned_count", 0) <= 10
+
+    sku_first = discover_business_objects({"object_type": "sku", "offset": 0, "limit": 100, "sort_by": "name"})
+    sku_second = discover_business_objects({"object_type": "sku", "offset": 100, "limit": 100, "sort_by": "name"})
+    checks["sku_first_100"] = sku_first.get("status") == "PASS" and (sku_first.get("pagination") or {}).get("returned_count", 0) <= 100
+    checks["sku_next_100"] = sku_second.get("status") == "PASS" and (sku_second.get("pagination") or {}).get("offset") == 100
+    checks["pagination_metadata"] = all(key in (sku_first.get("pagination") or {}) for key in ["requested_count", "returned_count", "total_count", "has_more", "next_offset"])
+    checks["runtime_diagnostics"] = all(key in (sku_first.get("runtime_diagnostics") or {}) for key in ["response_size_bytes", "pagination_applied", "result_truncated"])
+    checks["snapshot_request_ready"] = all(bool(item.get("research_snapshot_request")) for item in sku_first.get("objects", []))
 
     passed = all(checks.values())
     return {
         "status": "PASS" if passed else "HOLD",
         "release": RELEASE_ID,
         "checks": checks,
-        "catalog_summary": {
-            key: {"total": value.get("total"), "sample_count": value.get("count")}
-            for key, value in catalog.items() if isinstance(value, dict)
+        "scenarios": {
+            "summary": summary.get("summary"),
+            "sku_first_page": sku_first.get("pagination"),
+            "sku_second_page": sku_second.get("pagination"),
         },
         "operational_readiness": {
             "status": "PASS" if passed else "HOLD",
-            "question": "Can Digital Business Analyst autonomously discover and select Business Framework research objects?",
+            "question": "Does Business Object Discovery scale independently of catalogue size?",
             "answer": "YES" if passed else "NO",
         },
-        "first_product_verification_command": "Discover Business Objects",
+        "first_product_verification_command": "Discover Business Objects with summary_only=true, then page one object_type at a time.",
     }
