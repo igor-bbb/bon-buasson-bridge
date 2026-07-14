@@ -8149,13 +8149,28 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'verify_workspace_research_contract': '/vectra/laboratory/business-workspace/research-contract/verify',
 }
 
+# GPT Actions Editor accepts no more than 30 operations in one imported schema.
+# The two diagnostic routes below remain available in Runtime and Swagger, but
+# are intentionally not exported as GPT Actions. Their information is already
+# covered by Runtime Status, Capability Registry and Action Manifest.
+_LABORATORY_NON_ACTION_DIAGNOSTICS = [
+    {
+        'operation_id': 'verifyVectraRuntime',
+        'endpoint': '/vectra/runtime/verify',
+        'reason': 'internal_diagnostic_available_via_runtime_status_and_capability_registry',
+    },
+    {
+        'operation_id': 'verifyVectraActionCompleteness',
+        'endpoint': '/vectra/laboratory/actions/verify',
+        'reason': 'internal_diagnostic_available_via_action_manifest',
+    },
+]
+
 _FACADE_ACTIONS = [
     ('getVectraRuntimeStatus', 'GET', '/vectra/runtime/status', 'Check VECTRA Runtime status', 'Runtime status and deployment health.'),
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
-    ('verifyVectraRuntime', 'GET', '/vectra/runtime/verify', 'Verify VECTRA Runtime', 'Runs Runtime Verification and repository integrity checks.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('verifyVectraActionCompleteness', 'GET', '/vectra/laboratory/actions/verify', 'Verify VECTRA Action Completeness', 'Checks Runtime Capabilities ↔ Facade Actions ↔ Internal Runtime Services.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Facade for Business Domain restore, activation, profile and knowledge operations.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
@@ -8726,8 +8741,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'BUSINESS-RESEARCH-EXECUTION-001',
-            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
+            'version': 'GPT-ACTIONS-COMPACT-CONTRACT-001',
+            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract is intentionally limited to 30 public operations for GPT Actions Editor compatibility; diagnostic Runtime routes remain available internally.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -8743,12 +8758,13 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'BUSINESS-RESEARCH-EXECUTION-001',
+        'x-vectra-release': 'GPT-ACTIONS-COMPACT-CONTRACT-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
-            'status': 'PASS',
+            'status': 'PASS' if len(_FACADE_ACTIONS) <= 30 else 'HOLD',
         },
+        'x-vectra-non-action-diagnostics': _LABORATORY_NON_ACTION_DIAGNOSTICS,
         'x-vectra-internal-runtime-operations': len(_FACADE_INTERNAL_ENDPOINTS),
         'x-vectra-legacy-diagnostic-openapi': {
             'core': '/vectra/laboratory/openapi/core.json',
