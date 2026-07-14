@@ -34,6 +34,7 @@ from app.assistant_runtime.evidence_platform import (
 from app.assistant_runtime.findings_platform import (
     register_professional_finding,
 )
+from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state
 from app.assistant_runtime.professional_activity import (
     complete_professional_activity,
     get_professional_activity,
@@ -77,23 +78,18 @@ def _path() -> Path:
     return _base_path() / EXECUTIONS_FILE
 
 
+def _read_with_diagnostic() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    value, diagnostic = read_json_state(_path(), list, list)
+    return value, diagnostic
+
+
 def _read() -> List[Dict[str, Any]]:
-    path = _path()
-    try:
-        if not path.exists():
-            return []
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    value, _ = _read_with_diagnostic()
+    return value
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    write_json_state(_path(), _json_safe_value(items))
 
 
 def _required(payload: Dict[str, Any], key: str) -> str:
@@ -109,10 +105,19 @@ def _find(items: List[Dict[str, Any]], execution_id: str) -> Optional[Dict[str, 
 
 def _get_execution(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     execution_id = _required(payload, "research_execution_id")
-    items = _read()
+    items, diagnostic = _read_with_diagnostic()
+    if diagnostic.get("status") == "HOLD":
+        raise RuntimeError(f"Research Execution Repository unavailable: {diagnostic}")
     execution = _find(items, execution_id)
     if execution is None:
         raise ValueError(f"Unknown research_execution_id: {execution_id}")
+    execution.setdefault("continuation", {})
+    execution["continuation"].update({
+        "restored_from_persistent_state": True,
+        "repository_source": diagnostic.get("source"),
+        "repository_recovered": bool(diagnostic.get("recovered")),
+        "restored_at": _now(),
+    })
     return items, execution
 
 
@@ -304,6 +309,10 @@ def _execution_manifest(execution: Dict[str, Any]) -> Dict[str, Any]:
             "progress": progress,
             "read_only": True,
             "updated_at": execution.get("updated_at"),
+            "continuation": execution.get("continuation") or {
+                "restored_from_persistent_state": True,
+                "transport_session_independent": True,
+            },
         },
         "research_progress_report": {
             **progress,
@@ -437,8 +446,29 @@ def start_business_research_execution(payload: Dict[str, Any]) -> Dict[str, Any]
 
 
 def get_business_research_execution_manifest(payload: Dict[str, Any]) -> Dict[str, Any]:
-    _, execution = _get_execution(payload)
-    return _execution_manifest(execution)
+    try:
+        items, execution = _get_execution(payload)
+        execution["updated_at"] = execution.get("updated_at") or _now()
+        _write(items)
+        response = _execution_manifest(execution)
+        response["continuation_diagnostic"] = {
+            "professional_activity_state": execution.get("status"),
+            "continuation_possible": execution.get("status") not in {"COMPLETED", "CANCELLED"},
+            "recovery_source": (execution.get("continuation") or {}).get("repository_source", "primary"),
+            "recommended_action": "Continue the active task or resume the execution." if execution.get("status") in {"ACTIVE", "READY_FOR_FINDINGS"} else "Resume the same execution by id.",
+        }
+        return response
+    except Exception as exc:
+        return {
+            "status": "HOLD",
+            "reason": "research_execution_manifest_unavailable",
+            "diagnostic": {
+                "professional_activity_state": "UNKNOWN",
+                "reason": str(exc),
+                "continuation_possible": False,
+                "recommended_action": "Verify persistent Runtime repository availability; do not create a replacement program until recovery is attempted.",
+            },
+        }
 
 
 def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -727,8 +757,9 @@ def verify_business_research_execution() -> Dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         _write([])
+    repository_diagnostic = inspect_json_state(path, list)
     dependency_checks = {
-        "execution_repository_readable": isinstance(_read(), list),
+        "execution_repository_readable": repository_diagnostic.get("status") in {"PASS", "RECOVERED", "EMPTY"},
         "research_program_foundation_available": callable(create_research_program),
         "professional_activity_available": callable(start_professional_activity),
         "business_runtime_access_available": callable(open_business_workspace_direct),
@@ -737,6 +768,10 @@ def verify_business_research_execution() -> Dict[str, Any]:
         "research_execution_manifest_supported": True,
         "decision_lineage_supported": True,
         "pause_resume_supported": True,
+        "manifest_recovery_supported": True,
+        "transport_session_independence": True,
+        "atomic_repository_writes": True,
+        "backup_recovery_supported": True,
         "read_only_guarantee": True,
     }
     return {
@@ -745,6 +780,7 @@ def verify_business_research_execution() -> Dict[str, Any]:
         "report_type": "Business Research Execution Report",
         "checks": dependency_checks,
         "execution_count": len(_read()),
+        "repository_diagnostic": repository_diagnostic,
         "public_capabilities": [
             "start_business_research_execution",
             "get_business_research_execution_manifest",

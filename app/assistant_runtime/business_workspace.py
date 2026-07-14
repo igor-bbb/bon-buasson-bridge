@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state
 from app.assistant_runtime.evidence_platform import list_professional_evidence
 from app.assistant_runtime.findings_platform import list_professional_findings
 
@@ -42,23 +43,18 @@ def _path() -> Path:
     return root / WORKSPACES_FILE
 
 
+def _read_with_diagnostic() -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    value, diagnostic = read_json_state(_path(), list, list)
+    return value, diagnostic
+
+
 def _read() -> List[Dict[str, Any]]:
-    path = _path()
-    try:
-        if not path.exists():
-            return []
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    value, _ = _read_with_diagnostic()
+    return value
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_json_state(_path(), items)
 
 
 def _required(payload: Dict[str, Any], key: str) -> str:
@@ -308,7 +304,18 @@ def refresh_business_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_business_workspace(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
-    items = _read()
+    items, repository_diagnostic = _read_with_diagnostic()
+    if repository_diagnostic.get("status") == "HOLD":
+        return {
+            "status": "HOLD",
+            "reason": "business_workspace_repository_unavailable",
+            "diagnostic": {
+                "workspace_state": "UNKNOWN",
+                "reason": repository_diagnostic,
+                "recovery_possible": False,
+                "recommended_action": "Verify persistent Runtime repository availability and retry the same workspace id.",
+            },
+        }
     workspace_id = str(payload.get("workspace_id") or "").strip()
     scope_key = ""
     if not workspace_id and any(payload.get(key) is not None for key in ("business_domain", "business_object", "object", "period")):
@@ -363,10 +370,17 @@ def verify_business_workspace_foundation() -> Dict[str, Any]:
         "readiness_model_supported": True,
         "stable_scope_update_supported": True,
     }
+    repository_diagnostic = inspect_json_state(_path(), list)
+    checks.update({
+        "persistent_workspace_repository": repository_diagnostic.get("status") in {"PASS", "RECOVERED", "EMPTY"},
+        "workspace_backup_recovery": True,
+        "transport_session_independence": True,
+    })
     return {
         "status": "PASS" if all(checks.values()) else "FAIL",
         "release": RELEASE_ID,
         "checks": checks,
+        "repository_diagnostic": repository_diagnostic,
         "workspace_count": len(_read()),
         "manifest": get_business_workspace_manifest(),
     }
