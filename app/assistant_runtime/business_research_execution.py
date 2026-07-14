@@ -11,7 +11,8 @@ import json
 import os
 import uuid
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -116,21 +117,72 @@ def _get_execution(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[
 
 
 def _compact_value(value: Any, depth: int = 0) -> Any:
+    """Return a compact value that is always safe for JSON persistence.
+
+    Business Runtime responses may contain Decimal/date/Path/Pydantic values.
+    Persisting those values directly previously caused a second exception while
+    handling the first failure, which escaped as Internal Server Error.
+    """
     if depth > 3:
         return "[truncated]"
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "model_dump") and callable(value.model_dump):
+        try:
+            return _compact_value(value.model_dump(exclude_none=True), depth + 1)
+        except Exception:
+            return str(value)
     if isinstance(value, dict):
         result: Dict[str, Any] = {}
         for index, (key, item) in enumerate(value.items()):
             if index >= 16:
-                result["_truncated_fields"] = len(value) - 16
+                result["_truncated_fields"] = max(0, len(value) - 16)
                 break
             result[str(key)] = _compact_value(item, depth + 1)
         return result
-    if isinstance(value, list):
-        return [_compact_value(item, depth + 1) for item in value[:10]]
-    if isinstance(value, str) and len(value) > 1200:
-        return value[:1200] + "…"
-    return value
+    if isinstance(value, (list, tuple, set)):
+        return [_compact_value(item, depth + 1) for item in list(value)[:10]]
+    if isinstance(value, str):
+        return value[:1200] + "…" if len(value) > 1200 else value
+    # Last-resort normalization keeps repository writes deterministic instead
+    # of leaking a serializer exception through the public Runtime contract.
+    return str(value)
+
+
+def _json_safe_value(value: Any) -> Any:
+    """Normalize values for repository persistence without truncating context."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "model_dump") and callable(value.model_dump):
+        try:
+            return _json_safe_value(value.model_dump(exclude_none=True))
+        except Exception:
+            return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe_value(item) for item in value]
+    return str(value)
+
+
+def _persist_execution_safely(items: List[Dict[str, Any]]) -> Optional[str]:
+    try:
+        _write(_json_safe_value(items))
+        return None
+    except Exception as exc:
+        return str(exc)
 
 
 def _build_research_tasks(question: str, hypothesis: str, period: str = "") -> List[Dict[str, Any]]:
@@ -390,7 +442,20 @@ def get_business_research_execution_manifest(payload: Dict[str, Any]) -> Dict[st
 
 
 def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
-    items, execution = _get_execution(payload)
+    try:
+        items, execution = _get_execution(payload)
+    except Exception as exc:
+        return {
+            "status": "HOLD",
+            "reason": "research_execution_unavailable",
+            "diagnostic": {
+                "current_step": "load_research_execution",
+                "reason": str(exc),
+                "unavailable_capability": "Research Execution Repository",
+                "recommended_action": "Reload the same Research Execution Manifest and retry without creating a new program.",
+            },
+            "research_context_preserved": True,
+        }
     if execution.get("status") == "PAUSED":
         return {"status": "HOLD", "reason": "research_execution_paused", "manifest": _execution_manifest(execution)}
     if execution.get("status") in {"COMPLETED", "CANCELLED"}:
@@ -398,6 +463,10 @@ def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     task_id = str(payload.get("task_id") or "").strip()
     task = next((task for task in execution.get("research_tasks", []) if str(task.get("task_id")) == task_id), None) if task_id else None
+    if task is None:
+        # ACTIVE is selected first so a task interrupted by a transport or
+        # persistence failure resumes in place instead of skipping ahead.
+        task = next((task for task in execution.get("research_tasks", []) if task.get("status") == "ACTIVE"), None)
     if task is None:
         task = next((task for task in execution.get("research_tasks", []) if task.get("status") in {"PENDING", "HOLD"}), None)
     if task is None:
@@ -432,9 +501,11 @@ def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             source_type = "business_data"
             object_name = f"{object_type}:{object_id or 'business'}"
 
+        safe_operation_result = _compact_value(operation_result)
+
         if not task_ok:
             task["status"] = "HOLD"
-            task["result"] = _compact_value(operation_result)
+            task["result"] = safe_operation_result
             task["completed_at"] = None
             execution["status"] = "HOLD"
             execution["stop_reason"] = str((operation_result.get("diagnostic") or {}).get("reason") or operation_result.get("reason") or "runtime_task_failed")
@@ -457,7 +528,7 @@ def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             "source_type": source_type,
             "reference": f"business_research_execution:{execution['research_execution_id']}:{task['task_id']}",
             "title": task.get("title"),
-            "excerpt_or_summary": _compact_value(operation_result),
+            "excerpt_or_summary": safe_operation_result,
             "business_domain": execution.get("business_domain"),
             "professional_activity_id": execution.get("professional_activity_id"),
             "research_program_id": execution.get("research_program_id"),
@@ -477,7 +548,7 @@ def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             execution["evidence_ids"].append(evidence_id)
 
         task["status"] = "COMPLETED"
-        task["result"] = _compact_value(operation_result)
+        task["result"] = safe_operation_result
         task["completed_at"] = _now()
         execution.setdefault("investigated_objects", []).append({"task_id": task.get("task_id"), "object": object_name, "at": _now()})
         execution.setdefault("current_route", []).append({"task_id": task.get("task_id"), "workspace": task.get("recommended_workspace"), "object": object_name})
@@ -492,15 +563,35 @@ def execute_business_research_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         return response
     except Exception as exc:
         task["status"] = "HOLD"
+        task["result"] = None
+        task["completed_at"] = None
         execution["status"] = "HOLD"
         execution["stop_reason"] = str(exc)
         execution["updated_at"] = _now()
-        _write(items)
-        return {
-            "status": "HOLD",
-            "diagnostic": {"current_step": task.get("task_id"), "reason": str(exc), "unavailable_capability": (task.get("recommended_runtime_capabilities") or [None])[0], "recommended_action": "Review the structured diagnostic and retry the same task."},
-            **_execution_manifest(execution),
+        execution.setdefault("history", []).append({
+            "event": "TASK_EXECUTION_ERROR",
+            "task_id": task.get("task_id"),
+            "at": _now(),
+            "reason": str(exc),
+        })
+        persistence_error = _persist_execution_safely(items)
+        diagnostic = {
+            "current_step": task.get("task_id"),
+            "reason": str(exc),
+            "unavailable_capability": (task.get("recommended_runtime_capabilities") or [None])[0],
+            "recommended_action": "Retry the same Research Task. The existing program, route and accumulated context are preserved.",
         }
+        if persistence_error:
+            diagnostic["persistence_warning"] = persistence_error
+        response = _execution_manifest(_compact_value(execution))
+        response.update({
+            "status": "HOLD",
+            "reason": "research_task_execution_failed",
+            "diagnostic": diagnostic,
+            "research_context_preserved": True,
+            "retry_same_task": True,
+        })
+        return response
 
 
 def record_business_research_finding(payload: Dict[str, Any]) -> Dict[str, Any]:
