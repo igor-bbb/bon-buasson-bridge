@@ -85,6 +85,26 @@ class BusinessResearchFindingRequest(BaseModel):
     object: Optional[str] = Field(default=None)
 
 
+
+
+class BusinessDecisionFrameworkValidationRequest(BaseModel):
+    """Compact public contract for Stage 3 Decision Framework validation.
+
+    Optional scenarios allow Laboratory to override the default role scenarios
+    without exposing internal Runtime structures.
+    """
+
+    business_domain: Optional[str] = Field(default='bon_buasson', description='Business Domain identifier.')
+    period: Optional[str] = Field(default=None, description='Optional business period. Latest available period is used when omitted.')
+    research_question: Optional[str] = Field(default=None, description='Optional Stage 3 research question.')
+    professional_goal: Optional[str] = Field(default=None, description='Optional professional goal for the validation activity.')
+    runtime_session_id: Optional[str] = Field(default=None, description='Optional stable Runtime session id.')
+    decision_scenarios: Optional[List[Dict[str, Any]]] = Field(default=None, description='Optional compact decision scenarios. Default scenarios are generated from available Business objects.')
+
+
+class BusinessDecisionFrameworkValidationReportRequest(BaseModel):
+    report_id: Optional[str] = Field(default=None, description='Optional report id. Latest report is returned when omitted.')
+
 class BusinessResearchExecutionReferenceRequest(BaseModel):
     research_execution_id: str = Field(description='Research Execution identifier.')
     reason: Optional[str] = Field(default=None, description='Optional pause or resume reason.')

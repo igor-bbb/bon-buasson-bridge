@@ -16,6 +16,7 @@ from app.models.request_models import (
     VectraQueryRequest, ResearchProgramCreateRequest, BusinessRuntimeAccessVerificationRequest,
     BusinessResearchExecutionStartRequest, BusinessResearchTaskExecuteRequest,
     BusinessResearchFindingRequest, BusinessResearchExecutionReferenceRequest,
+    BusinessDecisionFrameworkValidationRequest, BusinessDecisionFrameworkValidationReportRequest,
 )
 from app.domain.summary import (
     get_business_summary,
@@ -159,6 +160,11 @@ from app.assistant_runtime.business_research_execution import (
     resume_business_research_execution as resume_vectra_business_research_execution,
     complete_business_research_execution as complete_vectra_business_research_execution,
     verify_business_research_execution as verify_vectra_business_research_execution,
+)
+from app.assistant_runtime.business_decision_framework_validation import (
+    run_business_decision_framework_validation as run_vectra_business_decision_framework_validation,
+    get_business_decision_framework_validation_report as get_vectra_business_decision_framework_validation_report,
+    verify_business_decision_framework_validation as verify_vectra_business_decision_framework_validation,
 )
 
 from app.assistant_runtime.professional_orchestration import (
@@ -8125,6 +8131,9 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'resume_business_research_execution': '/vectra/laboratory/business-research/executions/resume',
     'complete_business_research_execution': '/vectra/laboratory/business-research/executions/complete',
     'verify_business_research_execution': '/vectra/laboratory/business-research/executions/verify',
+    'run_business_decision_framework_validation': '/vectra/laboratory/business-decision-framework/validate',
+    'get_business_decision_framework_validation_report': '/vectra/laboratory/business-decision-framework/report',
+    'verify_business_decision_framework_validation': '/vectra/laboratory/business-decision-framework/verify',
 }
 
 _FACADE_ACTIONS = [
@@ -8154,6 +8163,9 @@ _FACADE_ACTIONS = [
     ('resume_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/resume', 'Resume Business Research Execution', 'Restores a paused or held research execution from its Manifest.'),
     ('complete_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/complete', 'Complete Business Research Execution', 'Completes a guided research execution after all tasks and at least one evidence-backed Finding are present.'),
     ('verify_business_research_execution', 'GET', '/vectra/laboratory/business-research/executions/verify', 'Verify Business Research Execution', 'Verifies Stage 2 guided research execution, persistence, Decision Lineage and read-only guarantees.'),
+    ('run_business_decision_framework_validation', 'POST', '/vectra/laboratory/business-decision-framework/validate', 'Run Business Decision Framework Validation', 'Runs Stage 3 read-only validation of decision scenarios, Guided/Autonomous Decision readiness, Decision Traceability and Recommendation Quality.'),
+    ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
+    ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8605,6 +8617,46 @@ def _business_research_execution_reference_request_schema() -> dict:
         'additionalProperties': False,
     }
 
+
+def _business_decision_framework_validation_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'properties': {
+            'business_domain': {'type': 'string', 'default': 'bon_buasson'},
+            'period': {'type': 'string', 'description': 'Optional business period. Latest available period is used when omitted.'},
+            'research_question': {'type': 'string'},
+            'professional_goal': {'type': 'string'},
+            'runtime_session_id': {'type': 'string'},
+            'decision_scenarios': {
+                'type': 'array',
+                'maxItems': 12,
+                'items': {
+                    'type': 'object',
+                    'required': ['scenario_id','owner_role','decision_goal','workspace_type','business_object','command'],
+                    'properties': {
+                        'scenario_id': {'type': 'string'},
+                        'owner_role': {'type': 'string'},
+                        'decision_goal': {'type': 'string'},
+                        'workspace_type': {'type': 'string'},
+                        'business_object': {'type': 'string'},
+                        'command': {'type': 'string'},
+                        'expected_recommendation': {'type': 'string'},
+                    },
+                    'additionalProperties': False,
+                },
+            },
+        },
+        'additionalProperties': False,
+    }
+
+
+def _business_decision_framework_report_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'properties': {'report_id': {'type': 'string'}},
+        'additionalProperties': False,
+    }
+
 def _laboratory_facade_openapi_schema() -> dict:
     server_url = os.getenv('VECTRA_PUBLIC_RUNTIME_URL') or os.getenv('VECTRA_RUNTIME_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'https://bon-buasson-api.onrender.com'
     api_key_required = bool(os.getenv('VECTRA_LABORATORY_API_KEY'))
@@ -8638,6 +8690,10 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_research_finding_request_schema()
             elif operation_id in {'get_business_research_execution_manifest', 'pause_business_research_execution', 'resume_business_research_execution', 'complete_business_research_execution'}:
                 request_schema = _business_research_execution_reference_request_schema()
+            elif operation_id == 'run_business_decision_framework_validation':
+                request_schema = _business_decision_framework_validation_request_schema()
+            elif operation_id == 'get_business_decision_framework_validation_report':
+                request_schema = _business_decision_framework_report_request_schema()
             else:
                 request_schema = _facade_operation_request_schema()
             op['requestBody'] = {
@@ -10061,6 +10117,27 @@ def vectra_verify_business_research_execution_action(x_vectra_laboratory_key: st
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     result = verify_vectra_business_research_execution()
     return json_response(_facade_response('verify_business_research_execution','business_research_execution.verify_business_research_execution','/vectra/laboratory/business-research/executions/verify',result,next_action='Start Product Verification with a real professional research question when status is PASS.'))
+
+
+@router.post('/vectra/laboratory/business-decision-framework/validate', summary='Run Business Decision Framework Validation')
+def vectra_run_business_decision_framework_validation_action(request: BusinessDecisionFrameworkValidationRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = run_vectra_business_decision_framework_validation(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('run_business_decision_framework_validation','business_decision_framework_validation.run','/vectra/laboratory/business-decision-framework/validate',result,next_action='Review the Business Decision Framework Validation Report and decide PASS/HOLD for Stage 3.'))
+
+
+@router.post('/vectra/laboratory/business-decision-framework/report', summary='Get Business Decision Framework Validation Report')
+def vectra_get_business_decision_framework_validation_report_action(request: BusinessDecisionFrameworkValidationReportRequest, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = get_vectra_business_decision_framework_validation_report(request.model_dump(exclude_none=True))
+    return json_response(_facade_response('get_business_decision_framework_validation_report','business_decision_framework_validation.get_report','/vectra/laboratory/business-decision-framework/report',result,next_action='Use the report for Product Verification and Improvement Backlog review.'))
+
+
+@router.get('/vectra/laboratory/business-decision-framework/verify', summary='Verify Business Decision Framework Validation capability')
+def vectra_verify_business_decision_framework_validation_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_business_decision_framework_validation()
+    return json_response(_facade_response('verify_business_decision_framework_validation','business_decision_framework_validation.verify','/vectra/laboratory/business-decision-framework/verify',result,next_action='Run Stage 3 Product Verification when status is PASS.'))
 
 
 @router.post('/vectra/laboratory/facade/memory', summary='Execute VECTRA Memory facade operation')
