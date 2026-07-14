@@ -151,6 +151,10 @@ from app.assistant_runtime.professional_activity import (
     verify_professional_activity_foundation as verify_vectra_professional_activity_foundation,
 )
 
+from app.assistant_runtime.professional_runtime_continuation import (
+    verify_professional_runtime_continuation as verify_vectra_professional_runtime_continuation,
+)
+
 from app.assistant_runtime.business_research_execution import (
     start_business_research_execution as start_vectra_business_research_execution,
     get_business_research_execution_manifest as get_vectra_business_research_execution_manifest,
@@ -8123,6 +8127,7 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'get_research_workspace': '/vectra/laboratory/research/workspace',
     'verify_business_framework_research_foundation': '/vectra/laboratory/research/foundation/verify',
     'verify_business_runtime_access': '/vectra/laboratory/business-runtime/access/verify',
+    'verify_professional_runtime_continuation': '/vectra/laboratory/runtime/continuation/verify',
     'start_business_research_execution': '/vectra/laboratory/business-research/executions/start',
     'get_business_research_execution_manifest': '/vectra/laboratory/business-research/executions/manifest',
     'execute_business_research_task': '/vectra/laboratory/business-research/executions/task',
@@ -8155,6 +8160,7 @@ _FACADE_ACTIONS = [
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_framework_research_foundation', 'GET', '/vectra/laboratory/research/foundation/verify', 'Verify Business Framework Research Foundation', 'Verifies Research Program, Backlog, Hypothesis, Traceability, Methodology Repository, Research Workspace and Research Maturity capabilities.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
+    ('verify_professional_runtime_continuation', 'GET', '/vectra/laboratory/runtime/continuation/verify', 'Verify Professional Runtime continuation', 'Verifies persistent Professional Activity, Research Execution Manifest and Business Workspace recovery after pauses.'),
     ('start_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/start', 'Start Business Research Execution', 'Creates and starts a guided Research Program from a professional research question and hypothesis.'),
     ('get_business_research_execution_manifest', 'POST', '/vectra/laboratory/business-research/executions/manifest', 'Get Business Research Execution Manifest', 'Restores the complete professional state, progress and Decision Lineage of an active research execution.'),
     ('execute_business_research_task', 'POST', '/vectra/laboratory/business-research/executions/task', 'Execute Business Research Task', 'Executes the next or selected read-only Research Task against the existing Business Runtime and captures validated Evidence.'),
@@ -10058,6 +10064,20 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
         '/vectra/laboratory/business-runtime/access/verify',
         result,
         next_action='Proceed to BUSINESS-RESEARCH-EXECUTION-001 only when operational_readiness.status is PASS.',
+    ))
+
+
+# PROFESSIONAL-RUNTIME-CONTINUATION-001: platform-level durability check.
+@router.get('/vectra/laboratory/runtime/continuation/verify', summary='Verify Professional Runtime continuation after pauses')
+def vectra_verify_professional_runtime_continuation_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = verify_vectra_professional_runtime_continuation()
+    return json_response(_facade_response(
+        'verify_professional_runtime_continuation',
+        'professional_runtime_continuation.verify_professional_runtime_continuation',
+        '/vectra/laboratory/runtime/continuation/verify',
+        result,
+        next_action='Repeat the same Research Task and reopen the same Business Workspace when status is PASS.',
     ))
 
 
