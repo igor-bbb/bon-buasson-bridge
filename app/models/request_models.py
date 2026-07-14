@@ -40,3 +40,10 @@ class ResearchProgramCreateRequest(BaseModel):
     initial_hypotheses: Optional[List[str]] = Field(default=None, description='Optional short hypothesis statements to register with the program.')
     tags: Optional[List[str]] = Field(default=None, description='Optional compact search and classification tags.')
     allow_duplicate: bool = Field(default=False, description='Allow an intentional duplicate program. Defaults to false.')
+
+
+class BusinessRuntimeAccessVerificationRequest(BaseModel):
+    """Compact public contract for Stage 1 Business Runtime access verification."""
+
+    period: Optional[str] = Field(default=None, description='Optional business period. Defaults to latest available period.')
+    limit_per_level: int = Field(default=3, ge=1, le=10, description='Maximum number of discovered sample objects per professional level.')

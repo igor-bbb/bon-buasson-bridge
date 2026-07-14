@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.config import EMPTY_SKU_LABEL, LOW_VOLUME_THRESHOLD, SHEET_URL
-from app.models.request_models import VectraQueryRequest, ResearchProgramCreateRequest
+from app.models.request_models import VectraQueryRequest, ResearchProgramCreateRequest, BusinessRuntimeAccessVerificationRequest
 from app.domain.summary import (
     get_business_summary,
     get_manager_top_summary,
@@ -207,6 +207,12 @@ from app.assistant_runtime.digital_business_analyst import (
     get_business_review as get_vectra_business_review,
     list_business_reviews as list_vectra_business_reviews,
     verify_digital_business_analyst_foundation as verify_vectra_digital_business_analyst_foundation,
+)
+from app.assistant_runtime.business_runtime_access import (
+    get_business_runtime_manifest as get_vectra_business_runtime_access_manifest,
+    discover_business_runtime_objects as discover_vectra_business_runtime_objects,
+    open_business_workspace_direct as open_vectra_business_workspace_direct,
+    verify_business_runtime_access as verify_vectra_business_runtime_access_stage1,
 )
 from app.assistant_runtime.business_runtime_integration import (
     get_business_runtime_integration_manifest as get_vectra_business_runtime_integration_manifest,
@@ -8095,6 +8101,7 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'create_research_program': '/vectra/laboratory/research/programs',
     'get_research_workspace': '/vectra/laboratory/research/workspace',
     'verify_business_framework_research_foundation': '/vectra/laboratory/research/foundation/verify',
+    'verify_business_runtime_access': '/vectra/laboratory/business-runtime/access/verify',
 }
 
 _FACADE_ACTIONS = [
@@ -8115,6 +8122,7 @@ _FACADE_ACTIONS = [
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_framework_research_foundation', 'GET', '/vectra/laboratory/research/foundation/verify', 'Verify Business Framework Research Foundation', 'Verifies Research Program, Backlog, Hypothesis, Traceability, Methodology Repository, Research Workspace and Research Maturity capabilities.'),
+    ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
 ]
 
 _FACADE_INTERNAL_ENDPOINTS = sorted(
@@ -8487,6 +8495,17 @@ def _research_program_create_request_schema() -> dict:
     }
 
 
+def _business_runtime_access_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'properties': {
+            'period': {'type': 'string', 'description': 'Optional period. Latest available period is used when omitted.', 'examples': ['2026-02']},
+            'limit_per_level': {'type': 'integer', 'minimum': 1, 'maximum': 10, 'default': 3, 'description': 'Maximum sample objects discovered per professional level.'},
+        },
+        'additionalProperties': False,
+    }
+
+
 def _laboratory_facade_openapi_schema() -> dict:
     server_url = os.getenv('VECTRA_PUBLIC_RUNTIME_URL') or os.getenv('VECTRA_RUNTIME_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'https://bon-buasson-api.onrender.com'
     api_key_required = bool(os.getenv('VECTRA_LABORATORY_API_KEY'))
@@ -8508,11 +8527,12 @@ def _laboratory_facade_openapi_schema() -> dict:
             'responses': generic_response,
         }
         if method == 'POST':
-            request_schema = (
-                _research_program_create_request_schema()
-                if operation_id == 'create_research_program'
-                else _facade_operation_request_schema()
-            )
+            if operation_id == 'create_research_program':
+                request_schema = _research_program_create_request_schema()
+            elif operation_id == 'verify_business_runtime_access':
+                request_schema = _business_runtime_access_request_schema()
+            else:
+                request_schema = _facade_operation_request_schema()
             op['requestBody'] = {
                 'required': True,
                 'content': {'application/json': {'schema': request_schema}},
@@ -8527,7 +8547,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'DIGITAL-BUSINESS-ANALYST-RESEARCH-CAPABILITY-REQUEST-CONTRACT-001',
+            'version': 'BUSINESS-RUNTIME-ACCESS-VERIFICATION-001',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. Product Owner imports this single URL. Professional Memory v1.0 adds Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation through the memory facade while preserving the compact Actions contract.',
         },
         'servers': [{'url': server_url}],
@@ -8544,7 +8564,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'DIGITAL-BUSINESS-ANALYST-RESEARCH-CAPABILITY-REQUEST-CONTRACT-001',
+        'x-vectra-release': 'BUSINESS-RUNTIME-ACCESS-VERIFICATION-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9858,6 +9878,23 @@ def vectra_verify_business_framework_research_foundation_action(x_vectra_laborat
         '/vectra/laboratory/research/foundation/verify',
         result,
         next_action='Create the first Research Program or open the Research Workspace.',
+    ))
+
+
+@router.post('/vectra/laboratory/business-runtime/access/verify', summary='Verify Business Runtime autonomous read-only access')
+def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessVerificationRequest = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = request.model_dump(exclude_none=True) if request is not None else {}
+    result = verify_vectra_business_runtime_access_stage1(
+        period=str(payload.get('period') or ''),
+        limit_per_level=int(payload.get('limit_per_level') or 3),
+    )
+    return json_response(_facade_response(
+        'verify_business_runtime_access',
+        'business_runtime_access.verify_business_runtime_access',
+        '/vectra/laboratory/business-runtime/access/verify',
+        result,
+        next_action='Proceed to BUSINESS-RESEARCH-EXECUTION-001 only when operational_readiness.status is PASS.',
     ))
 
 
