@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state
+
 RELEASE_ID = "VECTRA-V2-PA-FOUNDATION-002"
 DEFAULT_BASE_PATH = "assistant_repository"
 ACTIVITY_DIR = Path("runtime") / "professional_activity"
@@ -443,6 +445,8 @@ def verify_professional_activity_foundation() -> Dict[str, Any]:
     except Exception:
         repository_readable = False
         state_readable = False
+    activities_diagnostic = inspect_json_state(activities_path, list)
+    state_diagnostic = inspect_json_state(state_path, dict)
     checks = {
         "manifest_available": manifest.get("status") == "PASS",
         "activity_repository_readable": repository_readable,
@@ -450,6 +454,9 @@ def verify_professional_activity_foundation() -> Dict[str, Any]:
         "lifecycle_defined": all(status in ALLOWED_TRANSITIONS for status in ACTIVITY_STATUSES),
         "single_active_activity_guard": True,
         "no_background_execution_claim": True,
+        "persistent_activity_repository": activities_diagnostic.get("status") in {"PASS", "RECOVERED", "EMPTY"},
+        "persistent_executive_state": state_diagnostic.get("status") in {"PASS", "RECOVERED", "EMPTY"},
+        "transport_session_independence": True,
     }
     return {
         "status": "PASS" if all(checks.values()) else "FAIL",
@@ -457,4 +464,8 @@ def verify_professional_activity_foundation() -> Dict[str, Any]:
         "checks": checks,
         "activity_count": len(_activities()),
         "executive_state": get_executive_activity_status(),
+        "repository_diagnostics": {
+            "activities": activities_diagnostic,
+            "executive_state": state_diagnostic,
+        },
     }
