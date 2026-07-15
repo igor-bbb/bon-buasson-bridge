@@ -15,7 +15,7 @@ from app.assistant_runtime.business_object_discovery import (
     get_business_object_discovery_manifest,
 )
 
-RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
+RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-004"
 CONTRACT_VERSION = "1.0"
 
 RESEARCH_OPERATIONS = [

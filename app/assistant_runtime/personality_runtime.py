@@ -18,7 +18,7 @@ from app.assistant_runtime.durable_runtime_state import (
     update_unified_runtime_root,
 )
 
-RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
+RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-004"
 CONTRACT_VERSION = "1.0"
 PERSONALITY_VERSION = "1.0"
 ANCHOR_STATE_FILE = Path("runtime") / "personality" / "anchoring_state.json"
@@ -181,38 +181,15 @@ def get_personality_runtime_state() -> Dict[str, Any]:
 
 def _capability_understanding() -> Dict[str, Any]:
     from app.assistant_runtime.repository import get_capability_registry
+    from app.assistant_runtime.professional_interpretation import interpret_capabilities
 
     registry_payload = get_capability_registry()
     registry = registry_payload.get("capability_registry") if isinstance(registry_payload, dict) else {}
     capabilities = registry.get("capabilities") if isinstance(registry, dict) else []
-    items: List[Dict[str, Any]] = []
-    for item in capabilities if isinstance(capabilities, list) else []:
-        if not isinstance(item, dict):
-            continue
-        purpose = str(item.get("professional_value") or "").strip()
-        responsibility = str(item.get("responsibility") or "").strip()
-        runtime_service = str(item.get("runtime_service") or "").strip()
-        status = str(item.get("status") or "unknown").strip().lower()
-        understood = bool(purpose and responsibility and runtime_service)
-        items.append({
-            "capability_id": item.get("capability_id"),
-            "title": item.get("title"),
-            "purpose": purpose or None,
-            "responsibility": responsibility or None,
-            "runtime_service": runtime_service or None,
-            "status": status,
-            "personality_integration_status": "INTEGRATED" if understood else "NOT_INTEGRATED",
-            "understood_by_vectra": understood,
-        })
-    missing = [x.get("capability_id") for x in items if not x.get("understood_by_vectra")]
-    return {
-        "status": "PASS" if not missing else "WARNING",
-        "capabilities_count": len(items),
-        "integrated_count": len(items) - len(missing),
-        "not_integrated": missing,
-        "capabilities": items,
-    }
-
+    interpreted = interpret_capabilities(capabilities if isinstance(capabilities, list) else [])
+    # Backward-compatible alias consumed by Self Model and older callers.
+    interpreted["capabilities"] = interpreted.get("professional_capabilities") or []
+    return interpreted
 
 def get_capability_understanding() -> Dict[str, Any]:
     result = _capability_understanding()
@@ -293,6 +270,9 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
     personality = get_personality_core().get("personality_core") or {}
     capabilities = get_capability_understanding()
+    from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
+    self_model_result = persist_self_model_runtime_state(payload)
+    self_model = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
     behaviour = get_professional_behaviour_manifest("vectra_laboratory")
     procedures = get_professional_procedure_manifest()
 
@@ -312,20 +292,34 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
     status = "PASS" if not inconsistencies else ("WARNING" if all(x.get("severity") == "WARNING" for x in inconsistencies) else "HOLD")
     next_action = "continue_professional_work" if status == "PASS" else "prepare_minimal_engineering_task_for_confirmed_inconsistency"
+    from app.assistant_runtime.professional_interpretation import build_self_audit_narrative
+    professional_interpretation = build_self_audit_narrative(
+        personality=personality,
+        self_model=self_model if isinstance(self_model, dict) else {},
+        capability_context=capabilities if isinstance(capabilities, dict) else {},
+        inconsistencies=inconsistencies,
+        status=status,
+        next_action=next_action,
+    )
     return {
         "status": status,
         "audit_type": "VECTRA_SELF_AUDIT",
+        "professional_interpretation": professional_interpretation,
+        "response_contract": professional_interpretation.get("response_contract"),
         "identity": personality.get("identity"),
         "mission": personality.get("mission"),
         "strategic_goal": personality.get("strategic_goal"),
         "current_state": personality.get("current_state"),
+        "self_model": self_model,
+        "current_workspace": (self_model.get("current_workspace") or {}) if isinstance(self_model, dict) else {},
+        "professional_role": self_model.get("professional_role") if isinstance(self_model, dict) else None,
         "professional_self_management": personality.get("professional_self_management"),
         "capability_understanding": {
             "status": capabilities.get("status"),
             "capabilities_count": capabilities.get("capabilities_count"),
             "integrated_count": capabilities.get("integrated_count"),
             "not_integrated": capabilities.get("not_integrated"),
-            "capabilities": capabilities.get("capabilities"),
+            "capabilities": capabilities.get("professional_capabilities") or capabilities.get("capabilities"),
         },
         "professional_behaviour_ready": behaviour_ready,
         "professional_procedures_ready": procedures_ready,
