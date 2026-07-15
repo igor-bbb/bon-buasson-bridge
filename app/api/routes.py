@@ -8170,6 +8170,11 @@ _LABORATORY_NON_ACTION_DIAGNOSTICS = [
         'endpoint': '/vectra/laboratory/actions/verify',
         'reason': 'internal_diagnostic_available_via_action_manifest',
     },
+    {
+        'operation_id': 'verify_business_framework_research_foundation',
+        'endpoint': '/vectra/laboratory/research/foundation/verify',
+        'reason': 'internal_diagnostic_superseded_in_gpt_actions_by_framework_services_manifest_and_registry',
+    },
 ]
 
 _FACADE_ACTIONS = [
@@ -8188,7 +8193,6 @@ _FACADE_ACTIONS = [
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
-    ('verify_business_framework_research_foundation', 'GET', '/vectra/laboratory/research/foundation/verify', 'Verify Business Framework Research Foundation', 'Verifies Research Program, Backlog, Hypothesis, Traceability, Methodology Repository, Research Workspace and Research Maturity capabilities.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
     ('verify_professional_runtime_continuation', 'GET', '/vectra/laboratory/runtime/continuation/verify', 'Verify Professional Runtime continuation', 'Verifies persistent Professional Activity, Research Execution Manifest and Business Workspace recovery after pauses.'),
     ('start_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/start', 'Start Business Research Execution', 'Creates and starts a guided Research Program from a professional research question and hypothesis.'),
@@ -8794,7 +8798,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'WORKSPACE-RESEARCH-SNAPSHOT-CONTRACT-ALIGNMENT-001',
+            'version': 'BUSINESS-FRAMEWORK-E2E-READINESS-001-HOTFIX-OPENAPI-30',
             'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract is intentionally limited to 30 public operations for GPT Actions Editor compatibility; diagnostic Runtime routes remain available internally.',
         },
         'servers': [{'url': server_url}],
@@ -8811,7 +8815,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'WORKSPACE-RESEARCH-SNAPSHOT-CONTRACT-ALIGNMENT-001',
+        'x-vectra-release': 'BUSINESS-FRAMEWORK-E2E-READINESS-001-HOTFIX-OPENAPI-30',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
