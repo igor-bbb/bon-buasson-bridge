@@ -11,7 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.assistant_runtime.durable_runtime_state import read_json_state, update_json_state
+from app.assistant_runtime.durable_runtime_state import (
+    read_json_state,
+    read_unified_runtime_state,
+    update_json_state,
+    update_unified_runtime_root,
+)
 
 RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
 CONTRACT_VERSION = "1.0"
@@ -117,6 +122,62 @@ def get_personality_core() -> Dict[str, Any]:
         "read_only": True,
     }
 
+def persist_personality_runtime_state() -> Dict[str, Any]:
+    """Connect the canonical Personality Core to Unified Runtime State.
+
+    The personality source remains this module. Unified Runtime State stores a
+    verified runtime projection so session bootstrap can restore VECTRA as one
+    coherent state without replacing the canonical personality contract.
+    """
+    core = deepcopy(_personality_core())
+    state, diagnostic = update_unified_runtime_root(
+        "personality",
+        {
+            "personality_id": core.get("personality_id"),
+            "version": core.get("version"),
+            "status": core.get("status"),
+            "identity": core.get("identity"),
+            "mission": core.get("mission"),
+            "strategic_goal": core.get("strategic_goal"),
+            "canonical_principles": core.get("canonical_principles") or [],
+            "current_state": core.get("current_state") or {},
+            "loaded_at": _now(),
+        },
+        status="CONNECTED",
+        source_of_truth="app.assistant_runtime.personality_runtime",
+    )
+    root = state.get("personality") if isinstance(state, dict) else {}
+    payload = root.get("payload") if isinstance(root, dict) else {}
+    verified = (
+        isinstance(payload, dict)
+        and payload.get("personality_id") == core.get("personality_id")
+        and payload.get("version") == core.get("version")
+        and root.get("status") == "CONNECTED"
+    )
+    return {
+        "status": "PASS" if verified else "HOLD",
+        "personality_runtime_state_connected": verified,
+        "runtime_root": "personality",
+        "runtime_state_contract_version": state.get("contract_version") if isinstance(state, dict) else None,
+        "personality_id": payload.get("personality_id") if isinstance(payload, dict) else None,
+        "personality_version": payload.get("version") if isinstance(payload, dict) else None,
+        "readback_verified": bool(diagnostic.get("readback_verified")),
+        "diagnostic": diagnostic,
+        "read_only": False,
+    }
+
+
+def get_personality_runtime_state() -> Dict[str, Any]:
+    state, diagnostic = read_unified_runtime_state()
+    root = state.get("personality") if isinstance(state, dict) else {}
+    return {
+        "status": "PASS" if isinstance(root, dict) and root.get("status") == "CONNECTED" else "NOT_READY",
+        "personality": root,
+        "runtime_state_contract_version": state.get("contract_version") if isinstance(state, dict) else None,
+        "diagnostic": diagnostic,
+        "read_only": True,
+    }
+
 
 def _capability_understanding() -> Dict[str, Any]:
     from app.assistant_runtime.repository import get_capability_registry
@@ -197,10 +258,13 @@ def anchor_personality(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
 
 def restore_personality_context(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     core = get_personality_core()
+    runtime_state = persist_personality_runtime_state()
     capabilities = get_capability_understanding()
     anchor = anchor_personality(payload)
     ready = (
         core.get("status") == "PASS"
+        and runtime_state.get("status") == "PASS"
+        and runtime_state.get("personality_runtime_state_connected") is True
         and capabilities.get("status") in {"PASS", "WARNING"}
         and anchor.get("status") == "PASS"
     )
@@ -208,6 +272,7 @@ def restore_personality_context(payload: Optional[Dict[str, Any]] = None) -> Dic
         "status": "PASS" if ready else "NOT_READY",
         "personality_ready": ready,
         "personality_core": core.get("personality_core"),
+        "personality_runtime_state": runtime_state,
         "capability_context": {
             "status": capabilities.get("status"),
             "capabilities_count": capabilities.get("capabilities_count"),

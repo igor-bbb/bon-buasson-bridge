@@ -33,7 +33,7 @@ from app.assistant_runtime.professional_procedures_runtime import (
 from app.assistant_runtime.personality_runtime import restore_personality_context
 
 RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
-CONTRACT_VERSION = "1.5"
+CONTRACT_VERSION = "1.6"
 
 
 def _available_domains(*, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -259,6 +259,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
 
     checks = {
         "personality_core": "READY" if personality.get("status") == "PASS" and personality.get("personality_ready") is True else "NOT_READY",
+        "personality_runtime_state": "CONNECTED" if (personality.get("personality_runtime_state") or {}).get("personality_runtime_state_connected") is True else "NOT_CONNECTED",
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
         "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
         "runtime_behaviour_authority": "CONFIRMED" if behaviour.get("runtime_is_behaviour_authority") is True and behaviour.get("authority_transfer_status") == "COMPLETED" else "NOT_CONFIRMED",
@@ -274,6 +275,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     }
     missing_map = {
         "personality_core": checks["personality_core"] != "READY",
+        "personality_runtime_state": checks["personality_runtime_state"] != "CONNECTED",
         "professional_state": checks["professional_state"] != "READY",
         "professional_behaviour": checks["professional_behaviour"] != "READY",
         "runtime_behaviour_authority": checks["runtime_behaviour_authority"] != "CONFIRMED",
@@ -315,6 +317,12 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "context_checks": checks,
         "personality_context": personality,
         "personality_loaded_first": True,
+        "unified_runtime_state": {
+            "personality_root": "CONNECTED",
+            "personality_version": (personality.get("personality_runtime_state") or {}).get("personality_version"),
+            "readback_verified": (personality.get("personality_runtime_state") or {}).get("readback_verified"),
+            "restore_order": 1,
+        },
         "professional_behaviour": {
             "profile_id": (behaviour.get("active_behaviour_profile") or {}).get("behaviour_profile_id"),
             "version": (behaviour.get("active_behaviour_profile") or {}).get("version"),
