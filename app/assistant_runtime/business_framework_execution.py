@@ -16,8 +16,9 @@ from app.assistant_runtime.business_framework_services import build_research_rou
 from app.assistant_runtime.business_object_discovery import discover_business_objects
 from app.assistant_runtime.workspace_research_contract import get_research_workspace_snapshot
 from app.assistant_runtime.durable_runtime_state import read_json_state, update_json_state, inspect_json_state
+from app.assistant_runtime.execution_bootstrap import prepare_execution_context
 
-RELEASE_ID = "BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001-INCREMENT-002"
+RELEASE_ID = "BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001-INCREMENT-002-BLOCKER-001"
 CONTRACT_VERSION = "1.0"
 EXECUTIONS_FILE = Path("runtime") / "business_framework_execution" / "executions.json"
 
@@ -118,9 +119,10 @@ def start_execution(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     period = str(payload.get("period") or "").strip() or None
     start_type = str(payload.get("start_object_type") or "business").strip()
     end_type = str(payload.get("end_object_type") or "sku").strip()
-    route_result = build_research_route({"start_object_type": start_type, "end_object_type": end_type})
-    if route_result.get("status") != "PASS":
-        return route_result
+    bootstrap = prepare_execution_context({**payload, "start_object_type": start_type, "end_object_type": end_type})
+    if bootstrap.get("status") != "PASS":
+        return bootstrap
+    route_result = bootstrap.get("route") or {}
     execution_id = str(payload.get("execution_id") or f"BFE-{uuid4().hex[:12].upper()}")
     steps = [{
         "sequence": item.get("sequence"),
@@ -139,6 +141,15 @@ def start_execution(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "period": period,
         "route_id": route_result.get("route_id"),
         "direction": route_result.get("direction"),
+        "business_domain": (bootstrap.get("active_business_domain") or {}).get("domain_id"),
+        "execution_bootstrap": {
+            "status": bootstrap.get("status"),
+            "contract_version": bootstrap.get("contract_version"),
+            "context_checks": bootstrap.get("context_checks"),
+            "domain_resolution": (bootstrap.get("active_business_domain") or {}).get("resolution"),
+            "activation_performed": (bootstrap.get("active_business_domain") or {}).get("activation_performed"),
+            "internal": True,
+        },
         "steps": steps,
         "current_step_index": 0,
         "route_history": [],
@@ -254,6 +265,9 @@ def verify_framework_execution() -> Dict[str, Any]:
         "persistent_execution_supported": True,
         "resume_supported": True,
         "single_action_full_route_supported": True,
+        "internal_execution_bootstrap_supported": True,
+        "execution_context_contract_supported": True,
+        "public_bootstrap_operation_absent": True,
         "compact_research_report_supported": True,
         "read_only": True,
         "storage_available": storage.get("status") in {"PASS", "EMPTY", "RECOVERED"},
