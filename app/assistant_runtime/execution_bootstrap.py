@@ -19,9 +19,14 @@ from app.assistant_runtime.business_framework_services import (
     build_research_route,
     get_framework_manifest,
 )
+from app.assistant_runtime.professional_behaviour_runtime import (
+    diagnose_professional_behaviour,
+    get_professional_behaviour_manifest,
+    resolve_professional_behaviour,
+)
 
-RELEASE_ID = "BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001-INCREMENT-002-BLOCKER-001"
-CONTRACT_VERSION = "1.0"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-001"
+CONTRACT_VERSION = "1.1"
 
 
 def _available_domains() -> List[Dict[str, Any]]:
@@ -146,6 +151,16 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     end_type = str(payload.get("end_object_type") or "sku").strip()
 
     professional = restore_professional_body_state()
+    professional_role = str(payload.get("professional_role") or "vectra_laboratory").strip().lower()
+    behaviour = resolve_professional_behaviour({
+        "professional_role": professional_role,
+        "behaviour_version": payload.get("behaviour_version"),
+    })
+    behaviour_diagnostics = diagnose_professional_behaviour({
+        "professional_role": professional_role,
+        "behaviour_version": payload.get("behaviour_version"),
+    })
+    behaviour_manifest = get_professional_behaviour_manifest(professional_role)
     domain = _resolve_business_domain(payload)
     if domain.get("status") != "PASS":
         return {
@@ -165,6 +180,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
 
     checks = {
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
+        "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
         "active_business_domain": "RESOLVED" if domain.get("domain_id") else "NOT_RESOLVED",
         "framework_manifest": "AVAILABLE" if manifest.get("status") == "PASS" else "UNAVAILABLE",
         "research_execution": "AVAILABLE",
@@ -173,6 +189,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     }
     missing_map = {
         "professional_state": checks["professional_state"] != "READY",
+        "professional_behaviour": checks["professional_behaviour"] != "READY",
         "active_business_domain": checks["active_business_domain"] != "RESOLVED",
         "framework_manifest": checks["framework_manifest"] != "AVAILABLE",
         "research_execution": checks["research_execution"] != "AVAILABLE",
@@ -187,6 +204,8 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "contract_version": CONTRACT_VERSION,
             "missing": missing,
             "context_checks": checks,
+            "professional_behaviour": behaviour,
+            "professional_behaviour_diagnostics": behaviour_diagnostics,
             "active_business_domain": domain,
             "route_diagnostic": route if route.get("status") != "PASS" else None,
             "bootstrap_internal": True,
@@ -200,6 +219,15 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "contract_version": CONTRACT_VERSION,
         "execution_context_ready": True,
         "context_checks": checks,
+        "professional_behaviour": {
+            "profile_id": (behaviour.get("active_behaviour_profile") or {}).get("behaviour_profile_id"),
+            "version": (behaviour.get("active_behaviour_profile") or {}).get("version"),
+            "professional_role": behaviour.get("professional_role"),
+            "resolution": behaviour.get("resolution"),
+            "manifest": behaviour_manifest.get("professional_behaviour_manifest"),
+            "diagnostics": behaviour_diagnostics,
+            "runtime_is_executable_behaviour_source": True,
+        },
         "active_business_domain": domain,
         "route": route,
         "bootstrap_internal": True,
