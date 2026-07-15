@@ -193,3 +193,169 @@ def update_json_state(path: Path, default_factory: Callable[[], Any], expected_t
             "readback_verified": True,
             "committed_at": _now(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Unified VECTRA Runtime State foundation
+# ---------------------------------------------------------------------------
+
+UNIFIED_RUNTIME_STATE_CONTRACT_VERSION = "1.0"
+UNIFIED_RUNTIME_STATE_FILE = Path("runtime") / "vectra_runtime_state.json"
+
+RUNTIME_STATE_ROOTS = (
+    "personality",
+    "self_model",
+    "organization",
+    "professional_memory",
+    "professional_behaviour",
+    "business_context",
+    "capabilities",
+    "current_activity",
+)
+
+
+def build_default_unified_runtime_state() -> Dict[str, Any]:
+    """Return the canonical empty root state for VECTRA.
+
+    WP-001 introduces only the durable state skeleton. Existing subsystem
+    repositories remain authoritative until later migration packages connect
+    them to these roots. This keeps current Runtime behaviour backward
+    compatible while creating one stable integration point.
+    """
+    state: Dict[str, Any] = {
+        "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+        "state_type": "VECTRA_UNIFIED_RUNTIME_STATE",
+        "status": "FOUNDATION_READY",
+        "created_at": _now(),
+        "updated_at": _now(),
+        "migration_mode": "BACKWARD_COMPATIBLE_FOUNDATION",
+    }
+    for root_name in RUNTIME_STATE_ROOTS:
+        state[root_name] = {
+            "object_name": root_name,
+            "status": "NOT_CONNECTED",
+            "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+            "source_of_truth": "existing_runtime_subsystem",
+            "payload": {},
+        }
+    return state
+
+
+def _normalize_unified_runtime_state(value: Dict[str, Any]) -> Dict[str, Any]:
+    """Make older or partially written state conform to the root contract."""
+    state = dict(value or {})
+    state.setdefault("contract_version", UNIFIED_RUNTIME_STATE_CONTRACT_VERSION)
+    state.setdefault("state_type", "VECTRA_UNIFIED_RUNTIME_STATE")
+    state.setdefault("status", "FOUNDATION_READY")
+    state.setdefault("created_at", _now())
+    state["updated_at"] = _now()
+    state.setdefault("migration_mode", "BACKWARD_COMPATIBLE_FOUNDATION")
+    for root_name in RUNTIME_STATE_ROOTS:
+        root = state.get(root_name)
+        if not isinstance(root, dict):
+            root = {}
+        root.setdefault("object_name", root_name)
+        root.setdefault("status", "NOT_CONNECTED")
+        root.setdefault("contract_version", UNIFIED_RUNTIME_STATE_CONTRACT_VERSION)
+        root.setdefault("source_of_truth", "existing_runtime_subsystem")
+        root.setdefault("payload", {})
+        state[root_name] = root
+    return state
+
+
+def read_unified_runtime_state() -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Read the canonical VECTRA root state without changing current subsystems."""
+    state, diagnostic = read_json_state(
+        UNIFIED_RUNTIME_STATE_FILE,
+        build_default_unified_runtime_state,
+        dict,
+    )
+    normalized = _normalize_unified_runtime_state(state)
+    return normalized, {
+        **diagnostic,
+        "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+        "root_objects": list(RUNTIME_STATE_ROOTS),
+        "backward_compatible": True,
+    }
+
+
+def initialize_unified_runtime_state() -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Persist and verify the canonical state skeleton if it does not exist."""
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        return _normalize_unified_runtime_state(current)
+
+    state, diagnostic = update_json_state(
+        UNIFIED_RUNTIME_STATE_FILE,
+        build_default_unified_runtime_state,
+        dict,
+        updater,
+    )
+    return state, {
+        **diagnostic,
+        "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+        "root_objects": list(RUNTIME_STATE_ROOTS),
+        "backward_compatible": True,
+    }
+
+
+def update_unified_runtime_root(
+    root_name: str,
+    payload: Dict[str, Any],
+    *,
+    status: str = "CONNECTED",
+    source_of_truth: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Atomically update one root while preserving all other Runtime roots."""
+    if root_name not in RUNTIME_STATE_ROOTS:
+        raise ValueError(f"Unsupported unified runtime root: {root_name}")
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        state = _normalize_unified_runtime_state(current)
+        root = dict(state[root_name])
+        root.update({
+            "object_name": root_name,
+            "status": str(status or "CONNECTED"),
+            "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+            "payload": payload,
+            "updated_at": _now(),
+        })
+        if source_of_truth:
+            root["source_of_truth"] = source_of_truth
+        state[root_name] = root
+        state["updated_at"] = _now()
+        return state
+
+    state, diagnostic = update_json_state(
+        UNIFIED_RUNTIME_STATE_FILE,
+        build_default_unified_runtime_state,
+        dict,
+        updater,
+    )
+    return state, {
+        **diagnostic,
+        "updated_root": root_name,
+        "contract_version": UNIFIED_RUNTIME_STATE_CONTRACT_VERSION,
+        "backward_compatible": True,
+    }
+
+
+def inspect_unified_runtime_state() -> Dict[str, Any]:
+    state, diagnostic = read_unified_runtime_state()
+    roots = {
+        root_name: {
+            "status": state[root_name].get("status"),
+            "source_of_truth": state[root_name].get("source_of_truth"),
+            "has_payload": bool(state[root_name].get("payload")),
+        }
+        for root_name in RUNTIME_STATE_ROOTS
+    }
+    return {
+        **diagnostic,
+        "status": diagnostic.get("status", "PASS"),
+        "state_type": state.get("state_type"),
+        "state_status": state.get("status"),
+        "roots": roots,
+        "transport_session_independent": True,
+    }

@@ -14,19 +14,81 @@ SUPPORTED_CONSUMERS = [
     "evaluate_workspace",
 ]
 
+ROOT_RUNTIME_CONTRACT_VERSION = "1.0"
+ROOT_RUNTIME_OBJECTS = [
+    {
+        "object_name": "personality",
+        "owner_capability": "personality_runtime",
+        "consumer_capabilities": ["execution_bootstrap", "self_audit"],
+    },
+    {
+        "object_name": "self_model",
+        "owner_capability": "personality_runtime",
+        "consumer_capabilities": ["execution_bootstrap", "self_audit"],
+    },
+    {
+        "object_name": "organization",
+        "owner_capability": "digital_organization_registry",
+        "consumer_capabilities": ["execution_bootstrap", "self_audit"],
+    },
+    {
+        "object_name": "professional_memory",
+        "owner_capability": "professional_memory",
+        "consumer_capabilities": ["recovery_pipeline", "professional_intelligence"],
+    },
+    {
+        "object_name": "professional_behaviour",
+        "owner_capability": "professional_behaviour_runtime",
+        "consumer_capabilities": ["execution_bootstrap", "professional_programs"],
+    },
+    {
+        "object_name": "business_context",
+        "owner_capability": "business_domain_runtime",
+        "consumer_capabilities": ["execution_bootstrap", "business_programs"],
+    },
+    {
+        "object_name": "capabilities",
+        "owner_capability": "capability_registry",
+        "consumer_capabilities": ["personality_runtime", "self_audit"],
+    },
+    {
+        "object_name": "current_activity",
+        "owner_capability": "professional_activity",
+        "consumer_capabilities": ["runtime_continuation", "execution_bootstrap"],
+    },
+]
+
 
 def get_canonical_runtime_objects_registry() -> Dict[str, Any]:
+    research_contract = {
+        "object_name": OBJECT_NAME,
+        "object_kind": "research_contract",
+        "contract_version": CONTRACT_VERSION,
+        "owner_capability": OWNER_CAPABILITY,
+        "consumer_capabilities": list(SUPPORTED_CONSUMERS),
+        "backward_compatibility": "LEGACY_INTERNAL_ONLY",
+        "lifecycle_status": "ACTIVE",
+    }
+    root_objects = [
+        {
+            **item,
+            "object_kind": "unified_runtime_state_root",
+            "contract_version": ROOT_RUNTIME_CONTRACT_VERSION,
+            "backward_compatibility": "EXISTING_SUBSYSTEM_REMAINS_SOURCE_OF_TRUTH",
+            "lifecycle_status": "FOUNDATION_READY",
+        }
+        for item in ROOT_RUNTIME_OBJECTS
+    ]
     return {
         "status": "PASS",
         "registry_type": "canonical_runtime_objects",
-        "objects": [{
-            "object_name": OBJECT_NAME,
-            "contract_version": CONTRACT_VERSION,
-            "owner_capability": OWNER_CAPABILITY,
-            "consumer_capabilities": list(SUPPORTED_CONSUMERS),
-            "backward_compatibility": "LEGACY_INTERNAL_ONLY",
-            "lifecycle_status": "ACTIVE",
-        }],
+        "registry_version": "2.0",
+        "objects": [research_contract, *root_objects],
+        "unified_runtime_state": {
+            "contract_version": ROOT_RUNTIME_CONTRACT_VERSION,
+            "root_object_count": len(root_objects),
+            "migration_mode": "BACKWARD_COMPATIBLE_FOUNDATION",
+        },
     }
 
 
