@@ -14,12 +14,12 @@ from typing import Any, Dict, List, Optional
 
 from app.assistant_runtime.durable_runtime_state import read_json_state, update_json_state
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-003"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-004"
 CONTRACT_VERSION = "1.0"
 REGISTRY_FILE = Path("runtime") / "professional_behaviour" / "registry.json"
 DEFAULT_ROLE = "vectra_laboratory"
 DEFAULT_PROFILE_ID = "PROFESSIONAL-BEHAVIOUR-VECTRA-LABORATORY"
-DEFAULT_PROFILE_VERSION = "1.2"
+DEFAULT_PROFILE_VERSION = "1.3"
 
 
 def _now() -> str:
@@ -58,6 +58,9 @@ def _default_profile() -> Dict[str, Any]:
             "blocker_localization_before_handoff",
             "no_unverified_result_claims",
             "continue_active_program_when_context_is_ready",
+            "action_closure_required",
+            "release_brief_is_post_deployment_contract",
+            "runtime_is_only_executable_behaviour_source",
         ],
         "required_runtime_capabilities": [
             "professional_state",
@@ -100,7 +103,7 @@ def _default_profile() -> Dict[str, Any]:
         },
         "lifecycle_status": "ACTIVE",
         "created_at": _now(),
-        "supersedes": "1.1",
+        "supersedes": "1.2",
         "release": RELEASE_ID,
         "contract_version": CONTRACT_VERSION,
     }
@@ -239,6 +242,23 @@ def get_professional_behaviour_manifest(role: Optional[str] = None) -> Dict[str,
         "authority_transfer_status": resolved.get("authority_transfer_status"),
         "runtime_authority_required": True,
         "static_professional_core_execution_allowed": False,
+        "action_closure_rule": {
+            "required": True,
+            "cardinality": "exactly_one",
+            "field": "next_allowed_professional_action",
+            "generic_recommendations_forbidden_when_action_is_determined": True,
+        },
+        "release_brief_interpretation_rule": {
+            "stage": "POST_DEPLOYMENT",
+            "deployment_wait_instruction_allowed": False,
+            "allowed_decisions": ["PASS", "FAIL", "BLOCKED"],
+            "pass_next_action": "close_current_increment_or_continue_approved_program",
+        },
+        "runtime_first_rule": {
+            "runtime_available": "Professional Runtime is the only executable behaviour source",
+            "professional_core_scope": "normative_documentation_only",
+            "fallback_to_static_core_allowed": False,
+        },
     }
     return {"status": "PASS", "professional_behaviour_manifest": manifest, "read_only": True}
 

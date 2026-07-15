@@ -10,10 +10,10 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-003"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-004"
 CONTRACT_VERSION = "1.0"
 PROCEDURE_SET_ID = "PROFESSIONAL-PROCEDURES-VECTRA-LABORATORY"
-PROCEDURE_SET_VERSION = "1.1"
+PROCEDURE_SET_VERSION = "1.2"
 DEFAULT_ROLE = "vectra_laboratory"
 
 
@@ -40,6 +40,11 @@ def _procedure(
         "steps": steps,
         "completion_criteria": completion,
         "next_action": next_action,
+        "action_closure": {
+            "required": True,
+            "cardinality": "exactly_one",
+            "resolved_action": next_action,
+        },
         "supported_programs": supported_programs,
         "status": "ACTIVE",
         "lifecycle_status": "ACTIVE",
@@ -81,18 +86,20 @@ PROCEDURES: Dict[str, Dict[str, Any]] = {
     ),
     "product_verification": _procedure(
         "product_verification",
-        "Verify the actually deployed product against Release Brief and Runtime evidence.",
+        "Verify the already deployed product against Release Brief and Runtime evidence; Release Brief is always interpreted as a post-deployment contract.",
         ["release_brief_received", "product_verification", "verify_release"],
         [
             "restore_professional_state",
-            "load_release_contract",
+            "load_release_contract_as_post_deployment_contract",
+            "do_not_wait_for_or_repeat_deployment",
             "discover_runtime_capabilities",
             "execute_verification_scenarios",
             "separate_confirmed_failed_blocked_results",
-            "issue_pass_fail_or_blocked_decision",
+            "issue_exactly_one_pass_fail_or_blocked_decision",
+            "close_with_one_concrete_product_owner_action",
         ],
-        ["decision_issued", "runtime_evidence_recorded", "next_allowed_step_stated"],
-        "return_product_verification_decision",
+        ["decision_issued", "runtime_evidence_recorded", "exactly_one_next_action_stated", "deployment_not_repeated"],
+        "close_current_increment_or_handoff_confirmed_failure",
         ["product_verification"],
     ),
     "engineering_review": _procedure(
@@ -217,6 +224,17 @@ def get_professional_procedure_manifest() -> Dict[str, Any]:
             "authority_transfer_status": "COMPLETED",
             "runtime_is_procedure_authority": True,
             "static_professional_core_execution_allowed": False,
+            "professional_core_scope": "NORMATIVE_DOCUMENTATION_ONLY",
+            "runtime_first_enforced": True,
+            "action_closure_rule": {
+                "required": True,
+                "cardinality": "exactly_one",
+            },
+            "release_brief_interpretation": {
+                "stage": "POST_DEPLOYMENT",
+                "deployment_wait_instruction_allowed": False,
+                "allowed_decisions": ["PASS", "FAIL", "BLOCKED"],
+            },
             "release": RELEASE_ID,
             "contract_version": CONTRACT_VERSION,
         },
@@ -277,6 +295,8 @@ def resolve_professional_procedure(payload: Optional[Dict[str, Any]] = None) -> 
         "trigger": trigger,
         "active_procedure": deepcopy(PROCEDURES[procedure_id]),
         "next_allowed_action": PROCEDURES[procedure_id]["next_action"],
+        "action_closure": deepcopy(PROCEDURES[procedure_id].get("action_closure") or {}),
+        "release_brief_stage": "POST_DEPLOYMENT" if procedure_id == "product_verification" else None,
         "procedure_set_id": PROCEDURE_SET_ID,
         "procedure_set_version": PROCEDURE_SET_VERSION,
         "runtime_is_executable_procedure_source": True,
@@ -330,6 +350,14 @@ def verify_professional_procedures_runtime() -> Dict[str, Any]:
         "no_public_action_required": True,
         "authority_transfer_completed": True,
         "runtime_is_procedure_authority": True,
+        "action_closure_present_for_all_procedures": all(
+            (item.get("action_closure") or {}).get("cardinality") == "exactly_one"
+            and bool(item.get("next_action"))
+            for item in PROCEDURES.values()
+        ),
+        "release_brief_is_post_deployment": (
+            "do_not_wait_for_or_repeat_deployment" in PROCEDURES["product_verification"].get("steps", [])
+        ),
     }
     return {
         "status": "PASS" if all(checks.values()) else "FAIL",
