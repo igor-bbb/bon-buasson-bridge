@@ -24,9 +24,14 @@ from app.assistant_runtime.professional_behaviour_runtime import (
     get_professional_behaviour_manifest,
     resolve_professional_behaviour,
 )
+from app.assistant_runtime.professional_procedures_runtime import (
+    diagnose_professional_procedures,
+    get_professional_procedure_manifest,
+    resolve_professional_procedure,
+)
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-001"
-CONTRACT_VERSION = "1.1"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-002"
+CONTRACT_VERSION = "1.2"
 
 
 def _available_domains() -> List[Dict[str, Any]]:
@@ -161,6 +166,9 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "behaviour_version": payload.get("behaviour_version"),
     })
     behaviour_manifest = get_professional_behaviour_manifest(professional_role)
+    procedure = resolve_professional_procedure({**payload, "professional_role": professional_role})
+    procedure_diagnostics = diagnose_professional_procedures({**payload, "professional_role": professional_role})
+    procedure_manifest = get_professional_procedure_manifest()
     domain = _resolve_business_domain(payload)
     if domain.get("status") != "PASS":
         return {
@@ -181,6 +189,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     checks = {
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
         "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
+        "professional_procedure": "READY" if procedure.get("status") == "PASS" and procedure_diagnostics.get("status") == "READY" else "NOT_READY",
         "active_business_domain": "RESOLVED" if domain.get("domain_id") else "NOT_RESOLVED",
         "framework_manifest": "AVAILABLE" if manifest.get("status") == "PASS" else "UNAVAILABLE",
         "research_execution": "AVAILABLE",
@@ -190,6 +199,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     missing_map = {
         "professional_state": checks["professional_state"] != "READY",
         "professional_behaviour": checks["professional_behaviour"] != "READY",
+        "professional_procedure": checks["professional_procedure"] != "READY",
         "active_business_domain": checks["active_business_domain"] != "RESOLVED",
         "framework_manifest": checks["framework_manifest"] != "AVAILABLE",
         "research_execution": checks["research_execution"] != "AVAILABLE",
@@ -206,6 +216,8 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "context_checks": checks,
             "professional_behaviour": behaviour,
             "professional_behaviour_diagnostics": behaviour_diagnostics,
+            "professional_procedure": procedure,
+            "professional_procedure_diagnostics": procedure_diagnostics,
             "active_business_domain": domain,
             "route_diagnostic": route if route.get("status") != "PASS" else None,
             "bootstrap_internal": True,
@@ -228,6 +240,18 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "diagnostics": behaviour_diagnostics,
             "runtime_is_executable_behaviour_source": True,
         },
+        "professional_procedure": {
+            "procedure_id": (procedure.get("active_procedure") or {}).get("procedure_id"),
+            "version": (procedure.get("active_procedure") or {}).get("version"),
+            "purpose": (procedure.get("active_procedure") or {}).get("purpose"),
+            "steps": (procedure.get("active_procedure") or {}).get("steps") or [],
+            "completion_criteria": (procedure.get("active_procedure") or {}).get("completion_criteria") or [],
+            "next_allowed_action": procedure.get("next_allowed_action"),
+            "manifest": procedure_manifest.get("professional_procedure_manifest"),
+            "diagnostics": procedure_diagnostics,
+            "runtime_is_executable_procedure_source": True,
+        },
+        "next_allowed_professional_action": procedure.get("next_allowed_action"),
         "active_business_domain": domain,
         "route": route,
         "bootstrap_internal": True,
