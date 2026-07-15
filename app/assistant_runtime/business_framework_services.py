@@ -15,7 +15,7 @@ from app.assistant_runtime.business_object_discovery import (
     get_business_object_discovery_manifest,
 )
 
-RELEASE_ID = "BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001-INCREMENT-001"
+RELEASE_ID = "BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001-INCREMENT-002"
 CONTRACT_VERSION = "1.0"
 
 RESEARCH_OPERATIONS = [
@@ -95,7 +95,7 @@ def get_framework_manifest() -> Dict[str, Any]:
             "workspace_resolver",
             "research_routing",
         ],
-        "supported_operations": ["manifest", "registry", "resolve_workspace", "build_route", "navigate", "verify"],
+        "supported_operations": ["manifest", "registry", "resolve_workspace", "build_route", "navigate", "start_execution", "run_execution", "execute_end_to_end", "get_execution", "verify_execution", "verify"],
         "research_contract_version": CONTRACT_VERSION,
         "route_policy": "Route is built from published level relationships; clients must not hard-code Framework structure.",
         "read_only": True,
@@ -248,12 +248,18 @@ def verify_framework_services() -> Dict[str, Any]:
 def execute_framework_service(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
     operation = str(payload.get("operation_type") or "manifest").strip().lower()
+    from app.assistant_runtime.business_framework_execution import (start_execution, run_execution, execute_end_to_end, get_execution, verify_framework_execution)
     operations = {
         "manifest": lambda: get_framework_manifest(),
         "registry": lambda: get_framework_registry(payload),
         "resolve_workspace": lambda: resolve_workspace(payload),
         "build_route": lambda: build_research_route(payload),
         "navigate": lambda: navigate_framework(payload),
+        "start_execution": lambda: start_execution(payload),
+        "run_execution": lambda: run_execution(payload),
+        "execute_end_to_end": lambda: execute_end_to_end(payload),
+        "get_execution": lambda: get_execution(payload),
+        "verify_execution": lambda: verify_framework_execution(),
         "verify": lambda: verify_framework_services(),
     }
     handler = operations.get(operation)

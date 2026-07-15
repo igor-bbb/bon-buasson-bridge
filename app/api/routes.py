@@ -8177,7 +8177,7 @@ _FACADE_ACTIONS = [
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute Business Framework Service', 'Unified read-only facade for Framework Manifest, Registry, Workspace Resolver, Research Routing and Navigation.'),
+    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute Business Framework Service', 'Unified read-only facade for Framework Manifest, Registry, Workspace Resolver, Research Routing, Navigation and persistent end-to-end Research Execution.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Facade for Business Domain restore, activation, profile and knowledge operations.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
@@ -10159,7 +10159,7 @@ def vectra_execute_framework_service_action(request: BusinessFrameworkServiceReq
         'business_framework_services.execute_framework_service',
         '/vectra/laboratory/framework-services',
         result,
-        next_action='Read manifest, build a route, then discover and open each registered Framework level.',
+        next_action='Use execute_end_to_end to run the published Framework route and receive one persistent Research Report.',
     ))
 
 
