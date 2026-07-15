@@ -31,9 +31,10 @@ from app.assistant_runtime.professional_procedures_runtime import (
     resolve_professional_procedure,
 )
 from app.assistant_runtime.personality_runtime import restore_personality_context
+from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
 
-RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
-CONTRACT_VERSION = "1.6"
+RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-003"
+CONTRACT_VERSION = "1.7"
 
 
 def _available_domains(*, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -251,6 +252,11 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "read_only": True,
         }
 
+    self_model = persist_self_model_runtime_state(
+        {**payload, "professional_role": professional_role},
+        active_business_domain=domain,
+    )
+
     manifest = get_framework_manifest()
     route = build_research_route({
         "start_object_type": start_type,
@@ -260,6 +266,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     checks = {
         "personality_core": "READY" if personality.get("status") == "PASS" and personality.get("personality_ready") is True else "NOT_READY",
         "personality_runtime_state": "CONNECTED" if (personality.get("personality_runtime_state") or {}).get("personality_runtime_state_connected") is True else "NOT_CONNECTED",
+        "self_model": "READY" if self_model.get("status") == "PASS" and self_model.get("self_model_ready") is True else "NOT_READY",
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
         "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
         "runtime_behaviour_authority": "CONFIRMED" if behaviour.get("runtime_is_behaviour_authority") is True and behaviour.get("authority_transfer_status") == "COMPLETED" else "NOT_CONFIRMED",
@@ -276,6 +283,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     missing_map = {
         "personality_core": checks["personality_core"] != "READY",
         "personality_runtime_state": checks["personality_runtime_state"] != "CONNECTED",
+        "self_model": checks["self_model"] != "READY",
         "professional_state": checks["professional_state"] != "READY",
         "professional_behaviour": checks["professional_behaviour"] != "READY",
         "runtime_behaviour_authority": checks["runtime_behaviour_authority"] != "CONFIRMED",
@@ -298,6 +306,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "missing": missing,
             "context_checks": checks,
             "personality_context": personality,
+            "self_model_context": self_model,
             "professional_behaviour": behaviour,
             "professional_behaviour_diagnostics": behaviour_diagnostics,
             "professional_procedure": procedure,
@@ -316,12 +325,17 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "execution_context_ready": True,
         "context_checks": checks,
         "personality_context": personality,
+        "self_model_context": self_model,
         "personality_loaded_first": True,
+        "self_model_loaded_second": True,
         "unified_runtime_state": {
             "personality_root": "CONNECTED",
             "personality_version": (personality.get("personality_runtime_state") or {}).get("personality_version"),
             "readback_verified": (personality.get("personality_runtime_state") or {}).get("readback_verified"),
             "restore_order": 1,
+            "self_model_root": "CONNECTED",
+            "self_model_version": (self_model.get("self_model") or {}).get("version"),
+            "self_model_restore_order": 2,
         },
         "professional_behaviour": {
             "profile_id": (behaviour.get("active_behaviour_profile") or {}).get("behaviour_profile_id"),
