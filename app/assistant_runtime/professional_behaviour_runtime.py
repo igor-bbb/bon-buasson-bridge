@@ -14,12 +14,12 @@ from typing import Any, Dict, List, Optional
 
 from app.assistant_runtime.durable_runtime_state import read_json_state, update_json_state
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-002"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-003"
 CONTRACT_VERSION = "1.0"
 REGISTRY_FILE = Path("runtime") / "professional_behaviour" / "registry.json"
 DEFAULT_ROLE = "vectra_laboratory"
 DEFAULT_PROFILE_ID = "PROFESSIONAL-BEHAVIOUR-VECTRA-LABORATORY"
-DEFAULT_PROFILE_VERSION = "1.1"
+DEFAULT_PROFILE_VERSION = "1.2"
 
 
 def _now() -> str:
@@ -100,7 +100,7 @@ def _default_profile() -> Dict[str, Any]:
         },
         "lifecycle_status": "ACTIVE",
         "created_at": _now(),
-        "supersedes": None,
+        "supersedes": "1.1",
         "release": RELEASE_ID,
         "contract_version": CONTRACT_VERSION,
     }
@@ -113,23 +113,76 @@ def _default_registry() -> Dict[str, Any]:
         "contract_version": CONTRACT_VERSION,
         "release": RELEASE_ID,
         "authority": "Professional Runtime",
-        "runtime_is_behaviour_authority": False,
-        "authority_transfer_status": "PREPARED_PENDING_PRODUCT_VERIFICATION",
+        "runtime_is_behaviour_authority": True,
+        "authority_transfer_status": "COMPLETED",
+        "authority_transfer_event": {
+            "event_id": "RUNTIME-AUTHORITY-TRANSFER-PROFESSIONAL-BEHAVIOUR-001",
+            "status": "COMPLETED",
+            "effective_release": RELEASE_ID,
+            "completed_at": _now(),
+            "previous_authority": "Custom GPT Professional Core",
+            "new_authority": "Professional Runtime",
+        },
         "active_profiles": [profile],
         "deprecated_profiles": [],
         "updated_at": _now(),
     }
 
 
+def _upgrade_registry(value: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply the authority transfer and profile upgrade idempotently."""
+    current = deepcopy(value) if isinstance(value, dict) else {}
+    active_profiles = current.get("active_profiles") if isinstance(current.get("active_profiles"), list) else []
+    deprecated_profiles = current.get("deprecated_profiles") if isinstance(current.get("deprecated_profiles"), list) else []
+
+    for profile in active_profiles:
+        if not isinstance(profile, dict):
+            continue
+        if (
+            profile.get("behaviour_profile_id") == DEFAULT_PROFILE_ID
+            and str(profile.get("version") or "") != DEFAULT_PROFILE_VERSION
+        ):
+            deprecated = deepcopy(profile)
+            deprecated["status"] = "DEPRECATED"
+            deprecated["lifecycle_status"] = "DEPRECATED"
+            deprecated["deprecated_at"] = _now()
+            deprecated["replaced_by"] = DEFAULT_PROFILE_VERSION
+            if not any(
+                isinstance(item, dict)
+                and item.get("behaviour_profile_id") == deprecated.get("behaviour_profile_id")
+                and item.get("version") == deprecated.get("version")
+                for item in deprecated_profiles
+            ):
+                deprecated_profiles.append(deprecated)
+
+    current.update({
+        "registry_id": "PROFESSIONAL-BEHAVIOUR-REGISTRY",
+        "contract_version": CONTRACT_VERSION,
+        "release": RELEASE_ID,
+        "authority": "Professional Runtime",
+        "runtime_is_behaviour_authority": True,
+        "authority_transfer_status": "COMPLETED",
+        "authority_transfer_event": {
+            "event_id": "RUNTIME-AUTHORITY-TRANSFER-PROFESSIONAL-BEHAVIOUR-001",
+            "status": "COMPLETED",
+            "effective_release": RELEASE_ID,
+            "completed_at": (current.get("authority_transfer_event") or {}).get("completed_at") or _now(),
+            "previous_authority": "Custom GPT Professional Core",
+            "new_authority": "Professional Runtime",
+        },
+        "active_profiles": [_default_profile()],
+        "deprecated_profiles": deprecated_profiles,
+        "updated_at": _now(),
+    })
+    return current
+
+
 def _read_registry() -> Dict[str, Any]:
     value, _ = read_json_state(REGISTRY_FILE, _default_registry, dict)
-    if not isinstance(value, dict):
-        value = _default_registry()
-    profiles = value.get("active_profiles")
-    if not isinstance(profiles, list) or not profiles:
-        value = _default_registry()
-        update_json_state(REGISTRY_FILE, _default_registry, dict, lambda _: value)
-    return value
+    upgraded = _upgrade_registry(value if isinstance(value, dict) else {})
+    if upgraded != value:
+        update_json_state(REGISTRY_FILE, _default_registry, dict, lambda _: upgraded)
+    return upgraded
 
 
 def get_professional_behaviour_registry() -> Dict[str, Any]:
@@ -184,6 +237,8 @@ def get_professional_behaviour_manifest(role: Optional[str] = None) -> Dict[str,
         "custom_gpt_scope": ["identity", "policy", "safety", "runtime_connection"],
         "professional_procedure_source": "Professional Runtime",
         "authority_transfer_status": resolved.get("authority_transfer_status"),
+        "runtime_authority_required": True,
+        "static_professional_core_execution_allowed": False,
     }
     return {"status": "PASS", "professional_behaviour_manifest": manifest, "read_only": True}
 
@@ -262,12 +317,21 @@ def diagnose_professional_behaviour(payload: Optional[Dict[str, Any]] = None) ->
             "lifecycle_status",
         ) if not profile.get(field)
     ]
-    compatible = str(profile.get("status") or "").upper() == "ACTIVE" and not missing
+    compatible = (
+        str(profile.get("status") or "").upper() == "ACTIVE"
+        and not missing
+        and bool(resolved.get("runtime_is_behaviour_authority"))
+        and resolved.get("authority_transfer_status") == "COMPLETED"
+    )
     return {
         "status": "READY" if compatible else "NOT_READY",
         "profile_id": profile.get("behaviour_profile_id"),
         "version": profile.get("version"),
-        "reason": None if compatible else "professional_behaviour_profile_incomplete",
+        "reason": None if compatible else (
+            "professional_runtime_not_behaviour_authority"
+            if not resolved.get("runtime_is_behaviour_authority")
+            else "professional_behaviour_profile_incomplete"
+        ),
         "missing": missing,
         "recommendation": "use_active_profile" if compatible else "complete_profile_contract",
         "professional_role": profile.get("professional_role"),
@@ -291,6 +355,8 @@ def verify_professional_behaviour_foundation() -> Dict[str, Any]:
         "profile_versioned": bool((resolver.get("active_behaviour_profile") or {}).get("version")),
         "profile_owned": bool((resolver.get("active_behaviour_profile") or {}).get("owner")),
         "profile_lifecycle_present": bool((resolver.get("active_behaviour_profile") or {}).get("lifecycle_status")),
+        "runtime_authority_transfer_completed": resolver.get("runtime_is_behaviour_authority") is True and resolver.get("authority_transfer_status") == "COMPLETED",
+        "static_professional_core_execution_disabled": True,
         "no_public_action_required": True,
     }
     return {

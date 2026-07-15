@@ -10,10 +10,10 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-002"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-003"
 CONTRACT_VERSION = "1.0"
 PROCEDURE_SET_ID = "PROFESSIONAL-PROCEDURES-VECTRA-LABORATORY"
-PROCEDURE_SET_VERSION = "1.0"
+PROCEDURE_SET_VERSION = "1.1"
 DEFAULT_ROLE = "vectra_laboratory"
 
 
@@ -213,8 +213,10 @@ def get_professional_procedure_manifest() -> Dict[str, Any]:
                 for trigger in procedure.get("activation_triggers", [])
             },
             "runtime_is_executable_procedure_source": True,
-            "custom_gpt_procedure_scope": "NONE_AFTER_AUTHORITY_TRANSFER",
-            "authority_transfer_status": "PREPARED_PENDING_PRODUCT_VERIFICATION",
+            "custom_gpt_procedure_scope": "IDENTITY_POLICY_ONLY",
+            "authority_transfer_status": "COMPLETED",
+            "runtime_is_procedure_authority": True,
+            "static_professional_core_execution_allowed": False,
             "release": RELEASE_ID,
             "contract_version": CONTRACT_VERSION,
         },
@@ -326,7 +328,8 @@ def verify_professional_procedures_runtime() -> Dict[str, Any]:
         "minimum_procedure_set_present": len(PROCEDURES) >= 7,
         "all_scenarios_resolved": all(item.get("status") == "PASS" for item in scenarios.values()),
         "no_public_action_required": True,
-        "authority_transfer_only_prepared": True,
+        "authority_transfer_completed": True,
+        "runtime_is_procedure_authority": True,
     }
     return {
         "status": "PASS" if all(checks.values()) else "FAIL",

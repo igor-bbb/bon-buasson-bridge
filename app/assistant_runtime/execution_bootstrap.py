@@ -30,8 +30,8 @@ from app.assistant_runtime.professional_procedures_runtime import (
     resolve_professional_procedure,
 )
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-002"
-CONTRACT_VERSION = "1.2"
+RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-003"
+CONTRACT_VERSION = "1.3"
 
 
 def _available_domains() -> List[Dict[str, Any]]:
@@ -189,6 +189,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     checks = {
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
         "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
+        "runtime_behaviour_authority": "CONFIRMED" if behaviour.get("runtime_is_behaviour_authority") is True and behaviour.get("authority_transfer_status") == "COMPLETED" else "NOT_CONFIRMED",
         "professional_procedure": "READY" if procedure.get("status") == "PASS" and procedure_diagnostics.get("status") == "READY" else "NOT_READY",
         "active_business_domain": "RESOLVED" if domain.get("domain_id") else "NOT_RESOLVED",
         "framework_manifest": "AVAILABLE" if manifest.get("status") == "PASS" else "UNAVAILABLE",
@@ -199,6 +200,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     missing_map = {
         "professional_state": checks["professional_state"] != "READY",
         "professional_behaviour": checks["professional_behaviour"] != "READY",
+        "runtime_behaviour_authority": checks["runtime_behaviour_authority"] != "CONFIRMED",
         "professional_procedure": checks["professional_procedure"] != "READY",
         "active_business_domain": checks["active_business_domain"] != "RESOLVED",
         "framework_manifest": checks["framework_manifest"] != "AVAILABLE",
@@ -239,6 +241,9 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "manifest": behaviour_manifest.get("professional_behaviour_manifest"),
             "diagnostics": behaviour_diagnostics,
             "runtime_is_executable_behaviour_source": True,
+            "runtime_is_behaviour_authority": behaviour.get("runtime_is_behaviour_authority"),
+            "authority_transfer_status": behaviour.get("authority_transfer_status"),
+            "static_professional_core_execution_allowed": False,
         },
         "professional_procedure": {
             "procedure_id": (procedure.get("active_procedure") or {}).get("procedure_id"),
@@ -250,8 +255,16 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "manifest": procedure_manifest.get("professional_procedure_manifest"),
             "diagnostics": procedure_diagnostics,
             "runtime_is_executable_procedure_source": True,
+            "runtime_is_procedure_authority": True,
+            "static_professional_core_execution_allowed": False,
         },
         "next_allowed_professional_action": procedure.get("next_allowed_action"),
+        "professional_runtime_authority": {
+            "status": "COMPLETED",
+            "authority": "Professional Runtime",
+            "scope": "executable_professional_activity",
+            "custom_gpt_scope": ["identity", "policy", "safety", "runtime_connection"],
+        },
         "active_business_domain": domain,
         "route": route,
         "bootstrap_internal": True,
