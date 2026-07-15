@@ -30,9 +30,10 @@ from app.assistant_runtime.professional_procedures_runtime import (
     get_professional_procedure_manifest,
     resolve_professional_procedure,
 )
+from app.assistant_runtime.personality_runtime import restore_personality_context
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-004"
-CONTRACT_VERSION = "1.4"
+RELEASE_ID = "VECTRA-PERSONALITY-CORE-RUNTIME-001"
+CONTRACT_VERSION = "1.5"
 
 
 def _available_domains(*, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -224,6 +225,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     start_type = str(payload.get("start_object_type") or "business").strip()
     end_type = str(payload.get("end_object_type") or "sku").strip()
 
+    personality = restore_personality_context({**payload, "anchor_trigger": payload.get("anchor_trigger") or "execution_bootstrap"})
     professional = restore_professional_body_state()
     professional_role = str(payload.get("professional_role") or "vectra_laboratory").strip().lower()
     behaviour = resolve_professional_behaviour({
@@ -256,6 +258,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
     })
 
     checks = {
+        "personality_core": "READY" if personality.get("status") == "PASS" and personality.get("personality_ready") is True else "NOT_READY",
         "professional_state": "READY" if professional.get("status") == "PASS" else "NOT_READY",
         "professional_behaviour": "READY" if behaviour.get("status") == "PASS" and behaviour_diagnostics.get("status") == "READY" else "NOT_READY",
         "runtime_behaviour_authority": "CONFIRMED" if behaviour.get("runtime_is_behaviour_authority") is True and behaviour.get("authority_transfer_status") == "COMPLETED" else "NOT_CONFIRMED",
@@ -270,6 +273,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "research_route": "BUILDABLE" if route.get("status") == "PASS" else "NOT_BUILDABLE",
     }
     missing_map = {
+        "personality_core": checks["personality_core"] != "READY",
         "professional_state": checks["professional_state"] != "READY",
         "professional_behaviour": checks["professional_behaviour"] != "READY",
         "runtime_behaviour_authority": checks["runtime_behaviour_authority"] != "CONFIRMED",
@@ -291,6 +295,7 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "contract_version": CONTRACT_VERSION,
             "missing": missing,
             "context_checks": checks,
+            "personality_context": personality,
             "professional_behaviour": behaviour,
             "professional_behaviour_diagnostics": behaviour_diagnostics,
             "professional_procedure": procedure,
@@ -308,6 +313,8 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "contract_version": CONTRACT_VERSION,
         "execution_context_ready": True,
         "context_checks": checks,
+        "personality_context": personality,
+        "personality_loaded_first": True,
         "professional_behaviour": {
             "profile_id": (behaviour.get("active_behaviour_profile") or {}).get("behaviour_profile_id"),
             "version": (behaviour.get("active_behaviour_profile") or {}).get("version"),
