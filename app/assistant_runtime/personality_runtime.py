@@ -18,7 +18,7 @@ from app.assistant_runtime.durable_runtime_state import (
     update_unified_runtime_root,
 )
 
-RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-004"
+RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-005"
 CONTRACT_VERSION = "1.0"
 PERSONALITY_VERSION = "1.0"
 ANCHOR_STATE_FILE = Path("runtime") / "personality" / "anchoring_state.json"
@@ -301,11 +301,27 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         status=status,
         next_action=next_action,
     )
+    from app.assistant_runtime.personality_response_composer import compose_self_audit_response
+    composed_response = compose_self_audit_response(
+        personality=personality,
+        self_model=self_model if isinstance(self_model, dict) else {},
+        capability_context=capabilities if isinstance(capabilities, dict) else {},
+        inconsistencies=inconsistencies,
+        status=status,
+        next_action=next_action,
+    )
     return {
         "status": status,
         "audit_type": "VECTRA_SELF_AUDIT",
         "professional_interpretation": professional_interpretation,
-        "response_contract": professional_interpretation.get("response_contract"),
+        "composed_response": composed_response,
+        "assistant_response": composed_response.get("assistant_response"),
+        "render_mode": composed_response.get("render_mode"),
+        "response_contract": {
+            **(professional_interpretation.get("response_contract") or {}),
+            "use_assistant_response_verbatim": True,
+            "assistant_response_field": "assistant_response",
+        },
         "identity": personality.get("identity"),
         "mission": personality.get("mission"),
         "strategic_goal": personality.get("strategic_goal"),
