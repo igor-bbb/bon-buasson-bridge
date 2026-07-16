@@ -211,6 +211,7 @@ RUNTIME_STATE_ROOTS = (
     "business_context",
     "capabilities",
     "current_activity",
+    "governance",
 )
 
 

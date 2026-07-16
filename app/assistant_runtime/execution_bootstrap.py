@@ -32,6 +32,10 @@ from app.assistant_runtime.professional_procedures_runtime import (
 )
 from app.assistant_runtime.personality_runtime import restore_personality_context
 from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
+from app.assistant_runtime.self_governance_runtime import initialize_self_governance_state
+from app.assistant_runtime.vectra_canonical_model import get_vectra_canonical_model
+from app.assistant_runtime.business_domain_profile import get_business_domain_professional_model
+from app.assistant_runtime.durable_runtime_state import update_unified_runtime_root
 
 RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-003"
 CONTRACT_VERSION = "1.7"
@@ -252,6 +256,32 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "read_only": True,
         }
 
+    canonical_model = get_vectra_canonical_model().get("canonical_model") or {}
+    business_model_result = get_business_domain_professional_model(domain.get("domain_id") or "bon_buasson")
+    business_model = business_model_result.get("professional_model") if business_model_result.get("status") == "PASS" else {}
+    governance = initialize_self_governance_state()
+    organization_state, organization_diagnostic = update_unified_runtime_root(
+        "organization",
+        {
+            "digital_organization": canonical_model.get("digital_organization") or {},
+            "business_vector": canonical_model.get("business_vector") or {},
+            "working_desktop": canonical_model.get("working_desktop") or {},
+            "business_object_philosophy": canonical_model.get("business_object_philosophy") or {},
+        },
+        status="CONNECTED",
+        source_of_truth="app.assistant_runtime.vectra_canonical_model",
+    )
+    business_state, business_diagnostic = update_unified_runtime_root(
+        "business_context",
+        {
+            "business_domain": domain.get("domain_id"),
+            "display_name": domain.get("display_name") or business_model.get("display_name"),
+            "professional_model": business_model,
+            "business_data_status": "ON_DEMAND",
+        },
+        status="CONNECTED",
+        source_of_truth="app.assistant_runtime.business_domain_profile",
+    )
     self_model = persist_self_model_runtime_state(
         {**payload, "professional_role": professional_role},
         active_business_domain=domain,
@@ -279,6 +309,10 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "research_execution": "AVAILABLE",
         "access_mode": "READ_ONLY",
         "research_route": "BUILDABLE" if route.get("status") == "PASS" else "NOT_BUILDABLE",
+        "canonical_product_model": "READY" if canonical_model.get("model_id") else "NOT_READY",
+        "digital_organization": "CONNECTED" if (organization_state.get("organization") or {}).get("status") == "CONNECTED" else "NOT_CONNECTED",
+        "business_domain_professional_model": "RESTORED" if bool(business_model) else "NOT_RESTORED",
+        "self_governance": "CONNECTED" if governance.get("runtime_root_connected") is True else "NOT_CONNECTED",
     }
     missing_map = {
         "personality_core": checks["personality_core"] != "READY",
@@ -296,6 +330,10 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
         "research_execution": checks["research_execution"] != "AVAILABLE",
         "access_mode": checks["access_mode"] != "READ_ONLY",
         "research_route": checks["research_route"] != "BUILDABLE",
+        "canonical_product_model": checks["canonical_product_model"] != "READY",
+        "digital_organization": checks["digital_organization"] != "CONNECTED",
+        "business_domain_professional_model": checks["business_domain_professional_model"] != "RESTORED",
+        "self_governance": checks["self_governance"] != "CONNECTED",
     }
     missing = [name for name, failed in missing_map.items() if failed]
     if missing:
@@ -312,6 +350,11 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "professional_procedure": procedure,
             "professional_procedure_diagnostics": procedure_diagnostics,
             "active_business_domain": domain,
+            "canonical_product_model": canonical_model,
+            "business_domain_professional_model": business_model,
+            "self_governance": governance,
+            "organization_runtime_diagnostic": organization_diagnostic,
+            "business_context_runtime_diagnostic": business_diagnostic,
             "route_diagnostic": route if route.get("status") != "PASS" else None,
             "bootstrap_internal": True,
             "public_operation_added": False,
@@ -379,6 +422,11 @@ def prepare_execution_context(payload: Optional[Dict[str, Any]] = None) -> Dict[
             "custom_gpt_scope": ["identity", "policy", "safety", "runtime_connection"],
         },
         "active_business_domain": domain,
+        "canonical_product_model": canonical_model,
+        "business_domain_professional_model": business_model,
+        "self_governance": governance,
+        "organization_runtime_diagnostic": organization_diagnostic,
+        "business_context_runtime_diagnostic": business_diagnostic,
         "route": route,
         "bootstrap_internal": True,
         "public_operation_added": False,

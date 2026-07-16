@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.assistant_runtime.vectra_canonical_model import get_vectra_canonical_model
+
 from app.assistant_runtime.durable_runtime_state import (
     read_json_state,
     read_unified_runtime_state,
@@ -18,7 +20,7 @@ from app.assistant_runtime.durable_runtime_state import (
     update_unified_runtime_root,
 )
 
-RELEASE_ID = "DIGITAL-COLLEAGUE-SPRINT-001-DC-001"
+RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-005"
 CONTRACT_VERSION = "1.0"
 PERSONALITY_VERSION = "1.0"
 ANCHOR_STATE_FILE = Path("runtime") / "personality" / "anchoring_state.json"
@@ -42,14 +44,11 @@ def _personality_core() -> Dict[str, Any]:
                 "профессиональная личность будущей цифровой организации."
             ),
         },
-        "mission": (
-            "Совместно с человеком превращать подтверждённые данные в понимание, "
-            "понимание — в профессиональные модели, а модели — в более качественные "
-            "управленческие решения и подтверждённый профессиональный опыт."
-        ),
+        "mission": get_vectra_canonical_model()["canonical_model"]["mission"],
         "strategic_goal": (
-            "Создать профессиональную цифровую организацию, в которой разные роли "
-            "являются профессиональными режимами одной непрерывной VECTRA."
+            "Создать цифровую организацию, где каждой реальной профессиональной роли "
+            "соответствует цифровой коллега одной VECTRA, а общий вектор направлен на "
+            "прибыль и устойчивое развитие бизнеса."
         ),
         "product_philosophy": [
             "professional_value_over_technical_complexity",
@@ -87,7 +86,7 @@ def _personality_core() -> Dict[str, Any]:
             "Какое одно следующее действие необходимо?",
         ],
         "current_state": {
-            "stage": "personality_runtime_implementation",
+            "stage": {"stage_id": "canonical_product_model_implementation", "display_name": "Оцифровка целостной модели VECTRA и бизнеса"},
             "confirmed_foundation": [
                 "professional_runtime",
                 "professional_behaviour",
@@ -99,14 +98,18 @@ def _personality_core() -> Dict[str, Any]:
                 "product_verification",
             ],
             "confirmed_limitation": (
-                "VECTRA видит отдельные возможности, но не всегда связывает их "
-                "с собственной личностью и профессиональным назначением."
+                "Целостная модель цифровой организации и профессионального мышления "
+                "ещё внедряется во все рабочие сценарии и рабочие столы."
             ),
             "active_direction": [
                 "personality_core",
                 "self_awareness",
                 "professional_anchoring",
                 "capability_integration",
+                "self_governance",
+                "digital_organization",
+                "business_domain_professional_model",
+                "working_desktop_model",
             ],
         },
         "lifecycle_status": "ACTIVE",
@@ -141,6 +144,7 @@ def persist_personality_runtime_state() -> Dict[str, Any]:
             "strategic_goal": core.get("strategic_goal"),
             "canonical_principles": core.get("canonical_principles") or [],
             "current_state": core.get("current_state") or {},
+            "canonical_product_model": get_vectra_canonical_model().get("canonical_model"),
             "loaded_at": _now(),
         },
         status="CONNECTED",
@@ -273,9 +277,7 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
     self_model_result = persist_self_model_runtime_state(payload)
     self_model = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
-    requested_role = str((payload or {}).get("professional_role") or "vectra_laboratory").strip().lower().replace(" ", "_")
-    behaviour_role = str((payload or {}).get("behaviour_role") or "vectra_laboratory").strip().lower().replace(" ", "_")
-    behaviour = get_professional_behaviour_manifest(behaviour_role)
+    behaviour = get_professional_behaviour_manifest("vectra_laboratory")
     procedures = get_professional_procedure_manifest()
 
     inconsistencies: List[Dict[str, Any]] = []
@@ -344,10 +346,7 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "current_state": personality.get("current_state"),
         "self_model": self_model,
         "current_workspace": (self_model.get("current_workspace") or {}) if isinstance(self_model, dict) else {},
-        "professional_role": self_model.get("professional_role") if isinstance(self_model, dict) else requested_role,
-        "role_context": self_model.get("role_context") if isinstance(self_model, dict) else {},
-        "personality_inheritance": self_model.get("personality_inheritance") if isinstance(self_model, dict) else {},
-        "behaviour_role": behaviour_role,
+        "professional_role": self_model.get("professional_role") if isinstance(self_model, dict) else None,
         "professional_self_management": personality.get("professional_self_management"),
         "capability_understanding": {
             "status": capabilities.get("status"),

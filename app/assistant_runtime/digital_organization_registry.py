@@ -19,6 +19,97 @@ REGISTRY_FILE = Path("runtime") / "digital_organization" / "roles.json"
 ROLE_CONTRACT_VERSION = "1.0"
 
 
+_CANONICAL_ROLE_TEMPLATES: List[Dict[str, Any]] = [
+    {
+        "role_id": "commercial_director",
+        "display_name": "Цифровой коллега коммерческого директора",
+        "purpose": "Подготовка целостной картины бизнеса и сопровождение решений коммерческого директора.",
+        "professional_responsibility": "Прибыль и устойчивое развитие коммерческого блока.",
+        "professional_activities": ["executive_briefing", "business_analysis", "strategy", "task_cascade", "decision_support"],
+        "professional_context": ["business", "top_manager", "network_contract", "category", "sku", "external_environment"],
+        "platform_dependencies": ["business_domain", "business_knowledge", "business_data", "working_desktops"],
+        "professional_outputs": ["morning_briefing", "management_decision_context", "tasks_for_roles"],
+        "role_modes": ["analyst", "strategist", "coach", "coordinator"],
+    },
+    {
+        "role_id": "national_manager",
+        "display_name": "Цифровой коллега национального менеджера",
+        "purpose": "Управление портфелем сетей, менеджеров и коммерческих приоритетов.",
+        "professional_responsibility": "Результат национальных клиентов и развитие команды КАМ.",
+        "professional_activities": ["portfolio_analysis", "manager_coordination", "contract_review", "coaching"],
+        "professional_context": ["top_manager", "manager", "network_contract", "category", "sku"],
+        "platform_dependencies": ["business_domain", "business_data", "decision_knowledge"],
+        "professional_outputs": ["manager_tasks", "contract_priorities", "coaching_plan"],
+        "role_modes": ["manager", "analyst", "coach"],
+    },
+    {
+        "role_id": "kam",
+        "display_name": "Цифровой коллега КАМ",
+        "purpose": "Сопровождение контрактов, переговоров, ассортимента и прибыльности сетей.",
+        "professional_responsibility": "Коммерческий результат закреплённых сетей и качество переговорных решений.",
+        "professional_activities": ["contract_analysis", "negotiation_preparation", "assortment_review", "task_execution", "coaching"],
+        "professional_context": ["manager", "network_contract", "category", "tmc_group", "sku"],
+        "platform_dependencies": ["contract_workspace", "business_data", "external_environment"],
+        "professional_outputs": ["negotiation_pack", "contract_action_plan", "sku_decisions"],
+        "role_modes": ["analyst", "negotiator", "coach", "executor"],
+    },
+    {
+        "role_id": "territory_manager",
+        "display_name": "Цифровой коллега территориального менеджера",
+        "purpose": "Развитие территории, каналов и исполнение коммерческих задач.",
+        "professional_responsibility": "Прибыльное развитие территории и вторичные продажи.",
+        "professional_activities": ["territory_analysis", "channel_development", "execution_control", "coaching"],
+        "professional_context": ["region", "distributor", "network", "outlet", "sku"],
+        "platform_dependencies": ["business_domain", "traditional_trade_data", "modern_trade_data"],
+        "professional_outputs": ["territory_plan", "execution_tasks", "development_actions"],
+        "role_modes": ["manager", "coach", "executor"],
+    },
+    {
+        "role_id": "trade_marketing",
+        "display_name": "Цифровой коллега Trade Marketing",
+        "purpose": "Связывать продукт, представленность, активности и коммерческий результат.",
+        "professional_responsibility": "Эффективность торговых активностей и присутствия продукта.",
+        "professional_activities": ["promotion_analysis", "availability_analysis", "investment_effectiveness", "coaching"],
+        "professional_context": ["network_contract", "category", "sku", "promotion", "store_execution"],
+        "platform_dependencies": ["trade_marketing_data", "business_data", "external_environment"],
+        "professional_outputs": ["activation_plan", "investment_recommendation", "execution_brief"],
+        "role_modes": ["analyst", "planner", "coach"],
+    },
+    {
+        "role_id": "chief_engineer",
+        "display_name": "Главный инженер VECTRA",
+        "purpose": "Переводить продуктовые решения в проверяемую инженерную реализацию.",
+        "professional_responsibility": "Целостность кода, поставки и технической реализации утверждённой модели.",
+        "professional_activities": ["engineering_review", "implementation", "release_packaging", "verification_support"],
+        "professional_context": ["canonical_decisions", "runtime", "openapi", "repository", "release"],
+        "platform_dependencies": ["github", "runtime", "laboratory"],
+        "professional_outputs": ["deploy_package", "release_brief", "engineering_diagnostics"],
+        "role_modes": ["architect_engineer", "executor", "governance_guardian"],
+    },
+]
+
+
+def _merge_canonical_roles(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    existing = {str(item.get("role_id")): item for item in items if isinstance(item, dict)}
+    now = _now()
+    for template in _CANONICAL_ROLE_TEMPLATES:
+        role_id = template["role_id"]
+        if role_id in existing:
+            continue
+        existing[role_id] = {
+            **deepcopy(template),
+            "supported_business_domains": ["bon_buasson"],
+            "interacting_roles": [],
+            "maturity_status": "FOUNDATION",
+            "contract_version": ROLE_CONTRACT_VERSION,
+            "implementation_module": None,
+            "status": "ACTIVE",
+            "created_at": now,
+            "updated_at": now,
+        }
+    return list(existing.values())
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -32,9 +123,15 @@ def _read() -> List[Dict[str, Any]]:
     path = _path()
     try:
         if not path.exists():
-            return []
+            seeded = _merge_canonical_roles([])
+            _write(seeded)
+            return seeded
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
+        items = data if isinstance(data, list) else []
+        merged = _merge_canonical_roles(items)
+        if len(merged) != len(items):
+            _write(merged)
+        return merged
     except Exception:
         return []
 
