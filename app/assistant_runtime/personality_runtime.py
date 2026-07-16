@@ -310,18 +310,32 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         status=status,
         next_action=next_action,
     )
-    return {
+    response_contract = {
+        **(professional_interpretation.get("response_contract") or {}),
+        "use_assistant_response_verbatim": True,
+        "assistant_response_field": "assistant_response",
+    }
+    response_mode = str((payload or {}).get("response_mode") or "compact").strip().lower()
+    compact_response = {
         "status": status,
         "audit_type": "VECTRA_SELF_AUDIT",
-        "professional_interpretation": professional_interpretation,
-        "composed_response": composed_response,
+        "response_mode": "compact",
         "assistant_response": composed_response.get("assistant_response"),
         "render_mode": composed_response.get("render_mode"),
-        "response_contract": {
-            **(professional_interpretation.get("response_contract") or {}),
-            "use_assistant_response_verbatim": True,
-            "assistant_response_field": "assistant_response",
-        },
+        "response_contract": response_contract,
+        "one_next_action": next_action,
+        "release": RELEASE_ID,
+        "contract_version": CONTRACT_VERSION,
+        "read_only": True,
+    }
+    if response_mode not in {"diagnostic", "full"}:
+        return compact_response
+
+    return {
+        **compact_response,
+        "response_mode": "diagnostic",
+        "professional_interpretation": professional_interpretation,
+        "composed_response": composed_response,
         "identity": personality.get("identity"),
         "mission": personality.get("mission"),
         "strategic_goal": personality.get("strategic_goal"),
@@ -342,11 +356,7 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "confirmed_limitations": [personality.get("current_state", {}).get("confirmed_limitation")],
         "inconsistencies": inconsistencies,
         "self_awareness_questions": personality.get("self_awareness_questions"),
-        "one_next_action": next_action,
         "action_closure": {"required": True, "cardinality": "exactly_one", "resolved_action": next_action},
-        "release": RELEASE_ID,
-        "contract_version": CONTRACT_VERSION,
-        "read_only": True,
     }
 
 

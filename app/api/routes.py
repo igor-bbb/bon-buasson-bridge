@@ -8360,6 +8360,12 @@ def _business_framework_service_action_request_schema() -> dict:
                 'default': 'laboratory',
                 'description': 'Current VECTRA working space. Use laboratory in VECTRA Laboratory GPT.',
             },
+            'response_mode': {
+                'type': 'string',
+                'enum': ['compact', 'diagnostic'],
+                'default': 'compact',
+                'description': 'Use compact for GPT Actions. Diagnostic returns the full internal audit payload.',
+            },
             'object_type': {'type': 'string'},
             'start_object_type': {'type': 'string'},
             'end_object_type': {'type': 'string'},
@@ -8374,7 +8380,7 @@ def _business_framework_service_action_request_schema() -> dict:
         },
         'additionalProperties': True,
         'examples': [
-            {'operation_type': 'self_audit', 'current_workspace': 'laboratory'},
+            {'operation_type': 'self_audit', 'current_workspace': 'laboratory', 'response_mode': 'compact'},
             {'operation_type': 'execute_end_to_end', 'period': '2026-02', 'max_steps': 7},
         ],
     }
