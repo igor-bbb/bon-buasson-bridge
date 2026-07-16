@@ -8182,14 +8182,14 @@ _FACADE_ACTIONS = [
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Personality and Business Framework Service', 'Use for VECTRA self-audit and Business Framework operations. For Исследуй себя or similar commands, call immediately with operation_type=self_audit and current_workspace=laboratory. Attempt this Action before answering from chat memory or static documents.'),
+    ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
+    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Business Framework Service', 'Use for Business Framework operations other than self-audit. Select an explicit operation_type from the request schema.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
-    ('determineVectraLaboratoryNextAction', 'GET', '/vectra/laboratory/behavior/next-action', 'Determine VECTRA Laboratory next Action', 'Action First Policy next professional step resolver.'),
     ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
@@ -8908,8 +8908,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-COGNITIVE-RUNTIME-V1-WP-006',
-            'description': 'Official OpenAPI schema for VECTRA Laboratory with 30 public operations. Attempt registered Actions before declaring them unavailable. Use executeBusinessFrameworkService with operation_type=self_audit for self-audit. Automatically activate the only active Business Domain.',
+            'version': 'VECTRA-GPT-INTEGRATION-STABILIZATION-004',
+            'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -10260,6 +10260,24 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
     ))
 
 
+
+
+# VECTRA-GPT-INTEGRATION-STABILIZATION-004: dedicated deterministic Self Audit Action.
+@router.get('/vectra/laboratory/self-audit', summary='Run VECTRA Self Audit')
+def vectra_run_self_audit_action(current_workspace: str = 'laboratory', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    result = execute_vectra_framework_service({
+        'operation_type': 'self_audit',
+        'current_workspace': current_workspace or 'laboratory',
+        'response_mode': 'compact',
+    })
+    return json_response(_facade_response(
+        'self_audit',
+        'personality_runtime.run_self_audit',
+        '/vectra/laboratory/self-audit',
+        result,
+        next_action=(result.get('next_action') if isinstance(result, dict) else None) or 'Continue professional work in the current VECTRA workspace.',
+    ))
 
 
 # BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001: unified Framework Services facade.
