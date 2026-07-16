@@ -8182,9 +8182,9 @@ _FACADE_ACTIONS = [
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute Business Framework Service', 'Unified read-only facade for Framework Manifest, Registry, Workspace Resolver, Research Routing, Navigation and persistent end-to-end Research Execution.'),
+    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Personality and Business Framework Service', 'Mandatory facade for VECTRA self-audit and Business Framework operations. For commands such as Исследуй себя, Что ты знаешь о себе, Проверь своё состояние or Проведи самоисследование, call this Action immediately with operation_type=self_audit and current_workspace=laboratory. Do not answer from chat memory or static documents before attempting the Action.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
-    ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Facade for Business Domain restore, activation, profile and knowledge operations.'),
+    ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
@@ -8316,6 +8316,106 @@ def _facade_operation_request_schema() -> dict:
         ]
     }
 
+
+
+def _business_framework_service_action_request_schema() -> dict:
+    """Explicit GPT Actions contract for Personality and Framework Services.
+
+    The enum is intentionally published so the model can select self_audit and
+    execution operations without guessing an unsupported facade operation.
+    """
+    operations = [
+        'self_audit',
+        'personality',
+        'verify_personality',
+        'manifest',
+        'registry',
+        'resolve_workspace',
+        'build_route',
+        'navigate',
+        'start_execution',
+        'run_execution',
+        'execute_end_to_end',
+        'get_execution',
+        'verify_execution',
+        'verify',
+    ]
+    return {
+        'type': 'object',
+        'required': ['operation_type'],
+        'properties': {
+            'operation_type': {
+                'type': 'string',
+                'enum': operations,
+                'description': (
+                    'Operation to execute. MUST use self_audit for commands '
+                    'Исследуй себя, Что ты знаешь о себе, Проверь своё состояние '
+                    'or Проведи самоисследование. Attempt the Action before '
+                    'claiming that Runtime is unavailable.'
+                ),
+            },
+            'current_workspace': {
+                'type': 'string',
+                'enum': ['laboratory', 'workspace'],
+                'default': 'laboratory',
+                'description': 'Current VECTRA working space. Use laboratory in VECTRA Laboratory GPT.',
+            },
+            'object_type': {'type': 'string'},
+            'start_object_type': {'type': 'string'},
+            'end_object_type': {'type': 'string'},
+            'current_object_type': {'type': 'string'},
+            'previous_object_type': {'type': 'string'},
+            'related_object_type': {'type': 'string'},
+            'direction': {'type': 'string'},
+            'execution_id': {'type': 'string'},
+            'period': {'type': 'string', 'description': 'Optional business period, for example 2026-02.'},
+            'max_steps': {'type': 'integer', 'minimum': 1, 'maximum': 20, 'default': 7},
+            'payload': {'type': 'object', 'additionalProperties': True},
+        },
+        'additionalProperties': True,
+        'examples': [
+            {'operation_type': 'self_audit', 'current_workspace': 'laboratory'},
+            {'operation_type': 'execute_end_to_end', 'period': '2026-02', 'max_steps': 7},
+        ],
+    }
+
+
+def _business_domain_action_request_schema() -> dict:
+    """Explicit GPT Actions contract for deterministic Business Domain startup."""
+    return {
+        'type': 'object',
+        'required': ['operation_type'],
+        'properties': {
+            'operation_type': {
+                'type': 'string',
+                'enum': [
+                    'list_domains',
+                    'start_session',
+                    'activate_domain',
+                    'load_business_core',
+                    'business_readiness',
+                    'restore_domain',
+                    'get_domain_profile',
+                    'get_domain_knowledge',
+                    'verify_domain_knowledge',
+                ],
+                'description': (
+                    'Use list_domains during session startup. If exactly one domain '
+                    'has status active, immediately call activate_domain for it without '
+                    'asking Product Owner. Ask for selection only when multiple active domains exist.'
+                ),
+            },
+            'domain': {'type': 'string', 'description': 'Business Domain identifier.'},
+            'session_id': {'type': 'string'},
+            'request_id': {'type': 'string'},
+            'payload': {'type': 'object', 'additionalProperties': True},
+        },
+        'additionalProperties': True,
+        'examples': [
+            {'operation_type': 'list_domains'},
+            {'operation_type': 'activate_domain', 'domain': 'bon_buasson'},
+        ],
+    }
 
 def _facade_response_schema() -> dict:
     return {
@@ -8782,6 +8882,10 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_decision_framework_validation_request_schema()
             elif operation_id == 'get_business_decision_framework_validation_report':
                 request_schema = _business_decision_framework_report_request_schema()
+            elif operation_id == 'executeBusinessFrameworkService':
+                request_schema = _business_framework_service_action_request_schema()
+            elif operation_id == 'executeVectraBusinessDomainOperation':
+                request_schema = _business_domain_action_request_schema()
             else:
                 request_schema = _facade_operation_request_schema()
             op['requestBody'] = {
@@ -8798,8 +8902,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'BUSINESS-FRAMEWORK-E2E-READINESS-001-HOTFIX-OPENAPI-30',
-            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract is intentionally limited to 30 public operations for GPT Actions Editor compatibility; diagnostic Runtime routes remain available internally.',
+            'version': 'VECTRA-COGNITIVE-RUNTIME-V1-WP-006',
+            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract contains 30 public operations. Mandatory execution policy: attempt registered Actions before claiming they are unavailable; use executeBusinessFrameworkService operation_type=self_audit for VECTRA self-audit; automatically activate the only active Business Domain through executeVectraBusinessDomainOperation.',
         },
         'servers': [{'url': server_url}],
         'components': {
