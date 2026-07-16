@@ -279,6 +279,11 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     self_model = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
     behaviour = get_professional_behaviour_manifest("vectra_laboratory")
     procedures = get_professional_procedure_manifest()
+    from app.assistant_runtime.professional_runtime_state import persist_professional_runtime_state
+    from app.assistant_runtime.capability_verification_registry import get_capability_verification_registry
+    professional_state_result = persist_professional_runtime_state(professional_role="vectra_laboratory")
+    professional_state = professional_state_result.get("professional_runtime_state") if isinstance(professional_state_result, dict) else {}
+    verification_registry = get_capability_verification_registry()
 
     inconsistencies: List[Dict[str, Any]] = []
     for capability_id in capabilities.get("not_integrated") or []:
@@ -293,6 +298,10 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         inconsistencies.append({"type": "professional_behaviour_not_ready", "severity": "FAIL"})
     if not procedures_ready:
         inconsistencies.append({"type": "professional_procedures_not_ready", "severity": "FAIL"})
+    if professional_state_result.get("status") not in {"PASS"}:
+        inconsistencies.append({"type": "professional_continuity_partial", "severity": "FAIL"})
+    if verification_registry.get("status") != "PASS":
+        inconsistencies.append({"type": "capability_verification_registry_not_ready", "severity": "FAIL"})
 
     status = "PASS" if not inconsistencies else ("WARNING" if all(x.get("severity") == "WARNING" for x in inconsistencies) else "HOLD")
     next_action = "continue_professional_work" if status == "PASS" else "prepare_minimal_engineering_task_for_confirmed_inconsistency"
@@ -357,6 +366,14 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         },
         "professional_behaviour_ready": behaviour_ready,
         "professional_procedures_ready": procedures_ready,
+        "professional_runtime_state": professional_state,
+        "professional_continuity_status": professional_state_result.get("status"),
+        "capability_verification": {
+            "status": verification_registry.get("status"),
+            "verified_count": verification_registry.get("verified_count"),
+            "operational_count": verification_registry.get("operational_count"),
+            "verified_capabilities": verification_registry.get("verified_capabilities"),
+        },
         "confirmed_limitations": [personality.get("current_state", {}).get("confirmed_limitation")],
         "inconsistencies": inconsistencies,
         "self_awareness_questions": personality.get("self_awareness_questions"),

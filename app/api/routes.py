@@ -129,6 +129,8 @@ from app.assistant_runtime.vos import (
     verify_vos as verify_vectra_vos,
     restore_vos_state as restore_vectra_vos_state,
 )
+from app.assistant_runtime.professional_pipeline import process_professional_response
+from app.assistant_runtime.professional_runtime_state import restore_professional_continuity
 from app.assistant_runtime.natural_commands import (
     get_natural_command_model as get_vectra_natural_command_model,
     execute_natural_command as execute_vectra_natural_command,
@@ -8964,6 +8966,14 @@ def _facade_response(operation_type: str, runtime_service: str, endpoint: str, r
     status = 'ok'
     if isinstance(result, dict) and str(result.get('status') or '').lower() in {'error', 'failed', 'fail'}:
         status = 'error'
+    professional_pipeline = process_professional_response(
+        operation_type=operation_type,
+        runtime_service=runtime_service,
+        endpoint=endpoint,
+        result=result,
+        next_action=next_action,
+    )
+    resolved_next_action = professional_pipeline.get('recommended_next_action') or next_action
     return {
         'status': status,
         'render_mode': 'vectra_laboratory_facade_operation',
@@ -8971,11 +8981,14 @@ def _facade_response(operation_type: str, runtime_service: str, endpoint: str, r
         'runtime_service_called': runtime_service,
         'internal_endpoint_called': endpoint,
         'result': result if isinstance(result, dict) else {'value': result},
+        'professional_pipeline': professional_pipeline,
+        'governance_status': professional_pipeline.get('status'),
+        'required_response_behavior': (professional_pipeline.get('self_governance') or {}).get('response_requirement'),
         'verification_status': verification or ('PASS' if status == 'ok' else 'FAIL'),
         'readback_status': readback,
         'final_status': final,
         'error': None if status == 'ok' else (result if isinstance(result, dict) else {'message': str(result)}),
-        'next_recommended_action': next_action,
+        'next_recommended_action': resolved_next_action,
     }
 
 
@@ -9758,10 +9771,15 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
         'operating_model_restored': bool(professional_body.get('professional_model')),
         'chat_memory_used_as_source': professional_body.get('chat_memory_used_as_source', False),
     }
+    professional_continuity = restore_professional_continuity(professional_role='vectra_laboratory')
+    continuity_state = professional_continuity.get('professional_runtime_state') or {}
     result = {
-        'status': 'ok' if professional_body.get('status') == 'PASS' else 'degraded',
+        'status': 'ok' if professional_body.get('status') == 'PASS' and professional_continuity.get('status') == 'PASS' else 'degraded',
         'render_mode': 'vectra_laboratory_state_restore',
         'professional_state': professional_summary,
+        'professional_continuity': professional_continuity,
+        'active_engineering_cycle': ((continuity_state.get('active_work') or {}).get('engineering_cycle') if isinstance(continuity_state, dict) else {}),
+        'open_decisions': ((continuity_state.get('decision_state') or {}).get('open_decisions') if isinstance(continuity_state, dict) else []),
         'business_selection_status': 'required',
         'available_businesses': compact_domains,
         'active_business_domain': None,
@@ -9770,10 +9788,10 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
         'business_data_connected': False,
         'business_data_auto_started': False,
         'final_status': 'PROFESSIONAL_READY' if professional_body.get('status') == 'PASS' else 'PROFESSIONAL_RESTORE_FAILED',
-        'recommended_next_action': 'select_business_domain',
-        'next_dialogue': 'Профессиональная модель восстановлена. Покажите доступные бизнесы и спросите Product Owner, с каким бизнесом продолжаем работу.',
+        'recommended_next_action': professional_continuity.get('recommended_next_action') or 'select_business_domain',
+        'next_dialogue': 'Профессиональная модель и незавершённая профессиональная работа восстановлены. Продолжите с рекомендованного шага; Business Data подключайте только при необходимости.',
     }
-    return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action='Ask Product Owner to select a business domain.'))
+    return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action=result.get('recommended_next_action') or 'Continue restored professional work.'))
 
 
 @router.post('/vectra/laboratory/facade/knowledge', summary='Execute VECTRA Knowledge facade operation')

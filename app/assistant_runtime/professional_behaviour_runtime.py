@@ -14,12 +14,12 @@ from typing import Any, Dict, List, Optional
 
 from app.assistant_runtime.durable_runtime_state import read_json_state, update_json_state
 
-RELEASE_ID = "PROFESSIONAL-BEHAVIOUR-RUNTIME-MIGRATION-001-INCREMENT-004"
+RELEASE_ID = "VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002"
 CONTRACT_VERSION = "1.0"
 REGISTRY_FILE = Path("runtime") / "professional_behaviour" / "registry.json"
 DEFAULT_ROLE = "vectra_laboratory"
 DEFAULT_PROFILE_ID = "PROFESSIONAL-BEHAVIOUR-VECTRA-LABORATORY"
-DEFAULT_PROFILE_VERSION = "1.3"
+DEFAULT_PROFILE_VERSION = "1.4"
 
 
 def _now() -> str:
@@ -61,6 +61,9 @@ def _default_profile() -> Dict[str, Any]:
             "action_closure_required",
             "release_brief_is_post_deployment_contract",
             "runtime_is_only_executable_behaviour_source",
+            "mandatory_professional_pipeline_before_facade_response",
+            "self_governance_response_requirement_must_be_exposed",
+            "professional_continuity_must_be_preserved",
         ],
         "required_runtime_capabilities": [
             "professional_state",
@@ -68,6 +71,8 @@ def _default_profile() -> Dict[str, Any]:
             "framework_manifest",
             "research_execution",
             "structured_diagnostics",
+            "self_governance",
+            "professional_pipeline",
         ],
         "supported_professional_programs": [
             "business_framework_end_to_end_research",
@@ -95,6 +100,9 @@ def _default_profile() -> Dict[str, Any]:
             "continue_after_pause",
             "knowledge_capitalization",
             "execute_confirmed_action",
+            "process_professional_response",
+            "preserve_active_focus",
+            "record_engineering_observation",
         ],
         "diagnostics_contract": {
             "statuses": ["READY", "NOT_READY", "INCOMPATIBLE", "DEPRECATED"],

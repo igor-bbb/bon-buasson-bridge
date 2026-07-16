@@ -212,6 +212,7 @@ RUNTIME_STATE_ROOTS = (
     "capabilities",
     "current_activity",
     "governance",
+    "professional_state",
 )
 
 

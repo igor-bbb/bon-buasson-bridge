@@ -117,6 +117,10 @@ def compose_self_audit_response(
                 readable.append("- Исполняемое профессиональное поведение не подтверждено как готовое.")
             elif kind == "professional_procedures_not_ready":
                 readable.append("- Профессиональные процедуры не подтверждены как готовые.")
+            elif kind == "professional_continuity_partial":
+                readable.append("- Профессиональная непрерывность восстановлена не полностью: активная работа или следующий шаг не определены.")
+            elif kind == "capability_verification_registry_not_ready":
+                readable.append("- Реестр подтверждённых профессиональных способностей не готов.")
             else:
                 readable.append(f"- Обнаружено рассогласование: {kind}.")
         sections.append("\nПодтверждённые ограничения или рассогласования:\n" + "\n".join(readable))
