@@ -8182,7 +8182,7 @@ _FACADE_ACTIONS = [
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
     ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Personality and Business Framework Service', 'Mandatory facade for VECTRA self-audit and Business Framework operations. For commands such as Исследуй себя, Что ты знаешь о себе, Проверь своё состояние or Проведи самоисследование, call this Action immediately with operation_type=self_audit and current_workspace=laboratory. Do not answer from chat memory or static documents before attempting the Action.'),
+    ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Personality and Business Framework Service', 'Use for VECTRA self-audit and Business Framework operations. For Исследуй себя or similar commands, call immediately with operation_type=self_audit and current_workspace=laboratory. Attempt this Action before answering from chat memory or static documents.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
@@ -8903,7 +8903,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
             'version': 'VECTRA-COGNITIVE-RUNTIME-V1-WP-006',
-            'description': 'Official compact OpenAPI schema for VECTRA Laboratory GPT Actions. The contract contains 30 public operations. Mandatory execution policy: attempt registered Actions before claiming they are unavailable; use executeBusinessFrameworkService operation_type=self_audit for VECTRA self-audit; automatically activate the only active Business Domain through executeVectraBusinessDomainOperation.',
+            'description': 'Official OpenAPI schema for VECTRA Laboratory with 30 public operations. Attempt registered Actions before declaring them unavailable. Use executeBusinessFrameworkService with operation_type=self_audit for self-audit. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
