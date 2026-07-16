@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-005"
+RELEASE_ID = "DIGITAL-COLLEAGUE-SPRINT-001-DC-001"
 CONTRACT_VERSION = "1.0"
 
 
@@ -70,7 +70,10 @@ def compose_self_audit_response(
     identity = _extract_identity(personality)
     mission = _extract_mission(personality)
     workspace = _workspace_label(self_model)
-    role = _text(self_model.get("professional_role") if isinstance(self_model, dict) else None)
+    role_context = self_model.get("role_context") if isinstance(self_model, dict) else {}
+    role = _text((role_context or {}).get("display_name") if isinstance(role_context, dict) else None)
+    if not role:
+        role = _text(self_model.get("professional_role") if isinstance(self_model, dict) else None)
     stage = self_model.get("current_stage") if isinstance(self_model, dict) else None
     if isinstance(stage, dict):
         stage = stage.get("display_name") or stage.get("stage") or stage.get("stage_id")
@@ -121,7 +124,7 @@ def compose_self_audit_response(
         sections.append("\nМоя личность, профессиональное поведение и подтверждённые возможности согласованы с текущим состоянием Runtime.")
 
     action_text = {
-        "continue_professional_work": "Продолжить профессиональную работу в текущем пространстве.",
+        "continue_professional_work": "Перейти к следующей поставленной профессиональной задаче в текущем пространстве.",
         "prepare_minimal_engineering_task_for_confirmed_inconsistency": "Сформировать минимальное инженерное задание на устранение подтверждённого рассогласования.",
     }.get(next_action, next_action.replace("_", " ").strip().capitalize() + ".")
     sections.append(f"\nСледующее действие: **{action_text}**")

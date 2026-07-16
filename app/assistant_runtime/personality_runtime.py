@@ -18,7 +18,7 @@ from app.assistant_runtime.durable_runtime_state import (
     update_unified_runtime_root,
 )
 
-RELEASE_ID = "VECTRA-COGNITIVE-RUNTIME-V1-WP-005"
+RELEASE_ID = "DIGITAL-COLLEAGUE-SPRINT-001-DC-001"
 CONTRACT_VERSION = "1.0"
 PERSONALITY_VERSION = "1.0"
 ANCHOR_STATE_FILE = Path("runtime") / "personality" / "anchoring_state.json"
@@ -273,7 +273,9 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
     self_model_result = persist_self_model_runtime_state(payload)
     self_model = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
-    behaviour = get_professional_behaviour_manifest("vectra_laboratory")
+    requested_role = str((payload or {}).get("professional_role") or "vectra_laboratory").strip().lower().replace(" ", "_")
+    behaviour_role = str((payload or {}).get("behaviour_role") or "vectra_laboratory").strip().lower().replace(" ", "_")
+    behaviour = get_professional_behaviour_manifest(behaviour_role)
     procedures = get_professional_procedure_manifest()
 
     inconsistencies: List[Dict[str, Any]] = []
@@ -342,7 +344,10 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "current_state": personality.get("current_state"),
         "self_model": self_model,
         "current_workspace": (self_model.get("current_workspace") or {}) if isinstance(self_model, dict) else {},
-        "professional_role": self_model.get("professional_role") if isinstance(self_model, dict) else None,
+        "professional_role": self_model.get("professional_role") if isinstance(self_model, dict) else requested_role,
+        "role_context": self_model.get("role_context") if isinstance(self_model, dict) else {},
+        "personality_inheritance": self_model.get("personality_inheritance") if isinstance(self_model, dict) else {},
+        "behaviour_role": behaviour_role,
         "professional_self_management": personality.get("professional_self_management"),
         "capability_understanding": {
             "status": capabilities.get("status"),
