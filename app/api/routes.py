@@ -131,6 +131,13 @@ from app.assistant_runtime.vos import (
 )
 from app.assistant_runtime.professional_pipeline import process_professional_response
 from app.assistant_runtime.professional_runtime_state import restore_professional_continuity
+from app.assistant_runtime.vectra_core_ontology import (
+    get_core_ontology_manifest as get_vectra_core_ontology_manifest,
+    classify_concept as classify_vectra_core_concept,
+    evaluate_architecture_change as evaluate_vectra_architecture_change,
+    build_universal_organization_projection as build_vectra_universal_organization_projection,
+    verify_core_ontology as verify_vectra_core_ontology,
+)
 from app.assistant_runtime.natural_commands import (
     get_natural_command_model as get_vectra_natural_command_model,
     execute_natural_command as execute_vectra_natural_command,
@@ -10461,11 +10468,40 @@ def vectra_verify_business_decision_framework_validation_action(x_vectra_laborat
     return json_response(_facade_response('verify_business_decision_framework_validation','business_decision_framework_validation.verify','/vectra/laboratory/business-decision-framework/verify',result,next_action='Run Stage 3 Product Verification when status is PASS.'))
 
 
+@router.get('/vectra/laboratory/core-ontology', summary='Get VECTRA Core Ontology manifest')
+def vectra_get_core_ontology_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(_facade_response('core_ontology_manifest','core_ontology.get_manifest','/vectra/laboratory/core-ontology',get_vectra_core_ontology_manifest(),next_action='Use the architecture gate before implementation.'))
+
+
+@router.post('/vectra/laboratory/core-ontology/architecture-gate', summary='Evaluate VECTRA architecture change')
+def vectra_evaluate_architecture_change_action(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(_facade_response('evaluate_architecture_change','core_ontology.evaluate_architecture_change','/vectra/laboratory/core-ontology/architecture-gate',evaluate_vectra_architecture_change(request or {}),next_action='Stop all implementation when architecture_stop is true.'))
+
+
+@router.get('/vectra/laboratory/core-ontology/verify', summary='Verify VECTRA Core Ontology')
+def vectra_verify_core_ontology_action(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    return json_response(_facade_response('verify_core_ontology','core_ontology.verify','/vectra/laboratory/core-ontology/verify',verify_vectra_core_ontology(),next_action='Proceed to implementation only when status is PASS.'))
+
+
 @router.post('/vectra/laboratory/facade/memory', summary='Execute VECTRA Memory facade operation')
 def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {'core_ontology_manifest', 'vectra_core_ontology'}:
+            return json_response(_facade_response(operation_type, 'core_ontology.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_core_ontology_manifest(), next_action='Classify proposed concepts before architecture or implementation work.'))
+        if operation_type in {'classify_core_concept', 'ontology_classify_concept'}:
+            concept = payload.get('concept') if isinstance(payload, dict) else None
+            return json_response(_facade_response(operation_type, 'core_ontology.classify_concept', '/vectra/laboratory/facade/memory', classify_vectra_core_concept(concept)))
+        if operation_type in {'evaluate_architecture_change', 'architecture_change_gate'}:
+            return json_response(_facade_response(operation_type, 'core_ontology.evaluate_architecture_change', '/vectra/laboratory/facade/memory', evaluate_vectra_architecture_change(payload), next_action='Stop implementation when architecture_stop is true.'))
+        if operation_type in {'build_universal_organization_projection', 'universal_organization_projection'}:
+            return json_response(_facade_response(operation_type, 'core_ontology.build_universal_organization_projection', '/vectra/laboratory/facade/memory', build_vectra_universal_organization_projection(payload)))
+        if operation_type in {'verify_core_ontology', 'core_ontology_verify'}:
+            return json_response(_facade_response(operation_type, 'core_ontology.verify', '/vectra/laboratory/facade/memory', verify_vectra_core_ontology(), next_action='Proceed only when status is PASS.'))
         if operation_type in {'digital_organization_registry_manifest', 'digital_roles_manifest'}:
             return json_response(_facade_response(operation_type, 'digital_organization.get_registry_manifest', '/vectra/laboratory/facade/memory', get_vectra_digital_organization_registry_manifest(), next_action='Register or inspect Digital Professional Roles.'))
         if operation_type in {'register_digital_professional_role', 'digital_role_register'}:

@@ -19,8 +19,8 @@ from app.assistant_runtime.durable_runtime_state import (
     update_unified_runtime_root,
 )
 
-RELEASE_ID = "VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002"
-CONTRACT_VERSION = "2.1"
+RELEASE_ID = "VECTRA-CORE-ONTOLOGY-001-INCREMENT-001"
+CONTRACT_VERSION = "2.2"
 STATE_FILE = Path("runtime") / "governance" / "self_governance_state.json"
 
 VALID_OBSERVATION_TYPES = {"KNOWLEDGE", "IMPROVEMENT", "ARCHITECTURE_CHANGE", "BLOCKER"}
@@ -141,6 +141,24 @@ def _canonical_decisions() -> List[Dict[str, Any]]:
             "product_owner_confirmed": True,
             "verification": "Runtime behaviour and professional acceptance",
         },
+        {
+            "decision_id": "CD-012",
+            "title": "Critical ontology or architecture conflicts trigger a full implementation stop",
+            "status": "IMPLEMENTED",
+            "criticality": "CRITICAL",
+            "owner": "core_ontology",
+            "product_owner_confirmed": True,
+            "verification": "Core Ontology architecture gate",
+        },
+        {
+            "decision_id": "CD-013",
+            "title": "VECTRA Core is business-independent; company knowledge enters only through adapters",
+            "status": "IMPLEMENTED",
+            "criticality": "CRITICAL",
+            "owner": "core_ontology",
+            "product_owner_confirmed": True,
+            "verification": "Core Ontology business-independence verification",
+        },
     ]
 
 
@@ -185,6 +203,8 @@ def _seed() -> Dict[str, Any]:
             "product_owner_approval_required": True,
             "automatic_product_decisions": False,
             "stop_only_for_blocker_or_critical_architecture_debt": True,
+            "architecture_gate_required_before_implementation": True,
+            "core_ontology_is_business_independent": True,
             "improvement_attention_thresholds": ATTENTION_THRESHOLDS,
             "new_major_cycle_requires_previous_status": ["COMPLETED", "DEFERRED", "REJECTED"],
         },
