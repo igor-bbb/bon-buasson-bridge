@@ -1,0 +1,252 @@
+{
+  "contract_version": "1.0",
+  "state_type": "VECTRA_UNIFIED_RUNTIME_STATE",
+  "status": "FOUNDATION_READY",
+  "created_at": "2026-07-22T10:58:39Z",
+  "updated_at": "2026-07-22T10:59:29Z",
+  "migration_mode": "BACKWARD_COMPATIBLE_FOUNDATION",
+  "personality": {
+    "object_name": "personality",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "self_model": {
+    "object_name": "self_model",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "organization": {
+    "object_name": "organization",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "professional_memory": {
+    "object_name": "professional_memory",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "professional_behaviour": {
+    "object_name": "professional_behaviour",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "business_context": {
+    "object_name": "business_context",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "capabilities": {
+    "object_name": "capabilities",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "current_activity": {
+    "object_name": "current_activity",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  },
+  "governance": {
+    "object_name": "governance",
+    "status": "CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "app.assistant_runtime.self_governance_runtime",
+    "payload": {
+      "governance_id": "VECTRA-SELF-GOVERNANCE",
+      "version": "2.2",
+      "status": "ACTIVE",
+      "active_work_context": {
+        "cycle_id": "EP-001",
+        "title": "Self Governance Engine",
+        "status": "ACTIVE",
+        "readiness_percent": 100,
+        "current_focus": "Professional Pipeline integration",
+        "started_at": "2026-07-22T10:58:39Z",
+        "updated_at": "2026-07-22T10:58:39Z",
+        "next_recommended_step": "Complete Increment 002 Professional Pipeline verification",
+        "open_branches": []
+      },
+      "decisions": [
+        {
+          "decision_id": "CD-001",
+          "title": "VECTRA is one continuous professional digital personality",
+          "status": "IMPLEMENTED",
+          "criticality": "CRITICAL",
+          "owner": "professional_identity",
+          "product_owner_confirmed": true,
+          "verification": "Self Audit and session restoration"
+        },
+        {
+          "decision_id": "CD-002",
+          "title": "VECTRA is a digital organization with one identity and multiple professional roles",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "digital_organization",
+          "product_owner_confirmed": true,
+          "verification": "Role inheritance and task flow across digital colleagues"
+        },
+        {
+          "decision_id": "CD-003",
+          "title": "Profit and business development are the common business vector",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "canonical_product_model",
+          "product_owner_confirmed": true,
+          "verification": "Decision and recommendation alignment"
+        },
+        {
+          "decision_id": "CD-004",
+          "title": "SKU is the business atom; upper levels are aggregations",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "business_domain",
+          "product_owner_confirmed": true,
+          "verification": "Aggregation and investigation model verification"
+        },
+        {
+          "decision_id": "CD-005",
+          "title": "Working desktop is a professional briefing, not a dashboard",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "workspace",
+          "product_owner_confirmed": true,
+          "verification": "Workspace professional acceptance"
+        },
+        {
+          "decision_id": "CD-006",
+          "title": "External business environment is mandatory decision context",
+          "status": "APPROVED",
+          "criticality": "HIGH",
+          "owner": "business_environment",
+          "product_owner_confirmed": true,
+          "verification": "External context appears in relevant workspace and dialogue scenarios"
+        },
+        {
+          "decision_id": "CD-007",
+          "title": "Business Domain restores passport, identity, operating and navigation models before data",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "business_domain",
+          "product_owner_confirmed": true,
+          "verification": "New-session Business Domain restoration"
+        },
+        {
+          "decision_id": "CD-008",
+          "title": "VECTRA governs accepted decisions, unfinished work and development focus",
+          "status": "IN_IMPLEMENTATION",
+          "criticality": "CRITICAL",
+          "owner": "self_governance",
+          "product_owner_confirmed": true,
+          "verification": "Governance state persists and restores professional continuity"
+        },
+        {
+          "decision_id": "CD-009",
+          "title": "GPT model changes must not change VECTRA identity or obligations",
+          "status": "APPROVED",
+          "criticality": "HIGH",
+          "owner": "platform_compatibility",
+          "product_owner_confirmed": true,
+          "verification": "Compatibility audit after model change"
+        },
+        {
+          "decision_id": "CD-010",
+          "title": "Product Owner is excluded from internal engineering decomposition",
+          "status": "APPROVED",
+          "criticality": "CRITICAL",
+          "owner": "development_governance",
+          "product_owner_confirmed": true,
+          "verification": "Product Owner receives consolidated plan or real product choice only"
+        },
+        {
+          "decision_id": "CD-011",
+          "title": "Architecture decisions must be implemented in code; documents alone do not complete a cycle",
+          "status": "IN_IMPLEMENTATION",
+          "criticality": "CRITICAL",
+          "owner": "development_governance",
+          "product_owner_confirmed": true,
+          "verification": "Runtime behaviour and professional acceptance"
+        },
+        {
+          "decision_id": "CD-012",
+          "title": "Critical ontology or architecture conflicts trigger a full implementation stop",
+          "status": "IMPLEMENTED",
+          "criticality": "CRITICAL",
+          "owner": "core_ontology",
+          "product_owner_confirmed": true,
+          "verification": "Core Ontology architecture gate"
+        },
+        {
+          "decision_id": "CD-013",
+          "title": "VECTRA Core is business-independent; company knowledge enters only through adapters",
+          "status": "IMPLEMENTED",
+          "criticality": "CRITICAL",
+          "owner": "core_ontology",
+          "product_owner_confirmed": true,
+          "verification": "Core Ontology business-independence verification"
+        }
+      ],
+      "observations": [],
+      "evolution_backlog": [
+        {
+          "improvement_id": "UX-SELF-AUDIT-001",
+          "title": "Group capabilities and make next action more professional",
+          "subsystem": "self_audit",
+          "status": "DEFERRED",
+          "priority": "NORMAL",
+          "blocking": false,
+          "created_at": "2026-07-22T10:58:39Z"
+        }
+      ],
+      "engineering_queue": [],
+      "professional_continuity": {
+        "last_cycle_id": "EP-001",
+        "last_focus": "Self Governance Engine",
+        "resume_from": "Professional Pipeline integration",
+        "last_updated_at": "2026-07-22T10:58:39Z"
+      },
+      "policy": {
+        "product_owner_approval_required": true,
+        "automatic_product_decisions": false,
+        "stop_only_for_blocker_or_critical_architecture_debt": true,
+        "architecture_gate_required_before_implementation": true,
+        "core_ontology_is_business_independent": true,
+        "improvement_attention_thresholds": {
+          "RECOMMENDED": 5,
+          "DESIRABLE": 7,
+          "CRITICAL": 10
+        },
+        "new_major_cycle_requires_previous_status": [
+          "COMPLETED",
+          "DEFERRED",
+          "REJECTED"
+        ]
+      },
+      "updated_at": "2026-07-22T10:59:29Z",
+      "release": "VECTRA-CORE-ONTOLOGY-001-INCREMENT-001",
+      "contract_version": "2.2"
+    },
+    "updated_at": "2026-07-22T10:59:29Z"
+  },
+  "professional_state": {
+    "object_name": "professional_state",
+    "status": "NOT_CONNECTED",
+    "contract_version": "1.0",
+    "source_of_truth": "existing_runtime_subsystem",
+    "payload": {}
+  }
+}

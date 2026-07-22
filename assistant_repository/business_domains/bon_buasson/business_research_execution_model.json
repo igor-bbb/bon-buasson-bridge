@@ -1,0 +1,71 @@
+{
+  "model_id": "VECTRA-BUSINESS-RESEARCH-EXECUTION-MODEL",
+  "version": "1.0",
+  "status": "ACTIVE",
+  "business_domain": "bon_buasson",
+  "purpose": "Однозначно различать техническую проверку каркаса, исследование профессиональной модели, исследование данных, исследование состояния бизнеса и подготовку рабочего стола.",
+  "silent_mode_fallback_forbidden": true,
+  "runtime_traversal_is_business_research": false,
+  "modes": {
+    "runtime_verification": {
+      "purpose": "Проверить техническую доступность Runtime, объектов, связей, маршрутов и чтения данных без управленческих выводов о бизнесе.",
+      "requirements": {"professional_business_model_available": false, "period_present": false, "business_data_available": false, "object_passport_available": false, "external_context_available": false},
+      "allowed_sources": ["runtime_registry", "object_discovery", "route_integrity", "api_responses"],
+      "execution_steps": ["verify_runtime", "verify_object_types", "verify_relationships", "verify_route_to_sku", "report_technical_gaps"],
+      "required_outcome": ["runtime_status", "object_integrity", "route_integrity", "limitations"],
+      "prohibited_claims": ["business_performance_conclusion", "financial_diagnosis", "management_recommendation"],
+      "completion_rule": "Завершается техническим заключением о каркасе и не может называться исследованием фактического бизнеса.",
+      "honesty_rule": "Прямо сообщить, что цифры и состояние бизнеса не исследовались.",
+      "next_action_when_ready": "execute_runtime_verification",
+      "next_action_when_hold": "restore_runtime_capability"
+    },
+    "business_model_research": {
+      "purpose": "Проверить, понимает ли VECTRA смысл объектов, паспорта, ответственность, агрегацию и маршруты исследования причин.",
+      "requirements": {"professional_business_model_available": true, "period_present": false, "business_data_available": false, "object_passport_available": true, "external_context_available": false},
+      "allowed_sources": ["professional_business_model", "object_passport_contract", "business_identity", "operating_model", "decision_model"],
+      "execution_steps": ["verify_business_identity", "verify_object_meaning", "verify_passports", "verify_aggregation", "verify_investigation_routes", "report_model_gaps"],
+      "required_outcome": ["model_readiness", "passport_readiness", "aggregation_integrity", "investigation_integrity", "limitations"],
+      "prohibited_claims": ["current_business_performance", "period_financial_conclusion"],
+      "completion_rule": "Завершается оценкой профессиональной модели, а не выводом о текущем состоянии бизнеса.",
+      "honesty_rule": "Не подменять отсутствие Business Data красивым описанием модели.",
+      "next_action_when_ready": "execute_business_model_research",
+      "next_action_when_hold": "complete_professional_business_model_or_passports"
+    },
+    "business_data_research": {
+      "purpose": "Исследовать фактические бизнес-показатели выбранного объекта и периода.",
+      "requirements": {"professional_business_model_available": true, "period_present": true, "business_data_available": true, "object_passport_available": true, "external_context_available": false},
+      "allowed_sources": ["business_data_runtime", "derived_metrics", "object_passport", "confirmed_business_knowledge"],
+      "execution_steps": ["load_period_data", "validate_data_quality", "calculate_dynamics", "decompose_aggregates", "trace_causes_to_sku", "quantify_financial_effect"],
+      "required_outcome": ["what_happened", "where", "why", "financial_effect", "evidence", "limitations"],
+      "prohibited_claims": ["unsupported_external_cause", "recommendation_without_evidence"],
+      "completion_rule": "Завершается доказуемым анализом фактических данных и явными ограничениями.",
+      "honesty_rule": "Если данные недоступны или неполны, вернуть HOLD, а не исследовать каркас вместо цифр.",
+      "next_action_when_ready": "execute_business_data_research",
+      "next_action_when_hold": "request_or_restore_business_data"
+    },
+    "business_state_research": {
+      "purpose": "Сформировать профессиональное понимание состояния бизнеса, объединив данные, динамику, знания, внешнюю среду и управленческий смысл.",
+      "requirements": {"professional_business_model_available": true, "period_present": true, "business_data_available": true, "object_passport_available": true, "external_context_available": true},
+      "allowed_sources": ["business_data_runtime", "professional_business_model", "object_passport", "confirmed_business_knowledge", "current_external_context"],
+      "execution_steps": ["restore_business_meaning", "analyze_data", "compare_dynamics", "research_causes", "evaluate_external_factors", "assess_risks_and_opportunities", "prepare_decision_options"],
+      "required_outcome": ["what_happened", "why", "critical_attention", "financial_effect", "risks", "opportunities", "recommended_actions", "investigation_routes", "limitations"],
+      "prohibited_claims": ["fact_without_source", "causal_claim_without_evidence", "automatic_human_decision"],
+      "completion_rule": "Завершается управленческим пониманием, пригодным для диалога с руководителем.",
+      "honesty_rule": "Чётко отделять подтверждённые факты, профессиональные выводы, гипотезы и неизвестное.",
+      "next_action_when_ready": "execute_business_state_research",
+      "next_action_when_hold": "complete_missing_data_or_external_context"
+    },
+    "workspace_preparation": {
+      "purpose": "Подготовить полный профессиональный рабочий стол выбранного объекта и периода до его открытия руководителем.",
+      "requirements": {"professional_business_model_available": true, "period_present": true, "business_data_available": true, "object_passport_available": true, "external_context_available": true},
+      "allowed_sources": ["business_state_research", "object_passport", "business_data_runtime", "decision_model", "external_context"],
+      "execution_steps": ["build_object_passport", "prepare_executive_summary", "explain_dynamics", "surface_causes", "quantify_effect", "show_risks_and_opportunities", "prepare_routes_and_actions"],
+      "required_outcome": ["object_passport", "executive_summary", "current_state", "dynamics", "causes", "financial_effect", "risks", "opportunities", "external_context", "child_objects", "recommended_route", "management_actions"],
+      "prohibited_claims": ["partial_api_fragment_as_full_workspace", "dashboard_only_response"],
+      "completion_rule": "Рабочий стол считается готовым только как целостный профессиональный брифинг, а не как фрагмент показателей.",
+      "honesty_rule": "Недостающие разделы должны быть явно отмечены, а рабочий стол не должен называться полным при критической неполноте.",
+      "next_action_when_ready": "prepare_professional_workspace",
+      "next_action_when_hold": "complete_missing_workspace_inputs"
+    }
+  }
+}
