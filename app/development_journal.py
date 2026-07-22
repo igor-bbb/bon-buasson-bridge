@@ -8,14 +8,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
-JOURNAL_FILE = Path('/tmp/vectra_development_journal_v2.json')
+from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state
+
+_ASSISTANT_REPOSITORY_ROOT = Path(
+    os.getenv('VECTRA_ASSISTANT_REPOSITORY_PATH', 'assistant_repository')
+).resolve()
+JOURNAL_FILE = Path(os.getenv(
+    'VECTRA_DEVELOPMENT_JOURNAL_PATH',
+    str(_ASSISTANT_REPOSITORY_ROOT / 'runtime' / 'development' / 'development_journal.json'),
+)).resolve()
 LEGACY_JOURNAL_FILE = Path('/tmp/vectra_development_journal.json')
+LEGACY_V2_JOURNAL_FILE = Path('/tmp/vectra_development_journal_v2.json')
 JOURNAL_LOCK = Lock()
 
 CAPTURE_PREFIXES = (
@@ -277,20 +287,41 @@ def is_lifecycle_command(message: Any) -> bool:
 
 
 def _read_records() -> List[Dict[str, Any]]:
-    source = JOURNAL_FILE if JOURNAL_FILE.exists() else LEGACY_JOURNAL_FILE
-    if not source.exists():
-        return []
-    try:
-        raw = json.loads(source.read_text(encoding='utf-8'))
-        if isinstance(raw, list):
-            return [x for x in raw if isinstance(x, dict)]
-    except Exception:
-        return []
+    records, diagnostic = read_json_state(JOURNAL_FILE, list, list)
+    if diagnostic.get('status') == 'HOLD':
+        raise RuntimeError(
+            'Development Journal repository is unavailable: '
+            f"primary={diagnostic.get('primary_error')}; backup={diagnostic.get('backup_error')}"
+        )
+    if diagnostic.get('status') != 'EMPTY':
+        return [x for x in records if isinstance(x, dict)]
+
+    # One-time backward-compatible migration. The persistent repository always
+    # wins; /tmp is read only when the canonical file and its backup are absent.
+    for legacy in (LEGACY_V2_JOURNAL_FILE, LEGACY_JOURNAL_FILE):
+        if not legacy.exists():
+            continue
+        try:
+            migrated = json.loads(legacy.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        if isinstance(migrated, list):
+            clean = [x for x in migrated if isinstance(x, dict)]
+            _write_records(clean)
+            return clean
     return []
 
 
-def _write_records(records: List[Dict[str, Any]]) -> None:
-    JOURNAL_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
+def _write_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    diagnostic = write_json_state(JOURNAL_FILE, records)
+    readback, readback_diagnostic = read_json_state(JOURNAL_FILE, list, list)
+    if readback_diagnostic.get('status') not in {'PASS', 'RECOVERED'} or readback != records:
+        raise RuntimeError('Development Journal write/readback verification failed.')
+    return {
+        **diagnostic,
+        'readback_verified': True,
+        'repository_path': str(JOURNAL_FILE),
+    }
 
 
 def _next_id(records: List[Dict[str, Any]]) -> str:
@@ -890,6 +921,123 @@ def reject_verified_tasks(
             reopened.append(str(record.get('id')))
         _write_records(records)
     return {'status': 'ok', 'reopened_ids': sorted(set(reopened)), 'missing_ids': sorted(set(missing))}
+
+
+def create_development_request(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create the single cross-environment development record.
+
+    Laboratory may register a confirmed product gap, but it cannot approve its
+    implementation.  The same DEV id is retained through Owner, Engineering,
+    release and Product Verification stages.
+    """
+    payload = payload if isinstance(payload, dict) else {}
+    record = add_global_record(
+        event_type=str(payload.get('event_type') or 'development_request'),
+        component=str(payload.get('component') or 'vectra_laboratory'),
+        technical_description=str(payload.get('confirmed_gap') or payload.get('technical_description') or 'Confirmed VECTRA development gap.'),
+        suspected_root_cause=str(payload.get('evidence_summary') or payload.get('suspected_root_cause') or 'Requires Engineering review.'),
+        proposed_fix_direction=str(payload.get('proposal') or payload.get('proposed_fix_direction') or 'Prepare one bounded engineering increment.'),
+        priority=str(payload.get('priority') or 'P1'),
+        runtime_context={
+            **(payload.get('runtime_context') if isinstance(payload.get('runtime_context'), dict) else {}),
+            'source_environment': str(payload.get('source_environment') or 'Laboratory'),
+            'research_id': payload.get('research_id'),
+            'evidence_ids': list(payload.get('evidence_ids') or []),
+        },
+        session_id=str(payload.get('session_id') or 'laboratory'),
+        dry_run=bool(payload.get('dry_run')),
+        is_test=bool(payload.get('is_test')),
+    )
+    if record.get('persisted', True) and not record.get('is_test'):
+        with JOURNAL_LOCK:
+            records = _read_records()
+            stored = _find_record(records, str(record.get('id') or ''))
+            if stored:
+                stored['record_kind'] = 'development_request'
+                stored.setdefault('owner_decision', {'status': 'PENDING'})
+                stored.setdefault('engineering', {'status': 'NOT_STARTED'})
+                stored.setdefault('verification', {'status': 'NOT_STARTED'})
+                stored['bridge_schema_version'] = 'VECTRADevelopmentBridge/v1.0'
+                stored['repository_path'] = 'runtime/development/development_journal.json'
+                stored['updated_at'] = _now()
+                _write_records(records)
+                record = stored
+    return {'status': 'ok', 'operation_type': 'create_development_request', 'record_id': record.get('id'), 'record': record, 'readback_status': 'PASS'}
+
+
+def record_owner_decision(record_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    decision = _normalize(payload.get('decision'))
+    if decision not in {'approve', 'approved', 'утвердить', 'утверждено', 'reject', 'rejected', 'отклонить', 'отклонено'}:
+        return {'status': 'error', 'operation_type': 'record_owner_decision', 'failure_reason': 'explicit_owner_decision_required', 'record_id': record_id}
+    approved = decision in {'approve', 'approved', 'утвердить', 'утверждено'}
+    if not bool(payload.get('product_owner_approval') or payload.get('confirmed_by_product_owner')):
+        return {'status': 'error', 'operation_type': 'record_owner_decision', 'failure_reason': 'product_owner_confirmation_required', 'record_id': record_id}
+    with JOURNAL_LOCK:
+        records = _read_records()
+        record = _find_record(records, record_id)
+        if not record:
+            return {'status': 'error', 'operation_type': 'record_owner_decision', 'failure_reason': 'journal_record_not_found', 'record_id': record_id}
+        now = _now()
+        record['owner_decision'] = {'status': 'APPROVED' if approved else 'REJECTED', 'decided_at': now, 'comment': str(payload.get('comment') or ''), 'actor': 'Product Owner'}
+        _append_status_change(record, status='Open' if approved else 'Archived', actor='Product Owner', source='Product Owner', comment=str(payload.get('comment') or ('Implementation approved.' if approved else 'Development request rejected.')))
+        _write_records(records)
+        return {'status': 'ok', 'operation_type': 'record_owner_decision', 'record_id': record_id, 'owner_decision': record['owner_decision'], 'readback_status': 'PASS', 'record': record}
+
+
+def update_development_execution(record_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    stage = _normalize(payload.get('stage') or payload.get('status'))
+    stage_map = {
+        'in progress': 'In Progress', 'in_progress': 'In Progress', 'в работе': 'In Progress',
+        'implemented': 'Fixed', 'fixed': 'Fixed', 'реализовано': 'Fixed',
+        'awaiting verification': 'Awaiting Verification', 'awaiting_verification': 'Awaiting Verification', 'ожидает проверки': 'Awaiting Verification',
+    }
+    status = stage_map.get(stage)
+    if not status:
+        return {'status': 'error', 'operation_type': 'update_development_execution', 'failure_reason': 'unsupported_engineering_stage', 'record_id': record_id}
+    with JOURNAL_LOCK:
+        records = _read_records()
+        record = _find_record(records, record_id)
+        if not record:
+            return {'status': 'error', 'operation_type': 'update_development_execution', 'failure_reason': 'journal_record_not_found', 'record_id': record_id}
+        if (record.get('owner_decision') or {}).get('status') != 'APPROVED':
+            return {'status': 'error', 'operation_type': 'update_development_execution', 'failure_reason': 'owner_approval_required', 'record_id': record_id}
+        _append_status_change(record, status=status, actor='Engineering', source='Engineering', release=payload.get('release_id'), version=payload.get('version'), comment=str(payload.get('comment') or 'Engineering stage updated.'))
+        record['engineering'] = {'status': stage.upper().replace(' ', '_'), 'release_id': payload.get('release_id'), 'version': payload.get('version'), 'commit_sha': payload.get('commit_sha'), 'updated_at': _now()}
+        _write_records(records)
+        return {'status': 'ok', 'operation_type': 'update_development_execution', 'record_id': record_id, 'readback_status': 'PASS', 'record': record}
+
+
+def record_development_verification(record_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    verdict = str(payload.get('verdict') or '').strip().upper()
+    if verdict not in {'PASS', 'FAIL'}:
+        return {'status': 'error', 'operation_type': 'record_development_verification', 'failure_reason': 'pass_or_fail_verdict_required', 'record_id': record_id}
+    with JOURNAL_LOCK:
+        records = _read_records()
+        record = _find_record(records, record_id)
+        if not record:
+            return {'status': 'error', 'operation_type': 'record_development_verification', 'failure_reason': 'journal_record_not_found', 'record_id': record_id}
+        if _canonical_status(record.get('status')) != 'Awaiting Verification':
+            return {'status': 'error', 'operation_type': 'record_development_verification', 'failure_reason': 'record_not_awaiting_verification', 'record_id': record_id}
+        release_id = str(payload.get('release_id') or record.get('verification_release') or record.get('fixed_release') or '')
+        record['verification'] = {'status': verdict, 'release_id': release_id, 'verified_at': _now(), 'evidence': list(payload.get('evidence') or []), 'actor': 'Laboratory'}
+        _append_status_change(record, status='Closed' if verdict == 'PASS' else 'Open', actor='Laboratory', source='Release Manager', release=release_id, comment=str(payload.get('comment') or ('Product Verification passed.' if verdict == 'PASS' else 'Product Verification failed; returned to Engineering.')))
+        _write_records(records)
+        return {'status': 'ok', 'operation_type': 'record_development_verification', 'record_id': record_id, 'verdict': verdict, 'readback_status': 'PASS', 'record': record}
+
+
+def get_development_bridge(record_id: Optional[str] = None, *, only_new: bool = False, limit: int = 50) -> Dict[str, Any]:
+    records = list_records(include_test=False, include_archived=True)
+    records = [r for r in records if r.get('bridge_schema_version') or r.get('record_kind') == 'development_request']
+    if record_id:
+        record = _find_record(records, record_id)
+        return {'status': 'ok' if record else 'not_found', 'operation_type': 'get_development_bridge', 'record_id': record_id, 'record': record, 'readback_status': 'PASS' if record else 'FAIL'}
+    if only_new:
+        records = [r for r in records if (r.get('owner_decision') or {}).get('status') == 'PENDING']
+    records = sorted(records, key=lambda r: str(r.get('updated_at') or r.get('created_at') or ''), reverse=True)[:max(1, min(int(limit or 50), 200))]
+    return {'status': 'ok', 'operation_type': 'get_development_bridge', 'records_count': len(records), 'records': records, 'repository_path': str(JOURNAL_FILE), 'readback_status': 'PASS'}
 
 def list_records(status: Optional[str] = None, include_test: bool = True, include_archived: bool = True) -> List[Dict[str, Any]]:
     with JOURNAL_LOCK:
