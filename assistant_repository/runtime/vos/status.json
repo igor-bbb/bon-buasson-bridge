@@ -1,0 +1,9 @@
+{
+  "status": "active",
+  "release": "VOS-001",
+  "vos_id": "vectra-operating-system-root",
+  "repository_path": "runtime/vos/",
+  "runtime_restoration_required": true,
+  "chat_history_is_not_memory": true,
+  "updated_at": "2026-07-22T09:36:25Z"
+}

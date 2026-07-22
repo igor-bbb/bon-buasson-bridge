@@ -1,0 +1,29 @@
+[
+  {
+    "report_id": "business-core-load-acb4cdd7a1",
+    "session_id": null,
+    "request_id": null,
+    "domain": "bon_buasson",
+    "started_at": "2026-07-22T09:36:25Z",
+    "finished_at": "2026-07-22T09:36:25Z",
+    "loaded_sections": [
+      "business_identity",
+      "business_strategy",
+      "business_model",
+      "object_model",
+      "vocabulary",
+      "business_standards",
+      "business_knowledge",
+      "business_decisions",
+      "active_projects",
+      "workspace_model"
+    ],
+    "missing_sections": [],
+    "empty_sections": [],
+    "knowledge_count": 2,
+    "vocabulary_count": 15,
+    "business_decisions_count": 3,
+    "active_projects_count": 1,
+    "business_readiness_status": "BUSINESS_READY"
+  }
+]

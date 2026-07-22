@@ -1,0 +1,11 @@
+{
+  "status": "degraded",
+  "release": "FOUNDATION-0007",
+  "life_model_id": "vectra-life-model-root",
+  "source_of_truth": "Runtime Repository",
+  "professional_model_auto_update": false,
+  "product_owner_approval_required": true,
+  "updated_at": "2026-07-22T09:36:25Z",
+  "last_verification_status": "FAIL",
+  "last_report_id": "life-model-verification-681331df11"
+}

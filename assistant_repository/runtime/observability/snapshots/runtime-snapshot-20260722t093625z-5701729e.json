@@ -1,0 +1,1254 @@
+{
+  "status": "degraded",
+  "render_mode": "vectra_runtime_snapshot",
+  "snapshot_id": "runtime-snapshot-20260722t093625z-5701729e",
+  "contract": "runtime_snapshot.v1",
+  "observability_release": "GENESIS-0002",
+  "runtime_release": "GENESIS-0002",
+  "repository_release": "GENESIS-0001",
+  "runtime_version": "GENESIS-0002",
+  "release_version": "GENESIS-0014",
+  "runtime_verification_automation_release": "VOS-001",
+  "active_professional_model": {
+    "model_id": "vectra-professional-model-root",
+    "sections_count": 9,
+    "readback_status": "PASS"
+  },
+  "reflection_status": {
+    "reflection_release": "GENESIS-0003",
+    "readback": "PASS",
+    "candidates_count": 0,
+    "reports_count": 0,
+    "professional_model_unchanged": true,
+    "knowledge_consolidation_triggered": false
+  },
+  "consolidation_status": {
+    "documents_count": 0
+  },
+  "synchronization_status": {
+    "synchronization_release": "GENESIS-0008",
+    "readback": "PASS",
+    "packages_count": 0,
+    "reports_count": 0,
+    "professional_model_unchanged": true,
+    "working_vectra_not_modified_automatically": true,
+    "reflection_triggered_automatically": false,
+    "knowledge_consolidation_triggered": false,
+    "automatic_product_decisions": false
+  },
+  "review_status": {
+    "review_release": "GENESIS-0010",
+    "readback": "PASS",
+    "active_review_session_id": null,
+    "review_status": "NOT_OPENED",
+    "decision": null,
+    "session_available": true,
+    "report_available": true,
+    "changes_applied": false,
+    "professional_model_unchanged": true,
+    "working_vectra_not_modified_automatically": true,
+    "automatic_product_owner_approval": false
+  },
+  "execution_status": {
+    "execution_release": "GENESIS-0011",
+    "readback": "PASS",
+    "execution_status": "NOT_EXECUTED",
+    "latest_execution_id": null,
+    "approved_session_available": false,
+    "report_available": true,
+    "automatic_execution": false,
+    "professional_model_changed_without_approved_session": false,
+    "reflection_triggered_automatically": false,
+    "knowledge_consolidation_triggered_automatically": false
+  },
+  "evolution_journal_status": {
+    "evolution_journal_release": "GENESIS-0012",
+    "journal_status": "active",
+    "latest_entries": [
+      {
+        "journal_entry_id": "knowledge-capitalization-341ec7e115",
+        "entry_id": "knowledge-capitalization-341ec7e115",
+        "timestamp": "2026-07-07T18:39:15Z",
+        "release_id": "unknown",
+        "review_session_id": null,
+        "execution_id": null,
+        "source": "evolution_journal_repository",
+        "status": "CAPITALIZED",
+        "new_professional_competence": "confirmed VECTRA evolution event",
+        "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+        "change_boundaries": {
+          "professional_model_auto_change": false,
+          "automatic_reflection": false,
+          "automatic_consolidation": false,
+          "outside_release_scope": false
+        },
+        "execution_report_ref": null,
+        "capitalization_status": "recorded",
+        "raw_entry": {
+          "entry_id": "knowledge-capitalization-341ec7e115",
+          "timestamp": "2026-07-07T18:39:15Z",
+          "release": "LABORATORY-KNOWLEDGE-0005",
+          "status": "CAPITALIZED",
+          "event_type": "knowledge_capitalization",
+          "summary": "Knowledge BK-005 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+          "package_id": "KCAP-20260707T183915Z-878eda",
+          "knowledge_id": "BK-005",
+          "knowledge_type": "business",
+          "domain": "bon_buasson"
+        }
+      },
+      {
+        "journal_entry_id": "knowledge-capitalization-705485b275",
+        "entry_id": "knowledge-capitalization-705485b275",
+        "timestamp": "2026-07-07T18:40:16Z",
+        "release_id": "unknown",
+        "review_session_id": null,
+        "execution_id": null,
+        "source": "evolution_journal_repository",
+        "status": "CAPITALIZED",
+        "new_professional_competence": "confirmed VECTRA evolution event",
+        "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+        "change_boundaries": {
+          "professional_model_auto_change": false,
+          "automatic_reflection": false,
+          "automatic_consolidation": false,
+          "outside_release_scope": false
+        },
+        "execution_report_ref": null,
+        "capitalization_status": "recorded",
+        "raw_entry": {
+          "entry_id": "knowledge-capitalization-705485b275",
+          "timestamp": "2026-07-07T18:40:16Z",
+          "release": "LABORATORY-KNOWLEDGE-0005",
+          "status": "CAPITALIZED",
+          "event_type": "knowledge_capitalization",
+          "summary": "Knowledge PK-006 capitalized into knowledge/professional_knowledge.json.",
+          "package_id": "KCAP-20260707T184016Z-c80da4",
+          "knowledge_id": "PK-006",
+          "knowledge_type": "professional",
+          "domain": null
+        }
+      },
+      {
+        "journal_entry_id": "knowledge-capitalization-12b7f9c63f",
+        "entry_id": "knowledge-capitalization-12b7f9c63f",
+        "timestamp": "2026-07-07T18:40:16Z",
+        "release_id": "unknown",
+        "review_session_id": null,
+        "execution_id": null,
+        "source": "evolution_journal_repository",
+        "status": "CAPITALIZED",
+        "new_professional_competence": "confirmed VECTRA evolution event",
+        "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+        "change_boundaries": {
+          "professional_model_auto_change": false,
+          "automatic_reflection": false,
+          "automatic_consolidation": false,
+          "outside_release_scope": false
+        },
+        "execution_report_ref": null,
+        "capitalization_status": "recorded",
+        "raw_entry": {
+          "entry_id": "knowledge-capitalization-12b7f9c63f",
+          "timestamp": "2026-07-07T18:40:16Z",
+          "release": "LABORATORY-KNOWLEDGE-0005",
+          "status": "CAPITALIZED",
+          "event_type": "knowledge_capitalization",
+          "summary": "Knowledge BK-006 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+          "package_id": "KCAP-20260707T184016Z-344fc2",
+          "knowledge_id": "BK-006",
+          "knowledge_type": "business",
+          "domain": "bon_buasson"
+        }
+      },
+      {
+        "journal_entry_id": "knowledge-capitalization-8fec5d3802",
+        "entry_id": "knowledge-capitalization-8fec5d3802",
+        "timestamp": "2026-07-07T18:40:43Z",
+        "release_id": "unknown",
+        "review_session_id": null,
+        "execution_id": null,
+        "source": "evolution_journal_repository",
+        "status": "CAPITALIZED",
+        "new_professional_competence": "confirmed VECTRA evolution event",
+        "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+        "change_boundaries": {
+          "professional_model_auto_change": false,
+          "automatic_reflection": false,
+          "automatic_consolidation": false,
+          "outside_release_scope": false
+        },
+        "execution_report_ref": null,
+        "capitalization_status": "recorded",
+        "raw_entry": {
+          "entry_id": "knowledge-capitalization-8fec5d3802",
+          "timestamp": "2026-07-07T18:40:43Z",
+          "release": "LABORATORY-KNOWLEDGE-0005",
+          "status": "CAPITALIZED",
+          "event_type": "knowledge_capitalization",
+          "summary": "Knowledge PK-007 capitalized into knowledge/professional_knowledge.json.",
+          "package_id": "KCAP-20260707T184042Z-43dfe7",
+          "knowledge_id": "PK-007",
+          "knowledge_type": "professional",
+          "domain": null
+        }
+      },
+      {
+        "journal_entry_id": "knowledge-capitalization-dcbea72add",
+        "entry_id": "knowledge-capitalization-dcbea72add",
+        "timestamp": "2026-07-07T18:40:43Z",
+        "release_id": "unknown",
+        "review_session_id": null,
+        "execution_id": null,
+        "source": "evolution_journal_repository",
+        "status": "CAPITALIZED",
+        "new_professional_competence": "confirmed VECTRA evolution event",
+        "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+        "change_boundaries": {
+          "professional_model_auto_change": false,
+          "automatic_reflection": false,
+          "automatic_consolidation": false,
+          "outside_release_scope": false
+        },
+        "execution_report_ref": null,
+        "capitalization_status": "recorded",
+        "raw_entry": {
+          "entry_id": "knowledge-capitalization-dcbea72add",
+          "timestamp": "2026-07-07T18:40:43Z",
+          "release": "LABORATORY-KNOWLEDGE-0005",
+          "status": "CAPITALIZED",
+          "event_type": "knowledge_capitalization",
+          "summary": "Knowledge BK-007 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+          "package_id": "KCAP-20260707T184043Z-b67ca6",
+          "knowledge_id": "BK-007",
+          "knowledge_type": "business",
+          "domain": "bon_buasson"
+        }
+      }
+    ],
+    "entries_count": 12,
+    "readback": "PASS"
+  },
+  "api_health": {
+    "health_source": "in_process_runtime_observability"
+  },
+  "business_data_status": {
+    "release": "BUSINESS-DISCOVERY-ENGINE-001",
+    "business_data_connected": false,
+    "business_data_health": "FAIL",
+    "rows_count": 0,
+    "normalized_rows_count": 0,
+    "latest_period": null,
+    "read_only": true,
+    "mutation_endpoints_exposed": false,
+    "same_source_as_working_gpt": true,
+    "available_read_only_endpoints": [
+      "/vectra/laboratory/business-data/status",
+      "/vectra/laboratory/business-data/entities",
+      "/vectra/laboratory/business-data/sample",
+      "/vectra/laboratory/business-data/summary/business",
+      "/vectra/laboratory/business-data/summary/manager-top",
+      "/vectra/laboratory/business-data/summary/manager",
+      "/vectra/laboratory/business-data/summary/network",
+      "/vectra/laboratory/business-data/summary/category",
+      "/vectra/laboratory/business-data/summary/tmc-group",
+      "/vectra/laboratory/business-data/summary/sku",
+      "/vectra/laboratory/business-data/query",
+      "/vectra/laboratory/business-data/verify"
+    ],
+    "verification_result": "FAIL"
+  },
+  "professional_knowledge": {
+    "documents_count": 1,
+    "last_document": {
+      "knowledge_id": "PK-001",
+      "title": "Двухуровневая модель знаний VECTRA",
+      "type": "professional",
+      "status": "CAPITALIZED",
+      "description": "Профессиональные знания VECTRA разделяются на Business Knowledge и Professional Knowledge.",
+      "repository_path": "knowledge/professional_knowledge.json",
+      "capitalization_package": "KCAP-20260707T080830Z-3c8e3f",
+      "created_at": "2026-07-07T08:08:30Z",
+      "updated_at": "2026-07-07T08:08:30Z",
+      "source": "FOUNDATION-0012 local verification",
+      "professional_model_auto_update": false
+    },
+    "last_updated": "2026-07-17T08:51:32Z",
+    "repository_status": "readable",
+    "repository_path": "knowledge/professional_knowledge.json"
+  },
+  "business_domain_knowledge": {
+    "domain": "bon_buasson",
+    "documents_count": 2,
+    "last_document": {
+      "knowledge_id": "bon_buasson-domain-knowledge-002",
+      "title": null,
+      "type": "business",
+      "status": "confirmed",
+      "description": "GPT is an interaction interface. Runtime Repository is the source of persistent professional state.",
+      "domain": "bon_buasson",
+      "repository_path": "business_domains/bon_buasson/business_knowledge.json",
+      "capitalization_package": null,
+      "created_at": null,
+      "updated_at": null,
+      "source": null
+    },
+    "last_updated": "2026-07-17T08:51:32Z",
+    "repository_status": "readable",
+    "repository_path": "business_domains/bon_buasson/business_knowledge.json",
+    "restored_in_domain_session": true
+  },
+  "reflection_release": "GENESIS-0003",
+  "observation_release": "GENESIS-0005",
+  "responsibility_release": "GENESIS-0006",
+  "recovery_evolution_release": "GENESIS-0007",
+  "generated_at": "2026-07-22T09:36:25Z",
+  "generated_reason": "auto_created_on_first_read",
+  "identity_root": "VECTRA",
+  "official_source_of_truth": true,
+  "product_verification_source": "runtime_snapshot_only",
+  "deployment": {
+    "deployment_version": "GENESIS-0001",
+    "deployment_time": "2026-07-22T09:36:25Z",
+    "git_commit": "unknown",
+    "service_id": "unknown",
+    "environment": "local_or_unknown"
+  },
+  "overall_status": "FAIL",
+  "components": {
+    "runtime_repository": {
+      "component": "runtime_repository",
+      "status": "PASS",
+      "summary": "Runtime Repository is readable.",
+      "data": {
+        "repository_status": "ok",
+        "release": "GENESIS-0001",
+        "base_path": null
+      }
+    },
+    "runtime_status": {
+      "component": "runtime_status",
+      "status": "PASS",
+      "summary": "Runtime status object is available.",
+      "data": {
+        "status": "ok",
+        "render_mode": "assistant_runtime_status"
+      }
+    },
+    "professional_state": {
+      "component": "professional_state",
+      "status": "PASS",
+      "summary": "Professional State is readable.",
+      "data": {
+        "identity_root": "VECTRA",
+        "updated_at": "2026-07-10T05:59:35Z"
+      }
+    },
+    "professional_model": {
+      "component": "professional_model",
+      "status": "PASS",
+      "summary": "Professional Model Repository is readable and has required sections.",
+      "data": {
+        "model_id": "vectra-professional-model-root",
+        "sections_count": 9,
+        "readback": "PASS"
+      }
+    },
+    "recovery_status": {
+      "component": "recovery_status",
+      "status": "FAIL",
+      "summary": "Recovery Snapshot history is not available.",
+      "data": {
+        "bundle_id": "recovery-bundle-root",
+        "snapshots_count": 0
+      }
+    },
+    "evolution_journal": {
+      "component": "evolution_journal",
+      "status": "PASS",
+      "summary": "Evolution Journal is readable.",
+      "data": {
+        "entries_count": 12
+      }
+    },
+    "product_decisions": {
+      "component": "product_decisions",
+      "status": "PASS",
+      "summary": "Product Decisions are readable.",
+      "data": {
+        "decisions_count": 0
+      }
+    },
+    "knowledge_repository": {
+      "component": "knowledge_repository",
+      "status": "PASS",
+      "summary": "Knowledge Repository is readable.",
+      "data": {
+        "documents_count": 0
+      }
+    },
+    "pending_approvals": {
+      "component": "pending_approvals",
+      "status": "PASS",
+      "summary": "Pending Approvals are readable.",
+      "data": {
+        "pending_count": 0
+      }
+    },
+    "runtime_reports": {
+      "component": "runtime_reports",
+      "status": "PASS",
+      "summary": "Runtime Reports are readable.",
+      "data": {
+        "reports_count": 0
+      }
+    },
+    "professional_reflection": {
+      "component": "professional_reflection",
+      "status": "PASS",
+      "summary": "Professional Reflection Engine and Knowledge Candidate Repository are readable.",
+      "data": {
+        "reflection_release": "GENESIS-0003",
+        "readback": "PASS",
+        "candidates_count": 0,
+        "reports_count": 0,
+        "professional_model_unchanged": true,
+        "knowledge_consolidation_triggered": false
+      }
+    },
+    "professional_observation": {
+      "component": "professional_observation",
+      "status": "PASS",
+      "summary": "Professional Observation Engine and runtime event repository are readable.",
+      "data": {
+        "observation_release": "GENESIS-0005",
+        "readback": "PASS",
+        "events_count": 0,
+        "reports_count": 0,
+        "professional_model_unchanged": true,
+        "reflection_triggered_automatically": false,
+        "knowledge_consolidation_triggered": false,
+        "automatic_product_decisions": false
+      }
+    },
+    "active_responsibilities": {
+      "component": "active_responsibilities",
+      "status": "PASS",
+      "summary": "Active Responsibilities Engine and Responsibility Repository are readable.",
+      "data": {
+        "responsibility_release": "GENESIS-0006",
+        "readback": "PASS",
+        "responsibilities_count": 4,
+        "reports_count": 0,
+        "professional_model_unchanged": true,
+        "reflection_triggered_automatically": false,
+        "knowledge_consolidation_triggered": false,
+        "automatic_product_decisions": false
+      }
+    },
+    "recovery_evolution": {
+      "component": "recovery_evolution",
+      "status": "PASS",
+      "summary": "Recovery Evolution Engine, checkpoints and readback are available.",
+      "data": {
+        "recovery_evolution_release": "GENESIS-0007",
+        "readback": "PASS",
+        "checkpoints_count": 0,
+        "reports_count": 0,
+        "professional_model_unchanged": true,
+        "reflection_triggered_automatically": false,
+        "knowledge_consolidation_triggered": false,
+        "automatic_product_decisions": false
+      }
+    },
+    "laboratory_synchronization": {
+      "component": "laboratory_synchronization",
+      "status": "PASS",
+      "summary": "Laboratory to Working VECTRA Synchronization Foundation is readable and bounded.",
+      "data": {
+        "synchronization_release": "GENESIS-0008",
+        "readback": "PASS",
+        "packages_count": 0,
+        "reports_count": 0,
+        "professional_model_unchanged": true,
+        "working_vectra_not_modified_automatically": true,
+        "reflection_triggered_automatically": false,
+        "knowledge_consolidation_triggered": false,
+        "automatic_product_decisions": false
+      }
+    },
+    "product_owner_review": {
+      "component": "product_owner_review",
+      "status": "PASS",
+      "summary": "Product Owner Review Workflow is readable and bounded.",
+      "data": {
+        "review_release": "GENESIS-0010",
+        "readback": "PASS",
+        "active_review_session_id": null,
+        "review_status": "NOT_OPENED",
+        "decision": null,
+        "session_available": true,
+        "report_available": true,
+        "changes_applied": false,
+        "professional_model_unchanged": true,
+        "working_vectra_not_modified_automatically": true,
+        "automatic_product_owner_approval": false
+      }
+    },
+    "synchronization_execution": {
+      "component": "synchronization_execution",
+      "status": "PASS",
+      "summary": "Controlled Synchronization Execution is observable and bounded.",
+      "data": {
+        "execution_release": "GENESIS-0011",
+        "readback": "PASS",
+        "execution_status": "NOT_EXECUTED",
+        "latest_execution_id": null,
+        "approved_session_available": false,
+        "report_available": true,
+        "automatic_execution": false,
+        "professional_model_changed_without_approved_session": false,
+        "reflection_triggered_automatically": false,
+        "knowledge_consolidation_triggered_automatically": false
+      }
+    },
+    "evolution_journal_status": {
+      "component": "evolution_journal_status",
+      "status": "PASS",
+      "summary": "Evolution Journal Repository is readable and exposed through Runtime Observability.",
+      "data": {
+        "evolution_journal_release": "GENESIS-0012",
+        "journal_status": "active",
+        "latest_entries": [
+          {
+            "journal_entry_id": "knowledge-capitalization-341ec7e115",
+            "entry_id": "knowledge-capitalization-341ec7e115",
+            "timestamp": "2026-07-07T18:39:15Z",
+            "release_id": "unknown",
+            "review_session_id": null,
+            "execution_id": null,
+            "source": "evolution_journal_repository",
+            "status": "CAPITALIZED",
+            "new_professional_competence": "confirmed VECTRA evolution event",
+            "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+            "change_boundaries": {
+              "professional_model_auto_change": false,
+              "automatic_reflection": false,
+              "automatic_consolidation": false,
+              "outside_release_scope": false
+            },
+            "execution_report_ref": null,
+            "capitalization_status": "recorded",
+            "raw_entry": {
+              "entry_id": "knowledge-capitalization-341ec7e115",
+              "timestamp": "2026-07-07T18:39:15Z",
+              "release": "LABORATORY-KNOWLEDGE-0005",
+              "status": "CAPITALIZED",
+              "event_type": "knowledge_capitalization",
+              "summary": "Knowledge BK-005 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+              "package_id": "KCAP-20260707T183915Z-878eda",
+              "knowledge_id": "BK-005",
+              "knowledge_type": "business",
+              "domain": "bon_buasson"
+            }
+          },
+          {
+            "journal_entry_id": "knowledge-capitalization-705485b275",
+            "entry_id": "knowledge-capitalization-705485b275",
+            "timestamp": "2026-07-07T18:40:16Z",
+            "release_id": "unknown",
+            "review_session_id": null,
+            "execution_id": null,
+            "source": "evolution_journal_repository",
+            "status": "CAPITALIZED",
+            "new_professional_competence": "confirmed VECTRA evolution event",
+            "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+            "change_boundaries": {
+              "professional_model_auto_change": false,
+              "automatic_reflection": false,
+              "automatic_consolidation": false,
+              "outside_release_scope": false
+            },
+            "execution_report_ref": null,
+            "capitalization_status": "recorded",
+            "raw_entry": {
+              "entry_id": "knowledge-capitalization-705485b275",
+              "timestamp": "2026-07-07T18:40:16Z",
+              "release": "LABORATORY-KNOWLEDGE-0005",
+              "status": "CAPITALIZED",
+              "event_type": "knowledge_capitalization",
+              "summary": "Knowledge PK-006 capitalized into knowledge/professional_knowledge.json.",
+              "package_id": "KCAP-20260707T184016Z-c80da4",
+              "knowledge_id": "PK-006",
+              "knowledge_type": "professional",
+              "domain": null
+            }
+          },
+          {
+            "journal_entry_id": "knowledge-capitalization-12b7f9c63f",
+            "entry_id": "knowledge-capitalization-12b7f9c63f",
+            "timestamp": "2026-07-07T18:40:16Z",
+            "release_id": "unknown",
+            "review_session_id": null,
+            "execution_id": null,
+            "source": "evolution_journal_repository",
+            "status": "CAPITALIZED",
+            "new_professional_competence": "confirmed VECTRA evolution event",
+            "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+            "change_boundaries": {
+              "professional_model_auto_change": false,
+              "automatic_reflection": false,
+              "automatic_consolidation": false,
+              "outside_release_scope": false
+            },
+            "execution_report_ref": null,
+            "capitalization_status": "recorded",
+            "raw_entry": {
+              "entry_id": "knowledge-capitalization-12b7f9c63f",
+              "timestamp": "2026-07-07T18:40:16Z",
+              "release": "LABORATORY-KNOWLEDGE-0005",
+              "status": "CAPITALIZED",
+              "event_type": "knowledge_capitalization",
+              "summary": "Knowledge BK-006 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+              "package_id": "KCAP-20260707T184016Z-344fc2",
+              "knowledge_id": "BK-006",
+              "knowledge_type": "business",
+              "domain": "bon_buasson"
+            }
+          },
+          {
+            "journal_entry_id": "knowledge-capitalization-8fec5d3802",
+            "entry_id": "knowledge-capitalization-8fec5d3802",
+            "timestamp": "2026-07-07T18:40:43Z",
+            "release_id": "unknown",
+            "review_session_id": null,
+            "execution_id": null,
+            "source": "evolution_journal_repository",
+            "status": "CAPITALIZED",
+            "new_professional_competence": "confirmed VECTRA evolution event",
+            "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+            "change_boundaries": {
+              "professional_model_auto_change": false,
+              "automatic_reflection": false,
+              "automatic_consolidation": false,
+              "outside_release_scope": false
+            },
+            "execution_report_ref": null,
+            "capitalization_status": "recorded",
+            "raw_entry": {
+              "entry_id": "knowledge-capitalization-8fec5d3802",
+              "timestamp": "2026-07-07T18:40:43Z",
+              "release": "LABORATORY-KNOWLEDGE-0005",
+              "status": "CAPITALIZED",
+              "event_type": "knowledge_capitalization",
+              "summary": "Knowledge PK-007 capitalized into knowledge/professional_knowledge.json.",
+              "package_id": "KCAP-20260707T184042Z-43dfe7",
+              "knowledge_id": "PK-007",
+              "knowledge_type": "professional",
+              "domain": null
+            }
+          },
+          {
+            "journal_entry_id": "knowledge-capitalization-dcbea72add",
+            "entry_id": "knowledge-capitalization-dcbea72add",
+            "timestamp": "2026-07-07T18:40:43Z",
+            "release_id": "unknown",
+            "review_session_id": null,
+            "execution_id": null,
+            "source": "evolution_journal_repository",
+            "status": "CAPITALIZED",
+            "new_professional_competence": "confirmed VECTRA evolution event",
+            "new_professional_value": "confirmed professional value recorded in Evolution Journal",
+            "change_boundaries": {
+              "professional_model_auto_change": false,
+              "automatic_reflection": false,
+              "automatic_consolidation": false,
+              "outside_release_scope": false
+            },
+            "execution_report_ref": null,
+            "capitalization_status": "recorded",
+            "raw_entry": {
+              "entry_id": "knowledge-capitalization-dcbea72add",
+              "timestamp": "2026-07-07T18:40:43Z",
+              "release": "LABORATORY-KNOWLEDGE-0005",
+              "status": "CAPITALIZED",
+              "event_type": "knowledge_capitalization",
+              "summary": "Knowledge BK-007 capitalized into business_domains/bon_buasson/business_knowledge.json.",
+              "package_id": "KCAP-20260707T184043Z-b67ca6",
+              "knowledge_id": "BK-007",
+              "knowledge_type": "business",
+              "domain": "bon_buasson"
+            }
+          }
+        ],
+        "entries_count": 12,
+        "readback": "PASS"
+      }
+    },
+    "context_capitalization": {
+      "component": "context_capitalization",
+      "status": "PASS",
+      "summary": "Context Capitalization Repository is readable and Professional Model auto-update is disabled.",
+      "data": {
+        "capitalization_release": "VECTRA-CONTEXT-CAPITALIZATION-0001",
+        "readback": "PASS",
+        "reports_count": 0,
+        "professional_model_auto_update": false,
+        "product_owner_approval_required": true
+      }
+    },
+    "professional_body_integration": {
+      "component": "professional_body_integration",
+      "status": "FAIL",
+      "summary": "Professional Body Integration verification failed.",
+      "data": {
+        "release": "FOUNDATION-I001",
+        "capabilities_count": 19,
+        "professional_body_status": {
+          "status": "ready",
+          "release": "FOUNDATION-I001",
+          "professional_model_auto_update": false,
+          "product_owner_approval_required": true,
+          "updated_at": "2026-07-07T18:39:15Z"
+        },
+        "readback": "FAIL",
+        "runtime_is_single_source_of_professional_state": true,
+        "chat_memory_used_as_source": false,
+        "professional_model_auto_update": false,
+        "product_owner_approval_required": true
+      }
+    },
+    "business_domain_framework": {
+      "component": "business_domain_framework",
+      "status": "PASS",
+      "summary": "Business Domain Framework is available: Бон Буассон Domain can be activated, restored and used without changing VECTRA Professional Identity.",
+      "data": {
+        "release": "FOUNDATION-0006",
+        "domains_count": 1,
+        "active_domain": null,
+        "bon_buasson_profile_status": "ok",
+        "bon_buasson_recovery_status": "PASS",
+        "readback": "PASS",
+        "professional_identity_changed": false,
+        "professional_model_auto_update": false
+      }
+    },
+    "life_model": {
+      "component": "life_model",
+      "status": "FAIL",
+      "summary": "Life Model verification failed.",
+      "data": {
+        "release": "FOUNDATION-0007",
+        "life_model_status": "degraded",
+        "sections_count": 12,
+        "readback": "FAIL",
+        "source_of_state": "Runtime Repository",
+        "chat_memory_used_as_source": false,
+        "professional_model_auto_update": false,
+        "product_owner_approval_required": true
+      }
+    },
+    "vectra_operating_system": {
+      "component": "vectra_operating_system",
+      "status": "PASS",
+      "summary": "VECTRA Operating System is available in Runtime Repository and defines startup, work, knowledge, domain and verification rules.",
+      "data": {
+        "release": "VOS-001",
+        "vos_status": "active",
+        "sections_count": 15,
+        "readback": "PASS",
+        "source_of_state": "Runtime Repository",
+        "chat_memory_used_as_source": false,
+        "professional_model_auto_update": false,
+        "product_owner_approval_required": true
+      }
+    },
+    "workspace_status": {
+      "component": "workspace_status",
+      "status": "PASS",
+      "summary": "Runtime readback objects return workspace_markdown.",
+      "data": {
+        "checks": [
+          {
+            "object": "professional_model",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "professional_state",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "evolution_journal",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "recovery_bundle",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "knowledge_candidates",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "reflection_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "professional_observations",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "observation_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "active_responsibilities",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "responsibility_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "recovery_evolution_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "recovery_evolution_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "recovery_checkpoints",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_packages",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "review_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "review_sessions",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "review_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_execution_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_execution_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "synchronization_execution_history",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "working_vectra_state",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "context_capitalization_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "context_capitalization_packages",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "context_capitalization_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "capability_registry",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "professional_body_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "professional_body_restoration_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "professional_body_integration_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "business_domain_registry",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "active_business_domain",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "bon_buasson_domain_profile",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "bon_buasson_domain_recovery_snapshot",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "bon_buasson_domain_capitalization_reports",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "life_model",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "life_model_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "life_model_verification_report",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "vos",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "vos_status",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          },
+          {
+            "object": "vos_verification_report",
+            "status": "PASS",
+            "has_workspace_markdown": true
+          }
+        ]
+      }
+    },
+    "readback_verification": {
+      "component": "readback_verification",
+      "status": "PASS",
+      "summary": "Runtime objects are readable through the official readback contract.",
+      "data": {
+        "checks": [
+          {
+            "object": "professional_model",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "vectra_memory",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "professional_state",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "evolution_journal",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "product_decisions",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "knowledge_repository",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "recovery_bundle",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "runtime_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "pending_approvals",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "active_responsibilities",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "recovery_snapshot",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "knowledge_candidates",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "reflection_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "professional_observations",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "observation_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "responsibility_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "recovery_evolution_status",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "recovery_evolution_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "recovery_checkpoints",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "synchronization_status",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "synchronization_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "synchronization_packages",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "review_status",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "review_sessions",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "review_reports",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "life_model",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "life_model_status",
+            "status": "PASS",
+            "readable": true
+          },
+          {
+            "object": "life_model_verification_report",
+            "status": "PASS",
+            "readable": true
+          }
+        ]
+      }
+    },
+    "runtime_verification_automation": {
+      "component": "runtime_verification_automation",
+      "status": "PASS",
+      "summary": "Runtime Verification Evidence can be collected by VECTRA Laboratory from a single Runtime endpoint without manual Product Owner API calls.",
+      "data": {
+        "automation_release": "VOS-001",
+        "manual_product_owner_api_collection_required": false,
+        "evidence_endpoint": "/vectra/runtime/evidence",
+        "run_endpoint": "/vectra/runtime/verification/run",
+        "status_endpoint": "/vectra/runtime/verification/status"
+      }
+    },
+    "laboratory_verification_endpoint": {
+      "component": "laboratory_verification_endpoint",
+      "status": "PASS",
+      "summary": "VECTRA Laboratory can collect the full Product Verification Evidence package with one HTTP GET request.",
+      "data": {
+        "laboratory_verification_release": "FOUNDATION-0008",
+        "single_http_request_required": true,
+        "runtime_url_only_required_after_deploy": true,
+        "endpoint": "/vectra/laboratory/verification",
+        "method": "GET",
+        "manual_product_owner_api_collection_required": false
+      }
+    },
+    "laboratory_business_data_access": {
+      "component": "laboratory_business_data_access",
+      "status": "FAIL",
+      "summary": "Laboratory Business Data access verification failed.",
+      "data": {
+        "release": "BUSINESS-DISCOVERY-ENGINE-001",
+        "business_data_connected": false,
+        "business_data_health": "FAIL",
+        "rows_count": 0,
+        "normalized_rows_count": 0,
+        "latest_period": null,
+        "read_only": true,
+        "mutation_endpoints_exposed": false,
+        "same_source_as_working_gpt": true,
+        "available_read_only_endpoints": [
+          "/vectra/laboratory/business-data/status",
+          "/vectra/laboratory/business-data/entities",
+          "/vectra/laboratory/business-data/sample",
+          "/vectra/laboratory/business-data/summary/business",
+          "/vectra/laboratory/business-data/summary/manager-top",
+          "/vectra/laboratory/business-data/summary/manager",
+          "/vectra/laboratory/business-data/summary/network",
+          "/vectra/laboratory/business-data/summary/category",
+          "/vectra/laboratory/business-data/summary/tmc-group",
+          "/vectra/laboratory/business-data/summary/sku",
+          "/vectra/laboratory/business-data/query",
+          "/vectra/laboratory/business-data/verify"
+        ],
+        "verification_result": "FAIL"
+      }
+    },
+    "professional_knowledge": {
+      "component": "professional_knowledge",
+      "status": "PASS",
+      "summary": "Professional Knowledge repository is readable through Runtime.",
+      "data": {
+        "documents_count": 1,
+        "last_document": {
+          "knowledge_id": "PK-001",
+          "title": "Двухуровневая модель знаний VECTRA",
+          "type": "professional",
+          "status": "CAPITALIZED",
+          "description": "Профессиональные знания VECTRA разделяются на Business Knowledge и Professional Knowledge.",
+          "repository_path": "knowledge/professional_knowledge.json",
+          "capitalization_package": "KCAP-20260707T080830Z-3c8e3f",
+          "created_at": "2026-07-07T08:08:30Z",
+          "updated_at": "2026-07-07T08:08:30Z",
+          "source": "FOUNDATION-0012 local verification",
+          "professional_model_auto_update": false
+        },
+        "last_updated": "2026-07-17T08:51:32Z",
+        "repository_status": "readable",
+        "repository_path": "knowledge/professional_knowledge.json"
+      }
+    },
+    "business_domain_knowledge": {
+      "component": "business_domain_knowledge",
+      "status": "PASS",
+      "summary": "Business Domain Knowledge repository is readable and restored for Бон Буассон.",
+      "data": {
+        "domain": "bon_buasson",
+        "documents_count": 2,
+        "last_document": {
+          "knowledge_id": "bon_buasson-domain-knowledge-002",
+          "title": null,
+          "type": "business",
+          "status": "confirmed",
+          "description": "GPT is an interaction interface. Runtime Repository is the source of persistent professional state.",
+          "domain": "bon_buasson",
+          "repository_path": "business_domains/bon_buasson/business_knowledge.json",
+          "capitalization_package": null,
+          "created_at": null,
+          "updated_at": null,
+          "source": null
+        },
+        "last_updated": "2026-07-17T08:51:32Z",
+        "repository_status": "readable",
+        "repository_path": "business_domains/bon_buasson/business_knowledge.json",
+        "restored_in_domain_session": true
+      }
+    },
+    "api_health": {
+      "component": "api_health",
+      "status": "PASS",
+      "summary": "API process is running and Runtime Observability code executed successfully.",
+      "data": {
+        "health_source": "in_process_runtime_observability"
+      }
+    }
+  },
+  "extensions": {},
+  "product_owner_summary": {
+    "short_answer": "Runtime Snapshot сформирован. Это официальный источник фактического состояния VECTRA для Product Verification.",
+    "verification_rule": "Product Verification выполняется по Runtime Snapshot, а Release Brief используется только для понимания ожидаемого поведения."
+  },
+  "workspace_markdown": "# Runtime Snapshot VECTRA\n\nСтатус: **degraded**\n\nRuntime Snapshot сформирован. Это официальный источник фактического состояния VECTRA для Product Verification.\n\n## Данные\n{\n  \"overall_status\": \"FAIL\",\n  \"deployment\": {\n    \"deployment_version\": \"GENESIS-0001\",\n    \"deployment_time\": \"2026-07-22T09:36:25Z\",\n    \"git_commit\": \"unknown\",\n    \"service_id\": \"unknown\",\n    \"environment\": \"local_or_unknown\"\n  },\n  \"components\": {\n    \"runtime_repository\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Runtime Repository is readable.\"\n    },\n    \"runtime_status\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Runtime status object is available.\"\n    },\n    \"professional_state\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Professional State is readable.\"\n    },\n    \"professional_model\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Professional Model Repository is readable and has required sections.\"\n    },\n    \"recovery_status\": {\n      \"status\": \"FAIL\",\n      \"summary\": \"Recovery Snapshot history is not available.\"\n    },\n    \"evolution_journal\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Evolution Journal is readable.\"\n    },\n    \"product_decisions\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Product Decisions are readable.\"\n    },\n    \"knowledge_repository\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Knowledge Repository is readable.\"\n    },\n    \"pending_approvals\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Pending Approvals are readable.\"\n    },\n    \"runtime_reports\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Runtime Reports are readable.\"\n    },\n    \"professional_reflection\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Professional Reflection Engine and Knowledge Candidate Repository are readable.\"\n    },\n    \"professional_observation\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Professional Observation Engine and runtime event repository are readable.\"\n    },\n    \"active_responsibilities\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Active Responsibilities Engine and Responsibility Repository are readable.\"\n    },\n    \"recovery_evolution\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Recovery Evolution Engine, checkpoints and readback are available.\"\n    },\n    \"laboratory_synchronization\": {\n      \"status\": \"PASS\",\n      \"summary\": \"Laboratory to Working VECTRA Synchronization Foundation is readable and bounded.\"\n    },\n    \"produc…\n\n## Контроль\nДанные прочитаны из Runtime Repository VECTRA. Если запись была создана перед этим, она должна проходить Write → Readback Verification.",
+  "screen_order": [
+    "workspace_markdown"
+  ],
+  "workspace_render_instruction": "Показать пользователю workspace_markdown полностью и без изменений."
+}
