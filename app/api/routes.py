@@ -40,6 +40,11 @@ from app.development_journal import (
     build_journal_response as build_development_journal_response,
     analyze_dialogue_and_create_records as analyze_development_journal_dialogue,
     build_dialogue_review_response as build_development_journal_dialogue_review_response,
+    create_development_request,
+    record_owner_decision as record_development_owner_decision,
+    update_development_execution,
+    record_development_verification,
+    get_development_bridge,
 )
 from app.self_evolution.evolution_engine import (
     is_self_evolution_command,
@@ -10240,15 +10245,31 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
             result = {'status': 'ok', 'issue_classification': 'requires_product_review', 'payload': payload}
             return json_response(_facade_response(operation_type, 'product_review.detect_product_issue', '/vectra/laboratory/facade/product-review', result, next_action='Create product observation if Product Owner confirms.'))
         if operation_type == 'create_product_observation':
-            if not approval:
-                return json_response(_facade_error(operation_type, 'Product Owner approval is required to create a product observation.', runtime_service='product_review_facade'))
-            result = add_development_journal_global_record(payload)
-            return json_response(_facade_response(operation_type, 'development_journal.add_global_record', '/development-journal/global-record', result))
+            result = create_development_request({**payload, 'source_environment': 'Laboratory'})
+            return json_response(_facade_response(operation_type, 'development_journal.create_development_request', '/vectra/laboratory/facade/product-review', result))
         if operation_type == 'create_engineering_task':
             if not approval:
                 return json_response(_facade_error(operation_type, 'Product Owner approval is required to create an engineering task.', runtime_service='product_review_facade'))
+            record_id = str(payload.get('record_id') or '')
+            if record_id:
+                result = record_development_owner_decision(record_id, {**payload, 'decision': 'APPROVED', 'product_owner_approval': True})
+                return json_response(_facade_response(operation_type, 'development_journal.record_owner_decision', '/vectra/laboratory/facade/product-review', result))
+            # Backward compatibility for callers that create a standalone
+            # engineering task rather than advancing a bridge record.
             result = add_development_journal_global_record(payload)
             return json_response(_facade_response(operation_type, 'development_journal.add_global_record', '/development-journal/global-record', result))
+        if operation_type in {'get_development_requests', 'get_development_request', 'get_new_development_requests'}:
+            result = get_development_bridge(str(payload.get('record_id') or '') or None, only_new=operation_type == 'get_new_development_requests', limit=int(payload.get('limit') or 50))
+            return json_response(_facade_response(operation_type, 'development_journal.get_development_bridge', '/vectra/laboratory/facade/product-review', result))
+        if operation_type == 'record_owner_decision':
+            result = record_development_owner_decision(str(payload.get('record_id') or ''), {**payload, 'product_owner_approval': approval or payload.get('product_owner_approval')})
+            return json_response(_facade_response(operation_type, 'development_journal.record_owner_decision', '/vectra/laboratory/facade/product-review', result))
+        if operation_type == 'update_engineering_execution':
+            result = update_development_execution(str(payload.get('record_id') or ''), payload)
+            return json_response(_facade_response(operation_type, 'development_journal.update_development_execution', '/vectra/laboratory/facade/product-review', result))
+        if operation_type == 'record_product_verification':
+            result = record_development_verification(str(payload.get('record_id') or ''), payload)
+            return json_response(_facade_response(operation_type, 'development_journal.record_development_verification', '/vectra/laboratory/facade/product-review', result))
         if operation_type == 'generate_product_review_report':
             result = build_development_journal_response(limit=int(payload.get('limit') or 50))
             return json_response(_facade_response(operation_type, 'development_journal.build_journal_response', '/development-journal', result))
