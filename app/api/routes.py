@@ -9182,8 +9182,13 @@ def _build_laboratory_facade_action_manifest() -> dict:
     public_actions = _iter_openapi_actions(facade_schema)
     internal_actions = _internal_runtime_actions()
     public_ids = {str(action.get('operation_id')) for action in public_actions}
-    required_public_ids = set(_FACADE_OPERATION_TO_ENDPOINT)
+    # The exported facade action list is the canonical source of truth.
+    # Do not compare against the historical operation-to-endpoint compatibility
+    # map: that map intentionally retains aliases and internal diagnostics that
+    # are not exported because GPT Actions is limited to 30 public operations.
+    required_public_ids = {operation_id for operation_id, *_ in _FACADE_ACTIONS}
     missing_facade = sorted(required_public_ids - public_ids)
+    unexpected_facade = sorted(public_ids - required_public_ids)
     internal_services_missing = []
     for action in internal_actions:
         if not action.get('runtime_service'):
@@ -9204,9 +9209,10 @@ def _build_laboratory_facade_action_manifest() -> dict:
         'internal_runtime_operations': internal_actions,
         'internal_runtime_operations_count': len(internal_actions),
         'missing_facade_actions': missing_facade,
+        'unexpected_facade_actions': unexpected_facade,
         'missing_internal_services': internal_services_missing,
-        'export_status': 'COMPLETE' if not missing_facade and not internal_services_missing else 'INCOMPLETE',
-        'verification_status': 'PASS' if not missing_facade and not internal_services_missing else 'FAIL',
+        'export_status': 'COMPLETE' if not missing_facade and not unexpected_facade and not internal_services_missing else 'INCOMPLETE',
+        'verification_status': 'PASS' if not missing_facade and not unexpected_facade and not internal_services_missing else 'FAIL',
         'policy': 'GPT imports one compact facade schema; Runtime routes internally to detailed services.',
     }
 
@@ -9214,8 +9220,9 @@ def _build_laboratory_facade_action_manifest() -> dict:
 def _verify_laboratory_facade_action_completeness() -> dict:
     manifest = _build_laboratory_facade_action_manifest()
     missing_facade = manifest.get('missing_facade_actions') if isinstance(manifest.get('missing_facade_actions'), list) else []
+    unexpected_facade = manifest.get('unexpected_facade_actions') if isinstance(manifest.get('unexpected_facade_actions'), list) else []
     missing_services = manifest.get('missing_internal_services') if isinstance(manifest.get('missing_internal_services'), list) else []
-    incomplete = bool(missing_facade or missing_services or manifest.get('operation_count', 999) > 30)
+    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 30)
     return {
         'status': 'ok' if not incomplete else 'error',
         'render_mode': 'vectra_laboratory_action_completeness_verification',
@@ -9228,6 +9235,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'internal_runtime_operations_count': manifest.get('internal_runtime_operations_count'),
         'missing_capability': [],
         'missing_facade_action': missing_facade,
+        'unexpected_facade_action': unexpected_facade,
         'missing_internal_service': missing_services,
         'affected_product_owner_command': [] if not incomplete else ['Лаборатория, продолжай работу.', 'Лаборатория, капитализируй подтверждённые знания.', 'Лаборатория, проверь комплектацию.'],
         'release_blocked': incomplete,
