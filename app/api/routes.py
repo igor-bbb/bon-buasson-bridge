@@ -8438,6 +8438,118 @@ def _business_domain_action_request_schema() -> dict:
         ],
     }
 
+
+def _product_review_action_request_schema() -> dict:
+    """Explicit GPT Actions contract for Development Bridge operations.
+
+    The bridge is intentionally exposed through the existing Product Review
+    Action so the public Action count stays at 30.  Operation names and their
+    inputs must be visible to the GPT Editor; a generic string/payload contract
+    makes implemented Runtime capabilities undiscoverable to Laboratory.
+    """
+    operations = [
+        'inspect_workspace',
+        'verify_workspace',
+        'detect_product_issue',
+        'create_product_observation',
+        'get_development_request',
+        'get_development_requests',
+        'get_new_development_requests',
+        'record_owner_decision',
+        'create_engineering_task',
+        'update_engineering_execution',
+        'record_product_verification',
+        'generate_product_review_report',
+    ]
+    payload_schema = {
+        'type': 'object',
+        'description': (
+            'Inputs for the selected operation. create_product_observation requires confirmed_gap; '
+            'record_owner_decision requires record_id and decision; update_engineering_execution '
+            'requires record_id and stage; record_product_verification requires record_id and verdict.'
+        ),
+        'properties': {
+            'record_id': {'type': 'string', 'description': 'Persistent bridge record id, for example DEV-0001.'},
+            'confirmed_gap': {'type': 'string', 'description': 'Confirmed product or engineering gap.'},
+            'evidence_summary': {'type': 'string', 'description': 'Observed evidence supporting the gap.'},
+            'proposal': {'type': 'string', 'description': 'Proposed VECTRA development response.'},
+            'decision': {
+                'type': 'string',
+                'enum': ['APPROVED', 'REJECTED', 'DEFERRED'],
+                'description': 'Explicit Product Owner decision for record_owner_decision.',
+            },
+            'comment': {'type': 'string', 'description': 'Product Owner or engineering comment.'},
+            'stage': {
+                'type': 'string',
+                'enum': ['open', 'in_progress', 'fixed', 'awaiting_verification'],
+                'description': 'Engineering execution stage.',
+            },
+            'release_id': {'type': 'string', 'description': 'Release identifier linked to the record.'},
+            'release_version': {'type': 'string', 'description': 'Deployed release version.'},
+            'commit_sha': {'type': 'string', 'description': 'Git commit linked to the engineering execution.'},
+            'verdict': {
+                'type': 'string',
+                'enum': ['PASS', 'FAIL'],
+                'description': 'Product Verification verdict. FAIL returns the record to Open; PASS closes it.',
+            },
+            'evidence': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': 'Observed Product Verification evidence.',
+            },
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 50},
+        },
+        'additionalProperties': True,
+    }
+    return {
+        'type': 'object',
+        'required': ['operation_type'],
+        'properties': {
+            'operation_type': {
+                'type': 'string',
+                'enum': operations,
+                'description': (
+                    'Development Bridge operation. For full Product Verification call inspect_workspace, '
+                    'create_product_observation, get_development_request, record_owner_decision, '
+                    'update_engineering_execution, record_product_verification, then read the same record again.'
+                ),
+            },
+            'payload': payload_schema,
+            'product_owner_approval': {
+                'type': 'boolean',
+                'description': 'Set true only after explicit Product Owner authorization for record_owner_decision or create_engineering_task.',
+            },
+            'session_id': {'type': 'string', 'description': 'Laboratory session id.'},
+            'request_id': {'type': 'string', 'description': 'Client request id for traceability.'},
+        },
+        'additionalProperties': False,
+        'examples': [
+            {'operation_type': 'inspect_workspace', 'payload': {}},
+            {
+                'operation_type': 'create_product_observation',
+                'payload': {
+                    'confirmed_gap': 'Product Verification test observation.',
+                    'evidence_summary': 'Observed in deployed Production Runtime.',
+                    'proposal': 'Verify the complete Development Bridge lifecycle.',
+                },
+            },
+            {'operation_type': 'get_development_request', 'payload': {'record_id': 'DEV-0001'}},
+            {
+                'operation_type': 'record_owner_decision',
+                'product_owner_approval': True,
+                'payload': {'record_id': 'DEV-0001', 'decision': 'APPROVED', 'comment': 'Technical lifecycle test approved.'},
+            },
+            {
+                'operation_type': 'update_engineering_execution',
+                'payload': {'record_id': 'DEV-0001', 'stage': 'awaiting_verification', 'release_id': 'VECTRA-DEVELOPMENT-BRIDGE-001'},
+            },
+            {
+                'operation_type': 'record_product_verification',
+                'payload': {'record_id': 'DEV-0001', 'verdict': 'FAIL', 'release_id': 'VECTRA-DEVELOPMENT-BRIDGE-001'},
+            },
+        ],
+    }
+
 def _facade_response_schema() -> dict:
     return {
         'type': 'object',
@@ -8907,6 +9019,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_framework_service_action_request_schema()
             elif operation_id == 'executeVectraBusinessDomainOperation':
                 request_schema = _business_domain_action_request_schema()
+            elif operation_id == 'executeVectraProductReviewOperation':
+                request_schema = _product_review_action_request_schema()
             else:
                 request_schema = _facade_operation_request_schema()
             op['requestBody'] = {

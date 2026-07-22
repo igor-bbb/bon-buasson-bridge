@@ -1,5 +1,7 @@
 import importlib
 
+from app.api.routes import _laboratory_facade_openapi_schema
+
 
 def _journal(tmp_path, monkeypatch):
     monkeypatch.setenv('VECTRA_DEVELOPMENT_JOURNAL_PATH', str(tmp_path / 'development_journal.json'))
@@ -100,3 +102,35 @@ def test_repeated_observation_does_not_reset_owner_decision(tmp_path, monkeypatc
     repeated = journal.create_development_request({'confirmed_gap': 'Repeated gap'})
     assert repeated['record_id'] == first['record_id']
     assert repeated['record']['owner_decision']['status'] == 'APPROVED'
+
+
+def test_product_review_action_publishes_explicit_bridge_contract():
+    schema = _laboratory_facade_openapi_schema()
+    action = schema['paths']['/vectra/laboratory/facade/product-review']['post']
+    request_schema = action['requestBody']['content']['application/json']['schema']
+    operation_schema = request_schema['properties']['operation_type']
+
+    required_operations = {
+        'inspect_workspace',
+        'create_product_observation',
+        'get_development_request',
+        'record_owner_decision',
+        'update_engineering_execution',
+        'record_product_verification',
+    }
+    assert required_operations <= set(operation_schema['enum'])
+
+    payload_properties = request_schema['properties']['payload']['properties']
+    assert {'record_id', 'confirmed_gap', 'decision', 'stage', 'release_id', 'commit_sha', 'verdict'} <= set(payload_properties)
+    assert payload_properties['verdict']['enum'] == ['PASS', 'FAIL']
+
+
+def test_product_review_contract_keeps_public_action_limit_and_production_server(monkeypatch):
+    monkeypatch.setenv('VECTRA_PUBLIC_RUNTIME_URL', 'https://bon-buasson-api.onrender.com')
+    schema = _laboratory_facade_openapi_schema()
+    operation_count = sum(len(methods) for methods in schema['paths'].values())
+
+    assert operation_count == 30
+    assert schema['servers'] == [{'url': 'https://bon-buasson-api.onrender.com'}]
+    operation_ids = [operation['operationId'] for methods in schema['paths'].values() for operation in methods.values()]
+    assert operation_ids.count('executeVectraProductReviewOperation') == 1
