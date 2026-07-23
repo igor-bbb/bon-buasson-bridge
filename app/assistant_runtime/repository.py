@@ -874,6 +874,16 @@ def _seed_capability_registry() -> Dict[str, Any]:
             'status': 'active',
             'maturity_level': 'Production',
         },
+        {
+            'capability_id': 'professional_knowledge_runtime_influence',
+            'title': 'Professional Knowledge Runtime Influence',
+            'professional_value': 'Загружать капитализированные профессиональные знания в рабочий контекст, применять их к проверяемому профессиональному решению и сохранять доказательство влияния без автоматического изменения Professional Model.',
+            'responsibility': 'Professional Knowledge Application',
+            'runtime_service': 'professional_knowledge_runtime.evaluate_operational_capability_readiness',
+            'transport_endpoint': '/vectra/laboratory/facade/knowledge',
+            'status': 'active',
+            'maturity_level': 'Production',
+        },
     ]
     return {
         'registry_id': 'vectra-capability-registry-root',
@@ -1964,6 +1974,18 @@ def get_capability_registry() -> Dict[str, Any]:
             'maturity_level': 'Production',
         })
         changed = True
+    if not any(isinstance(c, dict) and c.get('capability_id') == 'professional_knowledge_runtime_influence' for c in capabilities):
+        capabilities.append({
+            'capability_id': 'professional_knowledge_runtime_influence',
+            'title': 'Professional Knowledge Runtime Influence',
+            'professional_value': 'Загружать капитализированные профессиональные знания в рабочий контекст, применять их к проверяемому профессиональному решению и сохранять доказательство влияния без автоматического изменения Professional Model.',
+            'responsibility': 'Professional Knowledge Application',
+            'runtime_service': 'professional_knowledge_runtime.evaluate_operational_capability_readiness',
+            'transport_endpoint': '/vectra/laboratory/facade/knowledge',
+            'status': 'active',
+            'maturity_level': 'Production',
+        })
+        changed = True
     if not any(isinstance(c, dict) and c.get('capability_id') == 'business_domain_knowledge_runtime' for c in capabilities):
         capabilities.append({
             'capability_id': 'business_domain_knowledge_runtime',
@@ -2219,6 +2241,7 @@ def restore_professional_body_state() -> Dict[str, Any]:
     decisions = _read_json(base / 'decisions' / 'product_decisions.json', [])
     responsibilities = _read_json(base / 'responsibilities' / 'active_responsibilities.json', [])
     knowledge = _read_json(base / 'knowledge' / 'knowledge_index.json', [])
+    professional_knowledge = _read_json(base / 'knowledge' / 'professional_knowledge.json', [])
     recovery = get_recovery_bundle()
     pending = _read_json(base / 'runtime' / 'execution' / 'pending_approvals.json', [])
     capitalization_status = get_context_capitalization_status()
@@ -2246,6 +2269,8 @@ def restore_professional_body_state() -> Dict[str, Any]:
         'confirmed_product_decisions': decisions[-20:] if isinstance(decisions, list) else [],
         'active_responsibilities': responsibilities if isinstance(responsibilities, list) else [],
         'knowledge_repository': knowledge if isinstance(knowledge, list) else [],
+        'professional_knowledge': professional_knowledge if isinstance(professional_knowledge, list) else [],
+        'professional_knowledge_count': len(professional_knowledge) if isinstance(professional_knowledge, list) else 0,
         'evolution_journal': journal[-20:] if isinstance(journal, list) else [],
         'recovery_snapshot': recovery.get('latest_recovery_snapshot') if isinstance(recovery, dict) else None,
         'pending_reviews': pending if isinstance(pending, list) else [],

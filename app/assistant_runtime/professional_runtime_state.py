@@ -18,6 +18,7 @@ from app.assistant_runtime.durable_runtime_state import (
 from app.assistant_runtime.self_governance_runtime import get_self_governance_snapshot
 from app.assistant_runtime.professional_business_model import build_professional_business_runtime_projection
 from app.assistant_runtime.business_understanding_runtime import get_professional_understanding_state
+from app.assistant_runtime.professional_knowledge_runtime import build_professional_knowledge_context
 
 RELEASE_ID = "VECTRA-SELF-GOVERNANCE-EP-001-FINAL"
 CONTRACT_VERSION = "1.0"
@@ -64,6 +65,7 @@ def build_professional_runtime_state(
     domain_id = str(domain.get("domain_id") or "bon_buasson").strip().lower()
     professional_business_model = build_professional_business_runtime_projection(domain_id)
     professional_understanding_state = get_professional_understanding_state(domain_id)
+    professional_knowledge_context = build_professional_knowledge_context()
     active_cycle = active_context if isinstance(active_context, dict) else {}
     open_decisions = [
         deepcopy(item) for item in (decisions or [])
@@ -100,6 +102,7 @@ def build_professional_runtime_state(
         "active_business_domain": deepcopy(domain),
         "professional_business_model": professional_business_model,
         "professional_understanding_state": professional_understanding_state,
+        "professional_knowledge_context": professional_knowledge_context.get("professional_knowledge_context"),
         "active_work": {
             "engineering_cycle": deepcopy(active_cycle),
             "current_activity": deepcopy(current_activity),
@@ -134,6 +137,8 @@ def build_professional_runtime_state(
             "unified_runtime_read_status": diagnostic.get("status"),
             "professional_business_model_ready": professional_business_model.get("status") == "PASS",
             "professional_understanding_state_ready": professional_understanding_state.get("status") == "PASS",
+            "professional_knowledge_context_ready": professional_knowledge_context.get("status") in {"PASS", "NOT_FOUND"},
+            "professional_model_auto_update": False,
         },
         "updated_at": _now(),
     }

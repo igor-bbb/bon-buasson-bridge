@@ -161,6 +161,24 @@
       "maturity_level": "Production"
     },
     {
+      "capability_id": "professional_knowledge_runtime_influence",
+      "title": "Professional Knowledge Runtime Influence",
+      "professional_value": "Загружать капитализированные профессиональные знания в рабочий контекст, применять их к проверяемому профессиональному решению и сохранять доказательство влияния без автоматического изменения Professional Model.",
+      "responsibility": "Professional Knowledge Application",
+      "runtime_service": "professional_knowledge_runtime.evaluate_operational_capability_readiness",
+      "transport_endpoint": "/vectra/laboratory/facade/knowledge",
+      "status": "active",
+      "maturity_level": "Production",
+      "state_mutation": true,
+      "product_owner_approval_required": false,
+      "supported_operation_types": [
+        "get_professional_knowledge_context",
+        "evaluate_operational_capability_readiness",
+        "get_knowledge_influence_trace",
+        "verify_knowledge_influence"
+      ]
+    },
+    {
       "capability_id": "business_domain_knowledge_runtime",
       "title": "Business Domain Knowledge Runtime",
       "professional_value": "Капитализировать, читать, проверять и восстанавливать подтверждённые знания конкретного Business Domain без смешивания с Professional Knowledge.",
