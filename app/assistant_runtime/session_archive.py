@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 import json
+import os
 
 from app.assistant_runtime.professional_intelligence import (
     build_session_context,
@@ -24,8 +25,14 @@ from app.assistant_runtime.professional_intelligence import (
     build_package_diagnostics,
     run_runtime_capitalization_integration,
 )
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
 
-ARCHIVE_DIR = Path("assistant_repository/runtime/session_archive")
+ARCHIVE_DIR = Path(
+    os.getenv("VECTRA_ASSISTANT_REPOSITORY_PATH", "assistant_repository")
+).resolve() / "runtime" / "session_archive"
 ARCHIVE_FILE = ARCHIVE_DIR / "session_archives.json"
 
 EVENT_TYPES = {
@@ -47,20 +54,14 @@ def _now() -> str:
 
 
 def _read_store() -> dict[str, Any]:
-    if not ARCHIVE_FILE.exists():
-        return {"archives": {}}
-    try:
-        data = json.loads(ARCHIVE_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("archives"), dict):
-            return data
-    except Exception:
-        pass
+    data = read_repository_json(ARCHIVE_FILE, {"archives": {}})
+    if isinstance(data, dict) and isinstance(data.get("archives"), dict):
+        return data
     return {"archives": {}}
 
 
 def _write_store(data: dict[str, Any]) -> None:
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    ARCHIVE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_repository_json(ARCHIVE_FILE, data)
 
 
 def _stable_id(prefix: str, *parts: Any) -> str:
@@ -474,20 +475,14 @@ HISTORICAL_STAGE_KEYWORDS = [
 
 
 def _read_migration_store() -> dict[str, Any]:
-    if not MIGRATION_FILE.exists():
-        return {"migrations": {}}
-    try:
-        data = json.loads(MIGRATION_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("migrations"), dict):
-            return data
-    except Exception:
-        pass
+    data = read_repository_json(MIGRATION_FILE, {"migrations": {}})
+    if isinstance(data, dict) and isinstance(data.get("migrations"), dict):
+        return data
     return {"migrations": {}}
 
 
 def _write_migration_store(data: dict[str, Any]) -> None:
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    MIGRATION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_repository_json(MIGRATION_FILE, data)
 
 
 def _normalize_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:

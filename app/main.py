@@ -48,6 +48,14 @@ def warmup_vectra_runtime():
     from app.data.loader import get_csv_text  # 🔴 ДОБАВИЛИ
 
     try:
+        from app.assistant_runtime.repository import ensure_repository
+        from app.assistant_runtime.repository_migrations import reconcile_lost_pk002_candidate
+
+        ensure_repository()
+        migration = reconcile_lost_pk002_candidate()
+        if migration.get("status") != "PASS":
+            raise RuntimeError("Runtime Repository migration failed")
+
         # 🔴 preload DATA
         get_csv_text()
 

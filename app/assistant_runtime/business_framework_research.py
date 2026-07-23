@@ -35,6 +35,10 @@ from app.assistant_runtime.professional_activity import (
     queue_professional_activity,
     start_professional_activity,
 )
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
 
 RELEASE_ID = "BUSINESS-FRAMEWORK-RESEARCH-FOUNDATION-001"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -117,22 +121,11 @@ def _path(relative: Path) -> Path:
 
 
 def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if not path.exists():
-            return deepcopy(default)
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except Exception:
-        return deepcopy(default)
+    return read_repository_json(path, default)
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-    temporary.replace(path)
+    write_repository_json(path, payload)
 
 
 def _list(relative: Path) -> List[Dict[str, Any]]:

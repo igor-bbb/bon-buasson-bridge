@@ -23,6 +23,10 @@ from app.assistant_runtime.research_engine import (
     update_research_working_context,
     complete_research_session,
 )
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
 
 RELEASE_ID = "DIGITAL-BUSINESS-ANALYST-RUNTIME-INTEGRATION-001"
 ROLE_ID = "digital_business_analyst"
@@ -41,21 +45,12 @@ def _path() -> Path:
 
 
 def _read() -> List[Dict[str, Any]]:
-    try:
-        path = _path()
-        if not path.exists():
-            return []
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    value = read_repository_json(_path(), [])
+    return value if isinstance(value, list) else []
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    path = _path(); path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_repository_json(_path(), items)
 
 
 def _find(items: List[Dict[str, Any]], integration_session_id: str) -> Optional[Dict[str, Any]]:

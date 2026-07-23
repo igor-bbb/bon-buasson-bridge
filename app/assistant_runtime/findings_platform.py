@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from app.assistant_runtime.evidence_platform import get_professional_evidence
+from app.assistant_runtime.repository_persistence import read_repository_json, write_repository_json
 
 RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-002"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -20,15 +21,11 @@ def _now(): return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 def _path(): return Path(os.getenv("VECTRA_ASSISTANT_REPOSITORY_PATH", DEFAULT_BASE_PATH)).resolve() / FINDINGS_FILE
 
 def _read() -> List[Dict[str, Any]]:
-    try:
-        p=_path();
-        if not p.exists(): return []
-        v=json.loads(p.read_text(encoding="utf-8")); return v if isinstance(v,list) else []
-    except Exception: return []
+    value = read_repository_json(_path(), [])
+    return value if isinstance(value, list) else []
 
 def _write(items):
-    p=_path(); p.parent.mkdir(parents=True, exist_ok=True); t=p.with_suffix(p.suffix+".tmp")
-    t.write_text(json.dumps(items,ensure_ascii=False,indent=2)+"\n",encoding="utf-8"); t.replace(p)
+    write_repository_json(_path(), items)
 def _required(payload,key):
     v=str(payload.get(key) or "").strip()
     if not v: raise ValueError(f"{key} is required")

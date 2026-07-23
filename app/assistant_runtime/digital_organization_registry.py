@@ -12,6 +12,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from app.assistant_runtime.repository_persistence import read_repository_json, write_repository_json
 
 RELEASE_ID = "DIGITAL-BUSINESS-ANALYST-FOUNDATION-001"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -121,27 +122,16 @@ def _path() -> Path:
 
 def _read() -> List[Dict[str, Any]]:
     path = _path()
-    try:
-        if not path.exists():
-            seeded = _merge_canonical_roles([])
-            _write(seeded)
-            return seeded
-        data = json.loads(path.read_text(encoding="utf-8"))
-        items = data if isinstance(data, list) else []
-        merged = _merge_canonical_roles(items)
-        if len(merged) != len(items):
-            _write(merged)
-        return merged
-    except Exception:
-        return []
+    data = read_repository_json(path, [])
+    items = data if isinstance(data, list) else []
+    merged = _merge_canonical_roles(items)
+    if merged != items:
+        _write(merged)
+    return merged
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_repository_json(_path(), items)
 
 
 def _required(payload: Dict[str, Any], key: str) -> str:

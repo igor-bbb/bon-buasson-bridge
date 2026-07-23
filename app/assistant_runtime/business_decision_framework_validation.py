@@ -25,6 +25,10 @@ from app.assistant_runtime.research_engine import (
     update_research_working_context,
     complete_research_session,
 )
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
 
 RELEASE_ID = "BUSINESS-DECISION-FRAMEWORK-VALIDATION-001-HOLD-001"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -51,22 +55,12 @@ def _path() -> Path:
 
 
 def _read_reports() -> List[Dict[str, Any]]:
-    try:
-        path = _path()
-        if not path.exists():
-            return []
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    value = read_repository_json(_path(), [])
+    return value if isinstance(value, list) else []
 
 
 def _write_reports(items: List[Dict[str, Any]]) -> None:
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    write_repository_json(_path(), items)
 
 
 def get_business_decision_framework_validation_manifest() -> Dict[str, Any]:

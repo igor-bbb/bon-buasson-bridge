@@ -28,6 +28,10 @@ from app.assistant_runtime.repository import (
 from app.assistant_runtime.execution import get_pending_approvals
 from app.assistant_runtime.responsibility import list_active_responsibilities
 from app.assistant_runtime.review import list_evolution_journal_entries
+from app.assistant_runtime.repository_persistence import (
+    read_repository_text,
+    write_repository_text,
+)
 
 VOS_RELEASE = "VOS-001"
 VOS_DIR = Path("runtime") / "vos"
@@ -270,7 +274,7 @@ def ensure_vos_repository() -> Path:
     if not model_path.exists():
         _write_json(model_path, _seed_vos_model())
     if not md_path.exists():
-        md_path.write_text(_vos_markdown(), encoding="utf-8")
+        write_repository_text(md_path, _vos_markdown())
     if not status_path.exists():
         _write_json(status_path, {
             "status": "active",
@@ -309,9 +313,9 @@ def ensure_vos_repository() -> Path:
 def get_vos() -> Dict[str, Any]:
     d = ensure_vos_repository()
     model = _read_json(d / "operating_model.json", _seed_vos_model())
-    markdown = (d / "operating_model.md").read_text(encoding="utf-8") if (d / "operating_model.md").exists() else _vos_markdown()
+    markdown = read_repository_text(d / "operating_model.md", _vos_markdown())
     if not (d / "operating_model.md").exists():
-        (d / "operating_model.md").write_text(markdown, encoding="utf-8")
+        write_repository_text(d / "operating_model.md", markdown)
     payload = {
         "status": "ok",
         "render_mode": "vectra_operating_system",

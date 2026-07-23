@@ -22,6 +22,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state, inspect_json_state
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
 
 RELEASE_ID = "VECTRA-V2-PA-FOUNDATION-002"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -79,22 +83,11 @@ def _path(relative: Path) -> Path:
 
 
 def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if not path.exists():
-            return deepcopy(default)
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except Exception:
-        return deepcopy(default)
+    return read_repository_json(path, default)
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-    tmp.replace(path)
+    write_repository_json(path, payload)
 
 
 def _activities() -> List[Dict[str, Any]]:
