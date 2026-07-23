@@ -145,6 +145,104 @@ def test_openapi_publishes_explicit_knowledge_id_contract() -> None:
     assert "object_type" not in request_schema["properties"]
 
 
+def test_openapi_publishes_explicit_create_candidate_contract() -> None:
+    schema = routes._laboratory_facade_openapi_schema()
+    request_schema = schema["paths"]["/vectra/laboratory/facade/knowledge"]["post"][
+        "requestBody"
+    ]["content"]["application/json"]["schema"]
+    properties = request_schema["properties"]
+
+    assert properties["candidate_id"]["type"] == "string"
+    assert properties["knowledge_id"]["type"] == "string"
+    assert properties["knowledge_type"]["enum"] == ["professional", "business"]
+    assert properties["title"]["type"] == "string"
+    assert properties["content"]["type"] == "string"
+    assert properties["source"]["type"] == "string"
+    assert "Do not place this value in working_context" in properties["content"]["description"]
+
+
+def test_http_action_routes_top_level_create_candidate_fields_once(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def handler(payload):
+        calls.append(payload)
+        return {
+            "status": "ok",
+            "candidate": {
+                "candidate_id": payload["candidate_id"],
+                "knowledge_id": payload["knowledge_id"],
+                "knowledge_type": payload["knowledge_type"],
+                "title": payload["title"],
+                "content": payload["content"],
+                "product_owner_approval": payload["product_owner_approval"],
+            },
+            "capitalization_allowed": True,
+        }
+
+    monkeypatch.setattr(routes, "create_vectra_knowledge_candidate", handler)
+    candidate = {
+        "candidate_id": "KC-PK-002-OPERATIONAL-CAPABILITY-READINESS-001",
+        "knowledge_id": "PK-002",
+        "knowledge_type": "professional",
+        "title": "Критерий эксплуатационной доступности",
+        "content": "Полный утверждённый текст кандидата знания.",
+        "source": "Product Verification",
+    }
+    response = client.post(
+        "/vectra/laboratory/facade/knowledge",
+        json={
+            "operation_type": "create_candidate",
+            **candidate,
+            "product_owner_approval": True,
+            "working_context": "Контекст сессии не заменяет content.",
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["operation_type"] == "create_candidate"
+    assert len(calls) == 1
+    for key, value in candidate.items():
+        assert calls[0][key] == value
+    assert calls[0]["product_owner_approval"] is True
+    assert calls[0]["working_context"] == "Контекст сессии не заменяет content."
+    assert body["result"]["candidate"]["content"] == candidate["content"]
+
+
+def test_http_action_keeps_nested_create_candidate_payload_compatible(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        routes,
+        "create_vectra_knowledge_candidate",
+        lambda payload: calls.append(payload) or {"status": "ok"},
+    )
+    nested_payload = {
+        "candidate_id": "KC-PK-LEGACY",
+        "knowledge_id": "PK-LEGACY",
+        "knowledge_type": "professional",
+        "title": "Legacy candidate",
+        "content": "Legacy nested content",
+    }
+
+    response = client.post(
+        "/vectra/laboratory/facade/knowledge",
+        json={
+            "operation_type": "create_candidate",
+            "payload": nested_payload,
+            "product_owner_approval": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert calls == [{**nested_payload, "product_owner_approval": True}]
+
+
 @pytest.mark.parametrize(
     ("operation_type", "knowledge_id", "domain", "handler_name"),
     [
