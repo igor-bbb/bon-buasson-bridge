@@ -1,9 +1,9 @@
 {
   "registry_id": "vectra-capability-registry-root",
-  "release": "LABORATORY-ACTIONS-0002",
+  "release": "LABORATORY-KNOWLEDGE-CAPABILITY-CONTRACT-001",
   "status": "active",
   "created_at": "2026-07-07T18:39:15Z",
-  "updated_at": "2026-07-22T09:36:25Z",
+  "updated_at": "2026-07-23T05:30:00Z",
   "principle": "VECTRA selects professional capabilities by intent and responsibility. REST endpoints are transport implementation, not Product Owner workflow.",
   "interaction_flow": [
     "User Intent",
@@ -169,6 +169,71 @@
       "transport_endpoint": "/vectra/domain/{domain}/knowledge/{knowledge_id}",
       "status": "active",
       "maturity_level": "Production"
+    },
+    {
+      "capability_id": "knowledge_candidate_creation",
+      "title": "Knowledge Candidate Creation",
+      "professional_value": "Формировать явный кандидат знания из подтверждённого профессионального вывода до любой записи в постоянную память.",
+      "responsibility": "Knowledge Stewardship",
+      "runtime_service": "knowledge_capitalization.create_knowledge_candidate",
+      "transport_endpoint": "/vectra/knowledge/candidates",
+      "status": "active",
+      "maturity_level": "Production",
+      "state_mutation": true,
+      "product_owner_approval_required": false,
+      "supported_operation_types": [
+        "create_candidate"
+      ]
+    },
+    {
+      "capability_id": "knowledge_capitalization_package",
+      "title": "Knowledge Capitalization Package",
+      "professional_value": "Создавать проверяемый пакет капитализации только для кандидата, подтверждённого Product Owner.",
+      "responsibility": "Controlled Knowledge Capitalization",
+      "runtime_service": "knowledge_capitalization.create_capitalization_package",
+      "transport_endpoint": "/vectra/knowledge/capitalization/packages",
+      "status": "active",
+      "maturity_level": "Production",
+      "state_mutation": true,
+      "product_owner_approval_required": true,
+      "supported_operation_types": [
+        "create_package"
+      ]
+    },
+    {
+      "capability_id": "knowledge_capitalization_write",
+      "title": "Knowledge Capitalization Write",
+      "professional_value": "Записывать подтверждённое знание в целевой Repository с обязательными Readback, Recovery Snapshot и Evolution Journal.",
+      "responsibility": "Professional Memory Write Control",
+      "runtime_service": "knowledge_capitalization.write_confirmed_knowledge",
+      "transport_endpoint": "/vectra/knowledge/capitalization/write",
+      "status": "active",
+      "maturity_level": "Production",
+      "state_mutation": true,
+      "product_owner_approval_required": true,
+      "supported_operation_types": [
+        "write_professional_knowledge",
+        "write_business_knowledge",
+        "capitalize_confirmed_knowledge"
+      ]
+    },
+    {
+      "capability_id": "knowledge_capitalization_status",
+      "title": "Knowledge Capitalization Status",
+      "professional_value": "Показывать фактический статус последнего пакета, записи, обратного чтения и обновления Recovery Snapshot.",
+      "responsibility": "Knowledge Capitalization Observability",
+      "runtime_service": "knowledge_capitalization.get_knowledge_capitalization_status",
+      "transport_endpoint": "/vectra/knowledge/capitalization/status",
+      "status": "active",
+      "maturity_level": "Production",
+      "state_mutation": false,
+      "product_owner_approval_required": false,
+      "supported_operation_types": [
+        "status",
+        "get_status",
+        "list_reports",
+        "verify"
+      ]
     },
     {
       "capability_id": "laboratory_action_manifest",
