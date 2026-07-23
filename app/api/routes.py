@@ -8353,6 +8353,27 @@ def _facade_operation_request_schema() -> dict:
                         'type': 'string',
                         'description': 'Knowledge identifier, for example PK-001 or BK-001.',
                     },
+                    'candidate_id': {
+                        'type': 'string',
+                        'description': 'Knowledge Candidate identifier, for example KC-PK-002.',
+                    },
+                    'knowledge_type': {
+                        'type': 'string',
+                        'enum': ['professional', 'business'],
+                        'description': 'Knowledge Candidate type.',
+                    },
+                    'title': {
+                        'type': 'string',
+                        'description': 'Knowledge Candidate title.',
+                    },
+                    'content': {
+                        'type': 'string',
+                        'description': 'Full Knowledge Candidate content.',
+                    },
+                    'source': {
+                        'type': 'string',
+                        'description': 'Confirmed source or evidence reference for the candidate.',
+                    },
                     'domain': {
                         'type': 'string',
                         'description': 'Business Domain identifier, for example bon_buasson.',
@@ -8371,16 +8392,43 @@ def _facade_operation_request_schema() -> dict:
             'prepared_package': prepared_package_schema,
             'product_owner_approval': {'type': 'boolean', 'description': 'Required true for write/capitalization operations.'},
             'domain': {'type': 'string', 'description': 'Business Domain identifier when applicable.'},
+            'candidate_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Required for create_candidate. Pass the exact approved Knowledge Candidate identifier.',
+            },
             'knowledge_id': {
                 'type': 'string',
                 'minLength': 1,
                 'description': (
-                    'Required for getVectraProfessionalKnowledgeById, '
+                    'Required for create_candidate, getVectraProfessionalKnowledgeById, '
                     'verifyVectraProfessionalKnowledgeReadback, '
                     'getVectraDomainKnowledgeById and '
                     'verifyVectraDomainKnowledgeReadback. '
                     'Pass the exact identifier returned by the corresponding list operation.'
                 ),
+            },
+            'knowledge_type': {
+                'type': 'string',
+                'enum': ['professional', 'business'],
+                'description': 'Required for create_candidate. Select the target knowledge repository type.',
+            },
+            'title': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Required for create_candidate. Human-readable candidate title.',
+            },
+            'content': {
+                'type': 'string',
+                'minLength': 1,
+                'description': (
+                    'Required for create_candidate. Full approved candidate knowledge text. '
+                    'Do not place this value in working_context.'
+                ),
+            },
+            'source': {
+                'type': 'string',
+                'description': 'Confirmed source or evidence reference for create_candidate.',
             },
             'session_id': {'type': 'string', 'description': 'Laboratory session id.'},
             'request_id': {'type': 'string', 'description': 'Client request id for traceability.'},
@@ -8396,6 +8444,16 @@ def _facade_operation_request_schema() -> dict:
                 'operation_type': 'verifyVectraDomainKnowledgeReadback',
                 'domain': 'bon_buasson',
                 'knowledge_id': 'BK-001',
+            },
+            {
+                'operation_type': 'create_candidate',
+                'candidate_id': 'KC-PK-002',
+                'knowledge_id': 'PK-002',
+                'knowledge_type': 'professional',
+                'title': 'Критерий эксплуатационной доступности профессиональной способности',
+                'content': 'Профессиональная способность доступна только через исполнимый пользовательский контракт.',
+                'product_owner_approval': True,
+                'source': 'Product Verification',
             },
             {
                 'operation_type': 'capitalize_confirmed_knowledge',
@@ -9313,6 +9371,16 @@ def _normalize_facade_request(request: dict | None) -> tuple[str, dict, bool, st
     knowledge_id = str(request.get('knowledge_id') or payload.get('knowledge_id') or '').strip()
     if knowledge_id:
         payload['knowledge_id'] = knowledge_id
+
+    # KNOWLEDGE-FACADE-CANDIDATE-CONTENT-ROUTING-001:
+    # create_candidate fields are first-class GPT Action arguments. Normalize
+    # them into the Runtime payload instead of forcing the model to hide the
+    # approved candidate text inside working_context.
+    for candidate_key in (
+        'candidate_id', 'knowledge_type', 'title', 'content', 'source',
+    ):
+        if candidate_key in request:
+            payload[candidate_key] = request[candidate_key]
 
     # LABORATORY-KNOWLEDGE-0007/0008:
     # GPT Actions must be able to send the package as a first-class request field,
