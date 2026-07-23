@@ -15,12 +15,12 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import Lock, local
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 
 RELEASE_ID = "RUNTIME-REPOSITORY-DATABASE-PERSISTENCE-001"
-STARTUP_HOTFIX_RELEASE_ID = "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-001"
+STARTUP_HOTFIX_RELEASE_ID = "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-002"
 SCHEMA_VERSION = "1"
 TABLE_NAME = "vectra_repository_documents"
 BACKEND_ENV = "VECTRA_PERSISTENCE_BACKEND"
@@ -32,7 +32,9 @@ _SYNC_LOCK = Lock()
 _INIT_LOCK = Lock()
 _SYNCHRONIZED: set[Tuple[str, str, str]] = set()
 _SYNCHRONIZATION_RESULTS: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+_DOCUMENT_CACHES: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
 _INITIALIZED: set[Tuple[str, str]] = set()
+_BATCH_STATE = local()
 
 
 class RepositoryPersistenceError(RuntimeError):
@@ -89,6 +91,60 @@ def _configured_database() -> Tuple[str, str]:
             f"{DATABASE_URL_ENV} or DATABASE_URL is required when {BACKEND_ENV}=database"
         )
     return _dialect(url), url
+
+
+def _repository_cache_key(repository_root: Path) -> Tuple[str, str, str]:
+    dialect, url = _configured_database()
+    return (
+        dialect,
+        url,
+        f"{repository_root.resolve()}|{configured_project_root()}",
+    )
+
+
+def _cached_documents(repository_root: Path) -> Optional[Dict[str, Any]]:
+    """Return the process-local coherent repository view after startup sync.
+
+    PostgreSQL remains the durable source of truth.  The startup transaction
+    hydrates a complete compatibility view once; all writes update both
+    PostgreSQL and this cache.  Snapshot/readback operations can therefore use
+    one consistent process view instead of opening a remote connection for
+    every JSON document.
+    """
+    if not database_persistence_enabled():
+        return None
+    return _DOCUMENT_CACHES.get(_repository_cache_key(repository_root))
+
+
+def _pending_writes() -> Optional[Dict[str, Any]]:
+    pending = getattr(_BATCH_STATE, "pending", None)
+    return pending if isinstance(pending, dict) else None
+
+
+@contextmanager
+def repository_write_batch() -> Iterator[None]:
+    """Persist a related group of Runtime JSON writes in one transaction.
+
+    Runtime Snapshot calls legacy verification functions which update their
+    own bounded status/report documents.  They must remain read-after-write
+    consistent, but they do not need one PostgreSQL round trip per document.
+    """
+    if not database_persistence_enabled():
+        yield
+        return
+
+    existing = _pending_writes()
+    if existing is not None:
+        yield
+        return
+
+    _BATCH_STATE.pending = {}
+    try:
+        yield
+        pending = _pending_writes() or {}
+        _upsert_documents(pending)
+    finally:
+        _BATCH_STATE.pending = None
 
 
 def _timeout_seconds(environment_name: str, default: int, maximum: int) -> int:
@@ -338,6 +394,9 @@ def read_json_document(path: Path, default: Any, repository_root: Path) -> Any:
     relative = _relative_document_path(path, repository_root)
     if not database_persistence_enabled() or relative is None or path.suffix.lower() != ".json":
         return _read_local_json(path, default)
+    cache = _cached_documents(repository_root)
+    if cache is not None:
+        return deepcopy(cache.get(relative, _read_local_json(path, default)))
     initialize_database()
     found, payload = _get_document(relative)
     if found:
@@ -354,8 +413,21 @@ def write_json_document(path: Path, payload: Any, repository_root: Path) -> Dict
     persistence = {"status": "PASS", "backend": "file", "document_path": str(path)}
     if database_persistence_enabled() and relative is not None and path.suffix.lower() == ".json":
         initialize_database()
-        persistence = _upsert_document(relative, payload)
+        pending = _pending_writes()
+        if pending is None:
+            persistence = _upsert_document(relative, payload)
+        else:
+            pending[relative] = deepcopy(payload)
+            persistence = {
+                "status": "PASS",
+                "backend": "database",
+                "document_path": relative,
+                "batched": True,
+            }
     _write_local_json(path, payload)
+    cache = _cached_documents(repository_root)
+    if cache is not None and relative is not None:
+        cache[relative] = deepcopy(payload)
     return persistence
 
 
@@ -375,6 +447,9 @@ def read_repository_text(path: Path, default: str = "") -> str:
             return path.read_text(encoding="utf-8") if path.exists() else default
         except Exception:
             return default
+    cache = _cached_documents(root)
+    if cache is not None:
+        return str(cache.get(relative, path.read_text(encoding="utf-8") if path.exists() else default))
     initialize_database()
     found, payload = _get_document(relative)
     if found:
@@ -393,8 +468,21 @@ def write_repository_text(path: Path, content: str) -> Dict[str, Any]:
     persistence = {"status": "PASS", "backend": "file", "document_path": str(path)}
     if database_persistence_enabled() and relative is not None:
         initialize_database()
-        persistence = _upsert_document(relative, str(content))
+        pending = _pending_writes()
+        if pending is None:
+            persistence = _upsert_document(relative, str(content))
+        else:
+            pending[relative] = str(content)
+            persistence = {
+                "status": "PASS",
+                "backend": "database",
+                "document_path": relative,
+                "batched": True,
+            }
     _write_local_text(path, str(content))
+    cache = _cached_documents(root)
+    if cache is not None and relative is not None:
+        cache[relative] = str(content)
     return persistence
 
 
@@ -408,11 +496,7 @@ def synchronize_repository(repository_root: Path) -> Dict[str, Any]:
             "documents_count": None,
         }
     dialect, url = _configured_database()
-    key = (
-        dialect,
-        url,
-        f"{repository_root.resolve()}|{configured_project_root()}",
-    )
+    key = _repository_cache_key(repository_root)
     with _SYNC_LOCK:
         if key in _SYNCHRONIZED:
             return deepcopy(_SYNCHRONIZATION_RESULTS[key])
@@ -494,6 +578,7 @@ def synchronize_repository(repository_root: Path) -> Dict[str, Any]:
             "failure_reason": None,
         }
         _SYNCHRONIZATION_RESULTS[key] = deepcopy(result)
+        _DOCUMENT_CACHES[key] = deepcopy(documents)
         _SYNCHRONIZED.add(key)
     return result
 
@@ -541,5 +626,6 @@ def reset_persistence_runtime_cache() -> None:
     with _SYNC_LOCK:
         _SYNCHRONIZED.clear()
         _SYNCHRONIZATION_RESULTS.clear()
+        _DOCUMENT_CACHES.clear()
     with _INIT_LOCK:
         _INITIALIZED.clear()
