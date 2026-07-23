@@ -349,6 +349,12 @@ from app.assistant_runtime.knowledge_capitalization import (
     verify_knowledge_capitalization as verify_vectra_knowledge_capitalization,
     verify_knowledge_memory_persistence as verify_vectra_knowledge_memory_persistence,
 )
+from app.assistant_runtime.professional_knowledge_runtime import (
+    build_professional_knowledge_context as build_vectra_professional_knowledge_context,
+    evaluate_operational_capability_readiness as evaluate_vectra_operational_capability_readiness,
+    get_knowledge_influence_trace as get_vectra_knowledge_influence_trace,
+    verify_knowledge_influence as verify_vectra_knowledge_influence,
+)
 from app.assistant_runtime.reflection import (
     get_reflection_status as get_vectra_reflection_status,
     run_professional_reflection as run_vectra_professional_reflection,
@@ -8246,6 +8252,10 @@ def _facade_operation_request_schema() -> dict:
         'read_professional_knowledge',
         'read_business_knowledge',
         'verify_readback',
+        'get_professional_knowledge_context',
+        'evaluate_operational_capability_readiness',
+        'get_knowledge_influence_trace',
+        'verify_knowledge_influence',
         'list_memory_objects',
         'read_memory_object',
         'search_memory_object',
@@ -8403,6 +8413,11 @@ def _facade_operation_request_schema() -> dict:
                 'minLength': 1,
                 'description': 'Required for create_candidate. Pass the exact approved Knowledge Candidate identifier.',
             },
+            'package_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Capitalization Package identifier returned by create_package and required for the subsequent write operation.',
+            },
             'knowledge_id': {
                 'type': 'string',
                 'minLength': 1,
@@ -8418,6 +8433,40 @@ def _facade_operation_request_schema() -> dict:
                 'type': 'string',
                 'enum': ['professional', 'business'],
                 'description': 'Required for create_candidate. Select the target knowledge repository type.',
+            },
+            'capability_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Capability identifier evaluated through a capitalized Professional Knowledge rule.',
+            },
+            'trace_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Knowledge Influence Trace identifier returned by Runtime.',
+            },
+            'runtime_ready': {
+                'type': 'boolean',
+                'description': 'Runtime implementation exists and is executable.',
+            },
+            'api_ready': {
+                'type': 'boolean',
+                'description': 'API contract for the capability is published and executable.',
+            },
+            'capability_registry_ready': {
+                'type': 'boolean',
+                'description': 'Capability Registry contains the capability and its Runtime service.',
+            },
+            'action_manifest_ready': {
+                'type': 'boolean',
+                'description': 'Action Manifest exposes a usable GPT Action route for the capability.',
+            },
+            'user_routing_ready': {
+                'type': 'boolean',
+                'description': 'The user command can be routed to the capability without a hidden technical call.',
+            },
+            'verification_reference': {
+                'type': 'string',
+                'description': 'Product Verification or other evidence reference for the readiness evaluation.',
             },
             'title': {
                 'type': 'string',
@@ -8479,6 +8528,17 @@ def _facade_operation_request_schema() -> dict:
                     ],
                     'business_knowledge': []
                 }
+            },
+            {
+                'operation_type': 'evaluate_operational_capability_readiness',
+                'knowledge_id': 'PK-002',
+                'capability_id': 'professional_knowledge_runtime_influence',
+                'runtime_ready': True,
+                'api_ready': True,
+                'capability_registry_ready': True,
+                'action_manifest_ready': True,
+                'user_routing_ready': True,
+                'verification_reference': 'Product Verification',
             }
         ]
     }
@@ -9267,8 +9327,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-GPT-INTEGRATION-STABILIZATION-005',
-            'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+            'version': 'PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001',
+            'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge can be restored into Runtime context, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9284,7 +9344,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'BUSINESS-FRAMEWORK-E2E-READINESS-001-HOTFIX-OPENAPI-30',
+        'x-vectra-release': 'PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9461,10 +9521,22 @@ def _normalize_facade_request(request: dict | None) -> tuple[str, dict, bool, st
     # them into the Runtime payload instead of forcing the model to hide the
     # approved candidate text inside working_context.
     for candidate_key in (
-        'candidate_id', 'knowledge_type', 'title', 'content', 'source',
+        'candidate_id', 'package_id', 'knowledge_type', 'title', 'content', 'source',
     ):
         if candidate_key in request:
             payload[candidate_key] = request[candidate_key]
+
+    # PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001:
+    # Keep the five capability-readiness gates and trace identifiers as
+    # first-class GPT Action arguments while routing them through the existing
+    # Knowledge facade.
+    for influence_key in (
+        'capability_id', 'trace_id', 'runtime_ready', 'api_ready',
+        'capability_registry_ready', 'action_manifest_ready',
+        'user_routing_ready', 'verification_reference',
+    ):
+        if influence_key in request:
+            payload[influence_key] = request[influence_key]
 
     # LABORATORY-KNOWLEDGE-0007/0008:
     # GPT Actions must be able to send the package as a first-class request field,
@@ -9566,7 +9638,7 @@ def _build_laboratory_facade_action_manifest() -> dict:
     return {
         'status': 'ok' if not missing_facade and not internal_services_missing else 'error',
         'render_mode': 'vectra_laboratory_action_manifest',
-        'release_version': 'LABORATORY-KNOWLEDGE-0010',
+        'release_version': 'PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001',
         'schema_url': '/vectra/laboratory/openapi.json',
         'schema_version': facade_schema.get('info', {}).get('version'),
         'operation_count': _count_openapi_operations(facade_schema),
@@ -10182,6 +10254,8 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
         'professional_readiness': 'PROFESSIONAL_READY' if professional_body.get('status') == 'PASS' else 'PROFESSIONAL_RESTORE_FAILED',
         'identity_restored': bool(professional_body.get('professional_identity')),
         'operating_model_restored': bool(professional_body.get('professional_model')),
+        'professional_knowledge_restored': bool(professional_body.get('professional_knowledge')),
+        'professional_knowledge_count': professional_body.get('professional_knowledge_count', 0),
         'chat_memory_used_as_source': professional_body.get('chat_memory_used_as_source', False),
     }
     professional_continuity = restore_professional_continuity(professional_role='vectra_laboratory')
@@ -10191,6 +10265,7 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
         'render_mode': 'vectra_laboratory_state_restore',
         'professional_state': professional_summary,
         'professional_continuity': professional_continuity,
+        'professional_knowledge_context': continuity_state.get('professional_knowledge_context') if isinstance(continuity_state, dict) else {},
         'active_engineering_cycle': ((continuity_state.get('active_work') or {}).get('engineering_cycle') if isinstance(continuity_state, dict) else {}),
         'open_decisions': ((continuity_state.get('decision_state') or {}).get('open_decisions') if isinstance(continuity_state, dict) else []),
         'business_selection_status': 'required',
@@ -10347,6 +10422,55 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
                 endpoint = '/vectra/knowledge/professional/{knowledge_id}/readback'
                 service = 'knowledge_capitalization.verify_professional_knowledge_readback'
             return json_response(_facade_response(operation_type, service, endpoint, result))
+        if operation_type == 'get_professional_knowledge_context':
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = build_vectra_professional_knowledge_context(knowledge_id=kid or None)
+            return json_response(_facade_response(
+                operation_type,
+                'professional_knowledge_runtime.build_professional_knowledge_context',
+                '/vectra/laboratory/facade/knowledge',
+                result,
+            ))
+        if operation_type == 'evaluate_operational_capability_readiness':
+            result = evaluate_vectra_operational_capability_readiness(payload)
+            return json_response(_facade_response(
+                operation_type,
+                'professional_knowledge_runtime.evaluate_operational_capability_readiness',
+                '/vectra/laboratory/facade/knowledge',
+                result,
+                next_action='Read and verify the returned Knowledge Influence Trace.',
+            ))
+        if operation_type == 'get_knowledge_influence_trace':
+            result = get_vectra_knowledge_influence_trace(
+                trace_id=str(payload.get('trace_id') or '').strip() or None,
+                knowledge_id=str(payload.get('knowledge_id') or '').strip() or None,
+            )
+            return json_response(_facade_response(
+                operation_type,
+                'professional_knowledge_runtime.get_knowledge_influence_trace',
+                '/vectra/laboratory/facade/knowledge',
+                result,
+            ))
+        if operation_type == 'verify_knowledge_influence':
+            trace_id = str(payload.get('trace_id') or '').strip()
+            if not trace_id:
+                return json_response(_facade_error(
+                    operation_type,
+                    'trace_id is required for verify_knowledge_influence.',
+                    runtime_service='professional_knowledge_runtime.verify_knowledge_influence',
+                    endpoint='/vectra/laboratory/facade/knowledge',
+                    next_action='Pass the trace_id returned by evaluate_operational_capability_readiness.',
+                ))
+            result = verify_vectra_knowledge_influence(
+                trace_id=trace_id,
+                knowledge_id=str(payload.get('knowledge_id') or '').strip() or None,
+            )
+            return json_response(_facade_response(
+                operation_type,
+                'professional_knowledge_runtime.verify_knowledge_influence',
+                '/vectra/laboratory/facade/knowledge',
+                result,
+            ))
         if operation_type == 'list_memory_objects':
             result = list_vectra_memory_objects(memory_space=payload.get('memory_space'), domain=domain or payload.get('domain') or 'bonboason', limit=int(payload.get('limit') or 100))
             return json_response(_facade_response(operation_type, 'memory_repository.list_memory_objects', '/vectra/memory/objects', result))
