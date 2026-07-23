@@ -8,6 +8,7 @@ from app.assistant_runtime.knowledge_capitalization import (
     create_capitalization_package,
     get_knowledge_capitalization_status,
 )
+from app.assistant_runtime.observability import create_startup_runtime_snapshot
 from app.assistant_runtime.repository import _read_json, _write_json, ensure_repository
 from app.assistant_runtime.repository_migrations import (
     PK_002_CANDIDATE_ID,
@@ -251,5 +252,52 @@ def test_database_timeouts_are_bounded_and_reported(
     assert status["connect_timeout_seconds"] == 4
     assert status["statement_timeout_seconds"] == 12
     assert status["startup_hotfix_release"] == (
-        "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-001"
+        "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-002"
     )
+
+
+def test_runtime_snapshot_uses_hydrated_repository_cache(
+    database_environment,
+    monkeypatch,
+) -> None:
+    project = database_environment / "deploy"
+    repository = project / "assistant_repository"
+    monkeypatch.setenv("VECTRA_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(repository))
+
+    actual_connection = repository_persistence._connection
+    connection_calls = 0
+
+    @contextmanager
+    def delayed_connection():
+        nonlocal connection_calls
+        connection_calls += 1
+        time.sleep(0.03)
+        with actual_connection() as active:
+            yield active
+
+    monkeypatch.setattr(repository_persistence, "_connection", delayed_connection)
+
+    ensure_repository()
+    connections_after_sync = connection_calls
+    snapshot = create_startup_runtime_snapshot()
+
+    assert snapshot["snapshot_id"].startswith("runtime-snapshot-")
+    assert snapshot["generated_reason"] == "runtime_startup_after_deploy"
+    # Snapshot construction reads dozens of Runtime objects and updates bounded
+    # service records.  They must use the coherent startup cache and one final
+    # database transaction.
+    assert connection_calls - connections_after_sync == 1
+
+    second_project = database_environment / "deploy-two"
+    second_repository = second_project / "assistant_repository"
+    monkeypatch.setenv("VECTRA_PROJECT_ROOT", str(second_project))
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(second_repository))
+    reset_persistence_runtime_cache()
+    ensure_repository()
+
+    restored_snapshot = _read_json(
+        second_repository / "runtime" / "observability" / "runtime_snapshot.json",
+        {},
+    )
+    assert restored_snapshot["snapshot_id"] == snapshot["snapshot_id"]

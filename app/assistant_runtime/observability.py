@@ -47,6 +47,7 @@ from app.assistant_runtime.repository import (
     get_life_model_status,
     verify_life_model,
 )
+from app.assistant_runtime.repository_persistence import repository_write_batch
 from app.assistant_runtime.vos import get_vos, get_vos_status, verify_vos, restore_vos_state
 from app.assistant_runtime.business_data import get_business_data_status, verify_business_data_access
 from app.assistant_runtime.knowledge_capitalization import get_professional_knowledge_overview, get_domain_knowledge_overview
@@ -616,7 +617,7 @@ def _build_components() -> Dict[str, Dict[str, Any]]:
     return components
 
 
-def build_runtime_snapshot(write: bool = True, reason: str = "runtime_observability_request") -> Dict[str, Any]:
+def _build_runtime_snapshot(write: bool = True, reason: str = "runtime_observability_request") -> Dict[str, Any]:
     """Create the official factual state snapshot for VECTRA Laboratory."""
     ensure_repository()
     generated_at = _now()
@@ -691,6 +692,12 @@ def build_runtime_snapshot(write: bool = True, reason: str = "runtime_observabil
         _write_json(_snapshot_file(), snapshot)
         _write_json(_snapshot_history_file(snapshot_id), snapshot)
     return snapshot
+
+
+def build_runtime_snapshot(write: bool = True, reason: str = "runtime_observability_request") -> Dict[str, Any]:
+    """Build one coherent snapshot and commit its service records together."""
+    with repository_write_batch():
+        return _build_runtime_snapshot(write=write, reason=reason)
 
 
 def get_runtime_snapshot(refresh: bool = False) -> Dict[str, Any]:
