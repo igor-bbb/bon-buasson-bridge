@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from app.assistant_runtime.repository_persistence import read_repository_json, write_repository_json
 
 RELEASE_ID = "VECTRA-V2-PROFESSIONAL-EVIDENCE-FINDINGS-PLATFORM-002"
 DEFAULT_BASE_PATH = "assistant_repository"
@@ -33,20 +34,12 @@ def _path() -> Path:
 
 
 def _read() -> List[Dict[str, Any]]:
-    path = _path()
-    try:
-        if not path.exists(): return []
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    value = read_repository_json(_path(), [])
+    return value if isinstance(value, list) else []
 
 
 def _write(items: List[Dict[str, Any]]) -> None:
-    path = _path(); path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_repository_json(_path(), items)
 
 
 def _required(payload: Dict[str, Any], key: str) -> str:

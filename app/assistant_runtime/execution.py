@@ -22,6 +22,8 @@ from app.assistant_runtime.repository import (
     record_product_decision,
     update_current_state,
     upsert_knowledge_document,
+    _read_json as _repository_read_json,
+    _write_json as _repository_write_json,
 )
 
 RUNTIME_EXECUTION_VERSION = "VECTRA-RUNTIME-0002"
@@ -63,22 +65,11 @@ def _safe_slug(value: str, fallback: str = "item") -> str:
 
 
 def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if not path.exists():
-            return deepcopy(default)
-        with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception:
-        return deepcopy(default)
+    return _repository_read_json(path, default)
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
-    tmp.replace(path)
+    _repository_write_json(path, payload)
 
 
 def _append_json_list(path: Path, item: Dict[str, Any]) -> List[Dict[str, Any]]:

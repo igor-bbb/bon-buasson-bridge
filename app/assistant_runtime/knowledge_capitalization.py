@@ -34,6 +34,8 @@ from app.assistant_runtime.knowledge_object import (
 )
 from app.assistant_runtime.memory_classification import classify_knowledge_item
 from app.assistant_runtime.recovery_snapshot_sync import rebuild_and_persist_recovery_snapshot_after_capitalization
+from app.assistant_runtime.repository_migrations import reconcile_lost_pk002_candidate
+from app.assistant_runtime.repository_persistence import get_persistence_status
 
 KNOWLEDGE_RELEASE = "LABORATORY-KNOWLEDGE-0010"
 KNOWLEDGE_STATUSES = [
@@ -335,6 +337,9 @@ def create_capitalization_package(payload: Optional[Dict[str, Any]] = None) -> D
     the official sequence: candidate -> package -> write -> report.
     """
     payload = payload if isinstance(payload, dict) else {}
+    migration = reconcile_lost_pk002_candidate()
+    if migration.get("status") != "PASS":
+        return _failed_report(None, None, "pk002_repository_reconciliation_failed")
     try:
         candidate = _resolve_confirmed_candidate(payload)
     except PermissionError as exc:
@@ -1604,6 +1609,7 @@ def auto_capitalize_confirmed_knowledge(payload: Optional[Dict[str, Any]] = None
     return _with_workspace_markdown(result, "Auto Knowledge Capitalization VECTRA", result)
 
 def get_knowledge_capitalization_status() -> Dict[str, Any]:
+    migration = reconcile_lost_pk002_candidate()
     paths = _paths()
     status = _read_json(paths["status"], {})
     return {
@@ -1616,6 +1622,8 @@ def get_knowledge_capitalization_status() -> Dict[str, Any]:
         "reports_count": len(_read_list(paths["reports"])),
         "professional_knowledge_count": len(_read_list(paths["professional"])),
         "allowed_statuses": KNOWLEDGE_STATUSES,
+        "repository_persistence": get_persistence_status(paths["base"]),
+        "repository_migration": migration,
     }
 
 

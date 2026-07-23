@@ -7,6 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.assistant_runtime.repository_persistence import (
+    read_repository_text,
+    read_json_document,
+    synchronize_repository,
+    write_repository_text,
+    write_json_document,
+)
+
 REPOSITORY_VERSION = "GENESIS-0001"
 BUSINESS_DOMAIN_RELEASE = "FOUNDATION-0006"
 LIFE_MODEL_RELEASE = "FOUNDATION-0007"
@@ -101,22 +109,11 @@ def _json_default(path: Path, payload: Dict[str, Any]) -> None:
 
 
 def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if not path.exists():
-            return deepcopy(default)
-        with path.open('r', encoding='utf-8') as fh:
-            return json.load(fh)
-    except Exception:
-        return deepcopy(default)
+    return read_json_document(path, default, _base_path())
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + '.tmp')
-    with tmp.open('w', encoding='utf-8') as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2)
-        fh.write('\n')
-    tmp.replace(path)
+    write_json_document(path, payload, _base_path())
 
 
 def _append_json_list(path: Path, item: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -898,6 +895,8 @@ def _seed_capability_registry() -> Dict[str, Any]:
 
 def ensure_repository() -> Path:
     base = _base_path()
+    base.mkdir(parents=True, exist_ok=True)
+    synchronize_repository(base)
     folders = [
         'state',
         'memory',
@@ -987,7 +986,7 @@ def ensure_repository() -> Path:
     life_model_dir = base / 'runtime' / 'life_model'
     _json_default(life_model_dir / 'life_model.json', _seed_life_model())
     if not (life_model_dir / 'life_model.md').exists():
-        (life_model_dir / 'life_model.md').write_text(_life_model_markdown(), encoding='utf-8')
+        write_repository_text(life_model_dir / 'life_model.md', _life_model_markdown())
     _json_default(life_model_dir / 'status.json', {
         'status': 'active',
         'release': LIFE_MODEL_RELEASE,
@@ -1160,7 +1159,7 @@ def upsert_knowledge_document(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not content:
         content = f'# {title}\n\nStatus: {status}\n\nCreated by VECTRA Assistant Runtime Repository.\n'
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding='utf-8')
+    write_repository_text(path, content)
 
     index_path = base / 'knowledge' / 'knowledge_index.json'
     index = _read_json(index_path, [])
@@ -2110,9 +2109,9 @@ def get_life_model() -> Dict[str, Any]:
     if not isinstance(model, dict):
         model = _seed_life_model()
         _write_json(life_dir / 'life_model.json', model)
-    markdown = (life_dir / 'life_model.md').read_text(encoding='utf-8') if (life_dir / 'life_model.md').exists() else _life_model_markdown()
+    markdown = read_repository_text(life_dir / 'life_model.md', _life_model_markdown())
     if not (life_dir / 'life_model.md').exists():
-        (life_dir / 'life_model.md').write_text(markdown, encoding='utf-8')
+        write_repository_text(life_dir / 'life_model.md', markdown)
     payload = {
         'status': 'ok',
         'render_mode': 'vectra_life_model',

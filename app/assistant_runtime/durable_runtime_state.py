@@ -16,6 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
+from app.assistant_runtime.repository_persistence import (
+    read_repository_json,
+    write_repository_json,
+)
+
 try:  # Linux / Render
     import fcntl  # type: ignore
 except ImportError:  # pragma: no cover
@@ -46,10 +51,10 @@ def _file_lock(path: Path) -> Iterator[None]:
 
 def _decode(path: Path, expected_type: type) -> Tuple[Optional[Any], Optional[str]]:
     try:
-        if not path.exists():
+        missing = {"__vectra_repository_missing__": True}
+        value = read_repository_json(path, missing)
+        if value == missing and not path.exists():
             return None, "not_found"
-        raw = path.read_bytes()
-        value = json.loads(raw.decode("utf-8"))
         if not isinstance(value, expected_type):
             return None, f"invalid_root_type:{type(value).__name__}"
         return value, None
@@ -115,6 +120,7 @@ def _write_json_state_locked(path: Path, value: Any, create_backup: bool = True)
             handle.flush()
             os.fsync(handle.fileno())
         temporary.replace(path)
+        persistence = write_repository_json(path, value)
         # Best effort directory fsync protects rename durability on Linux.
         try:
             directory_fd = os.open(str(path.parent), os.O_DIRECTORY)
@@ -130,6 +136,7 @@ def _write_json_state_locked(path: Path, value: Any, create_backup: bool = True)
             "bytes": len(payload),
             "sha256": _checksum(payload),
             "written_at": _now(),
+            "persistence": persistence,
         }
     finally:
         if temporary.exists():
