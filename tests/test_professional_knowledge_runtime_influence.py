@@ -64,6 +64,54 @@ def test_capitalized_knowledge_is_loaded_without_model_mutation(
     assert context["professional_model_changed"] is False
 
 
+def test_shared_professional_knowledge_is_projected_into_multiple_roles(
+    isolated_repository,
+) -> None:
+    laboratory = build_professional_knowledge_context(
+        "PK-002",
+        professional_role="vectra_laboratory",
+    )
+    engineering = build_professional_knowledge_context(
+        "PK-002",
+        professional_role="chief_engineer",
+    )
+
+    for result, role in (
+        (laboratory, "vectra_laboratory"),
+        (engineering, "chief_engineer"),
+    ):
+        context = result["professional_knowledge_context"]
+        assert result["status"] == "PASS"
+        assert context["professional_role"] == role
+        assert context["role_projection_enforced"] is True
+        assert context["knowledge"][0]["shared_across_roles"] is True
+        assert context["knowledge"][0]["role_applicability_verified"] is True
+
+
+def test_role_restricted_knowledge_is_not_applied_outside_role(
+    isolated_repository,
+) -> None:
+    knowledge_path = isolated_repository / "knowledge" / "professional_knowledge.json"
+    restricted = dict(PK_002)
+    restricted["applicable_roles"] = ["digital_business_analyst"]
+    knowledge_path.write_text(
+        json.dumps([restricted], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    allowed = build_professional_knowledge_context(
+        "PK-002",
+        professional_role="digital_business_analyst",
+    )
+    blocked = build_professional_knowledge_context(
+        "PK-002",
+        professional_role="chief_engineer",
+    )
+
+    assert allowed["status"] == "PASS"
+    assert blocked["status"] == "NOT_FOUND"
+
+
 def test_new_session_restoration_exposes_professional_knowledge_context(
     isolated_repository,
 ) -> None:
@@ -96,6 +144,8 @@ def test_pk_002_changes_capability_readiness_and_records_influence(
 
     assert result["status"] == "PASS"
     assert result["knowledge_applied"] is True
+    assert result["professional_role"] == "vectra_laboratory"
+    assert result["role_applicability_verified"] is True
     assert result["verdict"] == "NOT_OPERATIONALLY_AVAILABLE"
     assert result["failed_gates"] == ["action_manifest_ready"]
     assert result["professional_model_changed"] is False
@@ -228,4 +278,124 @@ def test_openapi_keeps_one_facade_action_and_publishes_influence_contract() -> N
     ):
         assert properties[gate]["type"] == "boolean"
     assert properties["package_id"]["type"] == "string"
+    assert properties["professional_role"]["type"] == "string"
     assert routes._count_openapi_operations(schema) == 30
+
+
+def test_restore_action_returns_bounded_role_aware_response(monkeypatch) -> None:
+    huge_content = "К" * 10000
+    knowledge = [
+        {
+            "knowledge_id": f"PK-{index:03d}",
+            "title": f"Knowledge {index}",
+            "content": huge_content,
+            "status": "CAPITALIZED",
+            "revision": 1,
+            "content_checksum": f"checksum-{index}",
+            "applicable_roles": ["*"],
+            "shared_across_roles": True,
+            "applied_professional_role": "vectra_laboratory",
+            "role_applicability_verified": True,
+        }
+        for index in range(60)
+    ]
+    state = {
+        "state_id": "VECTRA-PROFESSIONAL-RUNTIME-STATE",
+        "professional_identity": {"role": "vectra_laboratory"},
+        "professional_knowledge_context": {
+            "context_id": "PKCTX-TEST",
+            "status": "READY",
+            "source_of_truth": "knowledge/professional_knowledge.json",
+            "professional_role": "vectra_laboratory",
+            "knowledge_count": 60,
+            "knowledge_ids": [item["knowledge_id"] for item in knowledge],
+            "knowledge": knowledge,
+            "reasoning_input_ready": True,
+            "role_projection_enforced": True,
+        },
+        "active_work": {
+            "engineering_cycle": {
+                "cycle_id": "EP-001",
+                "title": "Memory continuity",
+                "status": "ACTIVE",
+                "large_internal_payload": huge_content,
+            }
+        },
+        "decision_state": {
+            "open_count": 50,
+            "open_decisions": [{"payload": huge_content} for _ in range(50)],
+        },
+        "continuity_questions": {
+            "where_am_i": "vectra_laboratory",
+            "what_am_i_working_on": "Memory continuity",
+            "what_is_next": "verify",
+        },
+    }
+    monkeypatch.setattr(
+        routes,
+        "restore_vectra_professional_body_state",
+        lambda: {
+            "status": "PASS",
+            "source_of_state": "Runtime Repository",
+            "professional_identity": {"id": "VECTRA"},
+            "professional_model": {"id": "MODEL"},
+            "professional_knowledge": knowledge,
+            "professional_knowledge_count": len(knowledge),
+            "chat_memory_used_as_source": False,
+        },
+    )
+    monkeypatch.setattr(
+        routes,
+        "get_vectra_business_domain_registry",
+        lambda: {"business_domain_registry": {"domains": []}},
+    )
+    monkeypatch.setattr(
+        routes,
+        "restore_professional_continuity",
+        lambda **_: {
+            "status": "PASS",
+            "recovery_type": "PROFESSIONAL_CONTINUITY_RECOVERY",
+            "professional_runtime_state": state,
+            "checks": {"state_readback_verified": True},
+            "recommended_next_action": "verify",
+            "chat_history_required": False,
+            "release": "TEST",
+        },
+    )
+    monkeypatch.setattr(
+        routes,
+        "get_organizational_memory_continuity_status",
+        lambda: {
+            "status": "PASS",
+            "source_of_truth": "database",
+            "durable_across_deploys": True,
+            "failed_objects": [],
+            "failure_reason": None,
+        },
+    )
+    monkeypatch.setattr(
+        routes,
+        "process_professional_response",
+        lambda **_: {
+            "status": "PASS",
+            "professional_context": {},
+            "self_governance": {},
+            "professional_runtime_state": {
+                "state_id": state["state_id"],
+                "status": "PASS",
+            },
+            "recommended_next_action": "verify",
+        },
+    )
+
+    response = routes.vectra_laboratory_state_restore()
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert body["response_size_status"] == "PASS"
+    assert body["response_size_bytes"] <= 48000
+    restored = body["result"]["professional_knowledge_context"]
+    assert restored["knowledge_count"] == 60
+    assert restored["knowledge_items_returned"] == 12
+    assert restored["knowledge_items_truncated"] is True
+    assert restored["professional_role"] == "vectra_laboratory"
+    assert body["result"]["response_contract"]["full_state_preserved_in_runtime"] is True

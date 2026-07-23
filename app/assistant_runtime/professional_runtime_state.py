@@ -65,7 +65,9 @@ def build_professional_runtime_state(
     domain_id = str(domain.get("domain_id") or "bon_buasson").strip().lower()
     professional_business_model = build_professional_business_runtime_projection(domain_id)
     professional_understanding_state = get_professional_understanding_state(domain_id)
-    professional_knowledge_context = build_professional_knowledge_context()
+    professional_knowledge_context = build_professional_knowledge_context(
+        professional_role=role,
+    )
     active_cycle = active_context if isinstance(active_context, dict) else {}
     open_decisions = [
         deepcopy(item) for item in (decisions or [])

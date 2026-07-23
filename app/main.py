@@ -53,7 +53,10 @@ def warmup_vectra_runtime():
 
     try:
         from app.assistant_runtime.repository import ensure_repository
-        from app.assistant_runtime.repository_migrations import reconcile_lost_pk002_candidate
+        from app.assistant_runtime.repository_migrations import (
+            reconcile_development_journal_continuity,
+            reconcile_lost_pk002_candidate,
+        )
 
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
@@ -75,9 +78,28 @@ def warmup_vectra_runtime():
         migration = reconcile_lost_pk002_candidate()
         if migration.get("status") != "PASS":
             raise RuntimeError("Runtime Repository migration failed")
+        journal_migration = reconcile_development_journal_continuity()
+        if journal_migration.get("status") != "PASS":
+            raise RuntimeError("Development Journal continuity migration failed")
+        from app.assistant_runtime.organizational_memory_continuity import (
+            verify_and_update_organizational_memory_continuity,
+        )
+        continuity = verify_and_update_organizational_memory_continuity(
+            deployment_id=(
+                os.getenv("RENDER_GIT_COMMIT")
+                or os.getenv("RENDER_SERVICE_ID")
+                or os.getenv("VECTRA_RELEASE_ID")
+                or "local-startup"
+            )
+        )
+        if continuity.get("status") != "PASS" or continuity.get("readback_status") != "PASS":
+            raise RuntimeError(
+                "Organizational Memory continuity verification failed: "
+                f"{continuity.get('failure_reason') or continuity.get('failed_objects')}"
+            )
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
-            "phase=repository_migration status=PASS",
+            "phase=repository_migration_and_memory_continuity status=PASS",
             flush=True,
         )
 

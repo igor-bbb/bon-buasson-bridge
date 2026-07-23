@@ -24,9 +24,16 @@ JOURNAL_FILE = Path(os.getenv(
     'VECTRA_DEVELOPMENT_JOURNAL_PATH',
     str(_ASSISTANT_REPOSITORY_ROOT / 'runtime' / 'development' / 'development_journal.json'),
 )).resolve()
+CONTINUITY_FILE = Path(os.getenv(
+    'VECTRA_DEVELOPMENT_JOURNAL_CONTINUITY_PATH',
+    str(JOURNAL_FILE.with_name('development_journal_continuity.json')),
+)).resolve()
 LEGACY_JOURNAL_FILE = Path('/tmp/vectra_development_journal.json')
 LEGACY_V2_JOURNAL_FILE = Path('/tmp/vectra_development_journal_v2.json')
 JOURNAL_LOCK = Lock()
+
+CONTINUITY_RELEASE_ID = 'DEVELOPMENT-JOURNAL-CONTINUITY-001'
+CONTINUITY_CONTRACT_VERSION = 'DevelopmentJournalContinuity/v1.0'
 
 CAPTURE_PREFIXES = (
     'зафиксируй в журнале', 'зафиксируй в журнал', 'запиши в журнале',
@@ -294,7 +301,9 @@ def _read_records() -> List[Dict[str, Any]]:
             f"primary={diagnostic.get('primary_error')}; backup={diagnostic.get('backup_error')}"
         )
     if diagnostic.get('status') != 'EMPTY':
-        return [x for x in records if isinstance(x, dict)]
+        clean = [x for x in records if isinstance(x, dict)]
+        _ensure_continuity_state(clean)
+        return clean
 
     # One-time backward-compatible migration. The persistent repository always
     # wins; /tmp is read only when the canonical file and its backup are absent.
@@ -309,6 +318,7 @@ def _read_records() -> List[Dict[str, Any]]:
             clean = [x for x in migrated if isinstance(x, dict)]
             _write_records(clean)
             return clean
+    _ensure_continuity_state([])
     return []
 
 
@@ -317,21 +327,85 @@ def _write_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     readback, readback_diagnostic = read_json_state(JOURNAL_FILE, list, list)
     if readback_diagnostic.get('status') not in {'PASS', 'RECOVERED'} or readback != records:
         raise RuntimeError('Development Journal write/readback verification failed.')
+    continuity = _ensure_continuity_state(records)
     return {
         **diagnostic,
         'readback_verified': True,
         'repository_path': str(JOURNAL_FILE),
+        'continuity_status': continuity.get('status'),
+        'next_sequence': continuity.get('next_sequence'),
     }
 
 
+def _record_sequence(record_id: Any) -> int:
+    match = re.search(r'(\d+)$', str(record_id or ''))
+    return int(match.group(1)) if match else 0
+
+
+def _default_continuity_state() -> Dict[str, Any]:
+    now = _now()
+    return {
+        'contract_version': CONTINUITY_CONTRACT_VERSION,
+        'release_id': CONTINUITY_RELEASE_ID,
+        'status': 'ACTIVE',
+        'next_sequence': 1,
+        'reserved_record_ids': [],
+        'unrecoverable_record_ids': [],
+        'created_at': now,
+        'updated_at': now,
+    }
+
+
+def _ensure_continuity_state(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    state, diagnostic = read_json_state(CONTINUITY_FILE, _default_continuity_state, dict)
+    if diagnostic.get('status') == 'HOLD':
+        raise RuntimeError(
+            'Development Journal continuity repository is unavailable: '
+            f"primary={diagnostic.get('primary_error')}; backup={diagnostic.get('backup_error')}"
+        )
+    normalized = dict(state or {})
+    normalized.setdefault('contract_version', CONTINUITY_CONTRACT_VERSION)
+    normalized.setdefault('release_id', CONTINUITY_RELEASE_ID)
+    normalized['status'] = 'ACTIVE'
+    normalized.setdefault('created_at', _now())
+    reserved = {
+        str(value).upper()
+        for value in normalized.get('reserved_record_ids') or []
+        if str(value or '').strip()
+    }
+    reserved.update(
+        str(record.get('id')).upper()
+        for record in records
+        if isinstance(record, dict) and record.get('id')
+    )
+    unrecoverable = {
+        str(value).upper()
+        for value in normalized.get('unrecoverable_record_ids') or []
+        if str(value or '').strip()
+    }
+    max_sequence = max(
+        [_record_sequence(value) for value in reserved] +
+        [_record_sequence(record.get('id')) for record in records if isinstance(record, dict)] +
+        [0]
+    )
+    normalized['next_sequence'] = max(
+        int(normalized.get('next_sequence') or 1),
+        max_sequence + 1,
+    )
+    normalized['reserved_record_ids'] = sorted(reserved)
+    normalized['unrecoverable_record_ids'] = sorted(unrecoverable)
+    changed = normalized != state or diagnostic.get('status') == 'EMPTY'
+    if changed:
+        normalized['updated_at'] = _now()
+        write_diagnostic = write_json_state(CONTINUITY_FILE, normalized)
+        if write_diagnostic.get('status') != 'PASS':
+            raise RuntimeError('Development Journal continuity write failed.')
+    return normalized
+
+
 def _next_id(records: List[Dict[str, Any]]) -> str:
-    max_num = 0
-    for item in records:
-        raw = str(item.get('id') or '')
-        m = re.search(r'(\d+)$', raw)
-        if m:
-            max_num = max(max_num, int(m.group(1)))
-    return f'DEV-{max_num + 1:04d}'
+    continuity = _ensure_continuity_state(records)
+    return f'DEV-{int(continuity.get("next_sequence") or 1):04d}'
 
 
 def _screen_context(session_ctx: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1030,14 +1104,161 @@ def record_development_verification(record_id: str, payload: Optional[Dict[str, 
 
 def get_development_bridge(record_id: Optional[str] = None, *, only_new: bool = False, limit: int = 50) -> Dict[str, Any]:
     records = list_records(include_test=False, include_archived=True)
-    records = [r for r in records if r.get('bridge_schema_version') or r.get('record_kind') == 'development_request']
+    records = [
+        r for r in records
+        if r.get('bridge_schema_version')
+        or r.get('record_kind') in {'development_request', 'data_loss_tombstone'}
+    ]
+    continuity = get_development_journal_continuity_status()
     if record_id:
         record = _find_record(records, record_id)
-        return {'status': 'ok' if record else 'not_found', 'operation_type': 'get_development_bridge', 'record_id': record_id, 'record': record, 'readback_status': 'PASS' if record else 'FAIL'}
+        return {
+            'status': 'ok' if record else 'not_found',
+            'operation_type': 'get_development_bridge',
+            'record_id': record_id,
+            'record': record,
+            'repository_path': str(JOURNAL_FILE),
+            'repository_source_of_truth': continuity.get('source_of_truth'),
+            'continuity_status': continuity.get('status'),
+            'readback_status': 'PASS' if record else 'FAIL',
+        }
     if only_new:
         records = [r for r in records if (r.get('owner_decision') or {}).get('status') == 'PENDING']
     records = sorted(records, key=lambda r: str(r.get('updated_at') or r.get('created_at') or ''), reverse=True)[:max(1, min(int(limit or 50), 200))]
-    return {'status': 'ok', 'operation_type': 'get_development_bridge', 'records_count': len(records), 'records': records, 'repository_path': str(JOURNAL_FILE), 'readback_status': 'PASS'}
+    return {
+        'status': 'ok',
+        'operation_type': 'get_development_bridge',
+        'records_count': len(records),
+        'records': records,
+        'repository_path': str(JOURNAL_FILE),
+        'repository_source_of_truth': continuity.get('source_of_truth'),
+        'continuity_status': continuity.get('status'),
+        'readback_status': 'PASS',
+    }
+
+
+def get_development_journal_continuity_status() -> Dict[str, Any]:
+    with JOURNAL_LOCK:
+        records = _read_records()
+        state = _ensure_continuity_state(records)
+    try:
+        from app.assistant_runtime.repository_persistence import persistence_backend
+        backend = persistence_backend()
+    except Exception:
+        backend = 'file'
+    return {
+        **state,
+        'records_count': len(records),
+        'repository_path': str(JOURNAL_FILE),
+        'continuity_repository_path': str(CONTINUITY_FILE),
+        'repository_backend': backend,
+        'source_of_truth': 'database' if backend == 'database' else 'filesystem',
+        'durable_across_deploys': backend == 'database',
+        'readback_status': 'PASS',
+        'read_only_query_mutates_journal': False,
+    }
+
+
+def register_unrecoverable_development_record(
+    record_id: str,
+    *,
+    migration_id: str,
+    evidence: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Register an explicit loss tombstone without reconstructing missing facts."""
+    normalized_id = str(record_id or '').strip().upper()
+    if not re.fullmatch(r'DEV-\d{4,6}', normalized_id):
+        raise ValueError('record_id must match DEV-NNNN')
+    with JOURNAL_LOCK:
+        records = _read_records()
+        existing = _find_record(records, normalized_id)
+        if existing:
+            if existing.get('record_kind') == 'data_loss_tombstone':
+                state = _ensure_continuity_state(records)
+                lost_ids = set(state.get('unrecoverable_record_ids') or [])
+                if normalized_id not in lost_ids:
+                    lost_ids.add(normalized_id)
+                    state['unrecoverable_record_ids'] = sorted(lost_ids)
+                    state['updated_at'] = _now()
+                    write_json_state(CONTINUITY_FILE, state)
+            recovery_status = (
+                'UNRECOVERABLE_LOSS_RECORDED'
+                if existing.get('record_kind') == 'data_loss_tombstone'
+                else 'HISTORICAL_RECORD_AVAILABLE'
+            )
+            return {
+                'status': 'PASS',
+                'record_id': normalized_id,
+                'recovery_status': recovery_status,
+                'record': existing,
+                'created': False,
+                'readback_status': 'PASS',
+            }
+        now = _now()
+        tombstone = {
+            'id': normalized_id,
+            'schema_version': 'DevelopmentJournalRecord/v2.1',
+            'bridge_schema_version': 'VECTRADevelopmentBridge/v1.0-loss-tombstone',
+            'record_kind': 'data_loss_tombstone',
+            'event_type': 'development_journal_history_loss',
+            'title': f'Невосстановимая потеря исторической записи {normalized_id}',
+            'confirmed_gap': (
+                'Историческая запись отсутствует в текущем каноническом хранилище; '
+                'её исходное содержимое не реконструировалось.'
+            ),
+            'technical_reason': (
+                'Ранее подтверждённая запись не сохранилась при переходе со '
+                'временной файловой системы на постоянное хранилище.'
+            ),
+            'suspected_root_cause': (
+                'Database persistence was enabled after the historical record '
+                'had already been lost with an ephemeral deployment.'
+            ),
+            'proposed_fix_direction': 'Preserve all subsequent journal state in the canonical database repository.',
+            'priority': 'P0',
+            'status': 'Lost',
+            'current_status': 'Lost',
+            'is_test': False,
+            'persisted': True,
+            'source': 'Controlled Runtime Repository migration',
+            'source_environment': 'Production',
+            'created_at': now,
+            'updated_at': now,
+            'owner_decision': {'status': 'NOT_APPLICABLE'},
+            'engineering': {'status': 'DATA_LOSS_RECORDED'},
+            'verification': {'status': 'FAIL', 'verdict': 'FAIL'},
+            'data_recovery': {
+                'status': 'UNRECOVERABLE',
+                'original_content_restored': False,
+                'silent_reconstruction_performed': False,
+                'migration_id': migration_id,
+                'evidence': evidence or {},
+                'recorded_at': now,
+            },
+            'history': [{
+                'at': now,
+                'event': 'unrecoverable_data_loss_recorded',
+                'note': 'Loss recorded explicitly; historical business content was not reconstructed.',
+            }],
+        }
+        records.append(tombstone)
+        _write_records(records)
+        state = _ensure_continuity_state(records)
+        lost_ids = set(state.get('unrecoverable_record_ids') or [])
+        lost_ids.add(normalized_id)
+        state['unrecoverable_record_ids'] = sorted(lost_ids)
+        state['updated_at'] = _now()
+        write_json_state(CONTINUITY_FILE, state)
+        readback = _find_record(_read_records(), normalized_id)
+        return {
+            'status': 'PASS' if readback else 'FAIL',
+            'record_id': normalized_id,
+            'recovery_status': 'UNRECOVERABLE_LOSS_RECORDED',
+            'record': readback,
+            'created': True,
+            'next_sequence': state.get('next_sequence'),
+            'readback_status': 'PASS' if readback else 'FAIL',
+        }
 
 def list_records(status: Optional[str] = None, include_test: bool = True, include_archived: bool = True) -> List[Dict[str, Any]]:
     with JOURNAL_LOCK:

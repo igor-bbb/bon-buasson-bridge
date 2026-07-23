@@ -23,8 +23,8 @@ from app.assistant_runtime.repository import (
 )
 
 
-RELEASE_ID = "PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001"
-CONTRACT_VERSION = "1.0"
+RELEASE_ID = "VECTRA-ORGANIZATIONAL-MEMORY-CONTINUITY-001"
+CONTRACT_VERSION = "2.0"
 KNOWLEDGE_PATH = Path("knowledge") / "professional_knowledge.json"
 INFLUENCE_PATH = Path("runtime") / "knowledge_influence" / "events.json"
 REQUIRED_CAPABILITY_GATES = (
@@ -64,8 +64,36 @@ def _is_active_professional_knowledge(item: Dict[str, Any]) -> bool:
     )
 
 
-def _knowledge_projection(item: Dict[str, Any]) -> Dict[str, Any]:
+def _normalized_roles(item: Dict[str, Any]) -> List[str]:
+    raw = (
+        item.get("applicable_roles")
+        or item.get("professional_roles")
+        or item.get("role_scope")
+        or ["*"]
+    )
+    if isinstance(raw, str):
+        raw = [raw]
+    roles = [
+        str(role).strip().lower().replace(" ", "_")
+        for role in raw
+        if str(role).strip()
+    ] if isinstance(raw, list) else ["*"]
+    return sorted(set(roles or ["*"]))
+
+
+def _applies_to_role(item: Dict[str, Any], professional_role: Optional[str]) -> bool:
+    requested = str(professional_role or "").strip().lower().replace(" ", "_")
+    roles = _normalized_roles(item)
+    return not requested or "*" in roles or requested in roles
+
+
+def _knowledge_projection(
+    item: Dict[str, Any],
+    professional_role: Optional[str] = None,
+) -> Dict[str, Any]:
     content = str(item.get("content") or item.get("description") or "").strip()
+    roles = _normalized_roles(item)
+    requested_role = str(professional_role or "").strip().lower().replace(" ", "_") or None
     return {
         "knowledge_id": item.get("knowledge_id"),
         "title": item.get("title"),
@@ -77,17 +105,23 @@ def _knowledge_projection(item: Dict[str, Any]) -> Dict[str, Any]:
         "content_checksum": item.get("content_checksum") or _checksum(content),
         "product_owner_approved": bool(item.get("product_owner_approved")),
         "repository_path": item.get("repository_path") or str(KNOWLEDGE_PATH),
+        "applicable_roles": roles,
+        "shared_across_roles": "*" in roles,
+        "applied_professional_role": requested_role,
+        "role_applicability_verified": _applies_to_role(item, requested_role),
     }
 
 
 def build_professional_knowledge_context(
     knowledge_id: Optional[str] = None,
+    professional_role: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Load active Professional Knowledge without mutating Professional Model."""
+    """Project active knowledge into one professional role without model mutation."""
     active = [
-        _knowledge_projection(item)
+        _knowledge_projection(item, professional_role)
         for item in _read_list(KNOWLEDGE_PATH)
         if _is_active_professional_knowledge(item)
+        and _applies_to_role(item, professional_role)
     ]
     requested_id = str(knowledge_id or "").strip()
     if requested_id:
@@ -100,6 +134,12 @@ def build_professional_knowledge_context(
         "knowledge_count": len(active),
         "knowledge_ids": ids,
         "knowledge": active,
+        "professional_role": (
+            str(professional_role).strip().lower().replace(" ", "_")
+            if professional_role
+            else None
+        ),
+        "role_projection_enforced": bool(professional_role),
         "reasoning_input_ready": bool(active),
         "professional_model_auto_update": False,
         "professional_model_changed": False,
@@ -115,8 +155,11 @@ def build_professional_knowledge_context(
     }
 
 
-def _find_active_knowledge(knowledge_id: str) -> Optional[Dict[str, Any]]:
-    context = build_professional_knowledge_context(knowledge_id)
+def _find_active_knowledge(
+    knowledge_id: str,
+    professional_role: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    context = build_professional_knowledge_context(knowledge_id, professional_role)
     items = (context.get("professional_knowledge_context") or {}).get("knowledge") or []
     return items[0] if items else None
 
@@ -159,6 +202,7 @@ def evaluate_operational_capability_readiness(
     payload = payload if isinstance(payload, dict) else {}
     knowledge_id = str(payload.get("knowledge_id") or "").strip()
     capability_id = str(payload.get("capability_id") or "").strip()
+    professional_role = str(payload.get("professional_role") or "vectra_laboratory").strip().lower().replace(" ", "_")
     if not knowledge_id:
         return {
             "status": "BLOCKED",
@@ -173,13 +217,14 @@ def evaluate_operational_capability_readiness(
             "failure_reason": "capability_id_required",
             "release": RELEASE_ID,
         }
-    knowledge = _find_active_knowledge(knowledge_id)
+    knowledge = _find_active_knowledge(knowledge_id, professional_role)
     if not knowledge:
         return {
             "status": "BLOCKED",
             "verification_status": "FAIL",
             "knowledge_id": knowledge_id,
             "capability_id": capability_id,
+            "professional_role": professional_role,
             "failure_reason": "capitalized_professional_knowledge_not_found",
             "professional_model_changed": False,
             "release": RELEASE_ID,
@@ -201,6 +246,7 @@ def evaluate_operational_capability_readiness(
         "knowledge_title": knowledge.get("title"),
         "knowledge_content_checksum": knowledge.get("content_checksum"),
         "capability_id": capability_id,
+        "professional_role": professional_role,
         "evaluation_type": "operational_capability_readiness",
         "gates": gates,
         "failed_gates": failed_gates,
@@ -220,6 +266,7 @@ def evaluate_operational_capability_readiness(
         "knowledge_applied": True,
         "knowledge": knowledge,
         "capability_id": capability_id,
+        "professional_role": professional_role,
         "gates": gates,
         "failed_gates": failed_gates,
         "verdict": verdict,
@@ -228,6 +275,7 @@ def evaluate_operational_capability_readiness(
         "influence_readback_status": persistence.get("status"),
         "professional_model_auto_update": False,
         "professional_model_changed": False,
+        "role_applicability_verified": knowledge.get("role_applicability_verified") is True,
         "verification_status": status,
         "failure_reason": None if status == "PASS" else "influence_trace_readback_failed",
     }
@@ -270,6 +318,7 @@ def verify_knowledge_influence(
         ),
         "knowledge_checksum_present": bool(trace) and bool(trace.get("knowledge_content_checksum")),
         "capability_present": bool(trace) and bool(trace.get("capability_id")),
+        "professional_role_present": bool(trace) and bool(trace.get("professional_role")),
         "gate_evidence_complete": bool(trace) and all(
             gate in (trace.get("gates") or {}) for gate in REQUIRED_CAPABILITY_GATES
         ),

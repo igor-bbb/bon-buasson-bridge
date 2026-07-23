@@ -142,6 +142,59 @@ def _event_hash(parts: Iterable[Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
 
+def _compact_active_context(value: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value.get(key)
+        for key in (
+            "cycle_id",
+            "title",
+            "status",
+            "current_focus",
+            "next_recommended_step",
+            "updated_at",
+        )
+        if value.get(key) is not None
+    }
+
+
+def _compact_continuity(value: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value.get(key)
+        for key in (
+            "status",
+            "resume_from",
+            "next_recommended_step",
+            "last_confirmed_step",
+            "updated_at",
+        )
+        if value.get(key) is not None
+    }
+
+
+def _compact_professional_runtime_state(value: Dict[str, Any]) -> Dict[str, Any]:
+    identity = value.get("professional_identity") if isinstance(value.get("professional_identity"), dict) else {}
+    knowledge = value.get("professional_knowledge_context") if isinstance(value.get("professional_knowledge_context"), dict) else {}
+    questions = value.get("continuity_questions") if isinstance(value.get("continuity_questions"), dict) else {}
+    active_work = value.get("active_work") if isinstance(value.get("active_work"), dict) else {}
+    cycle = active_work.get("engineering_cycle") if isinstance(active_work.get("engineering_cycle"), dict) else {}
+    return {
+        "state_id": value.get("state_id"),
+        "status": value.get("status"),
+        "professional_role": identity.get("role"),
+        "active_cycle": _compact_active_context(cycle),
+        "professional_knowledge": {
+            "status": knowledge.get("status"),
+            "knowledge_count": knowledge.get("knowledge_count", 0),
+            "knowledge_ids": list(knowledge.get("knowledge_ids") or [])[:50],
+            "reasoning_input_ready": knowledge.get("reasoning_input_ready") is True,
+            "role_projection_enforced": knowledge.get("role_projection_enforced") is True,
+        },
+        "continuity_questions": questions,
+        "recommended_next_action": value.get("recommended_next_action"),
+        "updated_at": value.get("updated_at"),
+    }
+
+
 def _persist_pipeline_event(event: Dict[str, Any]) -> Dict[str, Any]:
     event_hash = str(event.get("event_hash") or "")
 
@@ -249,6 +302,9 @@ def process_professional_response(
             result=result,
         )
     professional_state_result = persist_professional_runtime_state()
+    professional_runtime_state = professional_state_result.get("professional_runtime_state")
+    if not isinstance(professional_runtime_state, dict):
+        professional_runtime_state = {}
 
     return {
         "status": governance_status,
@@ -256,8 +312,8 @@ def process_professional_response(
         "contract_version": CONTRACT_VERSION,
         "release": RELEASE_ID,
         "professional_context": {
-            "active_work_context": deepcopy(active_context),
-            "professional_continuity": deepcopy(continuity),
+            "active_work_context": _compact_active_context(active_context),
+            "professional_continuity": _compact_continuity(continuity),
             "operation_family": family,
             "active_focus_family": focus_family,
             "result_status": normalized_status,
@@ -272,7 +328,8 @@ def process_professional_response(
         "engineering_observation": observation,
         "recommended_next_action": next_action or active_context.get("next_recommended_step") or continuity.get("resume_from"),
         "runtime_state_updated": bool(previous_state.get("diagnostic", {}).get("readback_verified")),
-        "professional_runtime_state": professional_state_result.get("professional_runtime_state"),
+        "professional_runtime_state": _compact_professional_runtime_state(professional_runtime_state),
+        "response_mode": "compact",
         "professional_continuity_status": professional_state_result.get("status"),
         "read_only": False,
     }

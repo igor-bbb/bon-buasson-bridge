@@ -136,6 +136,9 @@ from app.assistant_runtime.vos import (
 )
 from app.assistant_runtime.professional_pipeline import process_professional_response
 from app.assistant_runtime.professional_runtime_state import restore_professional_continuity
+from app.assistant_runtime.organizational_memory_continuity import (
+    get_organizational_memory_continuity_status,
+)
 from app.assistant_runtime.product_verification_diagnostics import collect_release_47_product_verification
 from app.assistant_runtime.vectra_core_ontology import (
     get_core_ontology_manifest as get_vectra_core_ontology_manifest,
@@ -8439,6 +8442,14 @@ def _facade_operation_request_schema() -> dict:
                 'minLength': 1,
                 'description': 'Capability identifier evaluated through a capitalized Professional Knowledge rule.',
             },
+            'professional_role': {
+                'type': 'string',
+                'minLength': 1,
+                'description': (
+                    'Professional role receiving the capitalized knowledge projection, '
+                    'for example vectra_laboratory, chief_engineer or digital_business_analyst.'
+                ),
+            },
             'trace_id': {
                 'type': 'string',
                 'minLength': 1,
@@ -8533,6 +8544,7 @@ def _facade_operation_request_schema() -> dict:
                 'operation_type': 'evaluate_operational_capability_readiness',
                 'knowledge_id': 'PK-002',
                 'capability_id': 'professional_knowledge_runtime_influence',
+                'professional_role': 'vectra_laboratory',
                 'runtime_ready': True,
                 'api_ready': True,
                 'capability_registry_ready': True,
@@ -9327,8 +9339,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001',
-            'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge can be restored into Runtime context, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-ORGANIZATIONAL-MEMORY-CONTINUITY-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9344,7 +9356,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'PROFESSIONAL-KNOWLEDGE-RUNTIME-INFLUENCE-001',
+        'x-vectra-release': 'VECTRA-ORGANIZATIONAL-MEMORY-CONTINUITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -10233,6 +10245,68 @@ def health():
 
 
 # LABORATORY-ACTIONS-0003 facade Runtime endpoints.
+def _compact_restored_knowledge_context(value: Any, limit: int = 12) -> dict:
+    context = value if isinstance(value, dict) else {}
+    items = context.get('knowledge') if isinstance(context.get('knowledge'), list) else []
+    compact_items = []
+    for item in items[:limit]:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get('content') or '')
+        compact_items.append({
+            'knowledge_id': item.get('knowledge_id'),
+            'title': item.get('title'),
+            'content': content[:800],
+            'content_truncated': len(content) > 800,
+            'status': item.get('status'),
+            'revision': item.get('revision'),
+            'content_checksum': item.get('content_checksum'),
+            'applicable_roles': item.get('applicable_roles') or ['*'],
+            'shared_across_roles': item.get('shared_across_roles') is True,
+            'applied_professional_role': item.get('applied_professional_role'),
+            'role_applicability_verified': item.get('role_applicability_verified') is True,
+        })
+    return {
+        'context_id': context.get('context_id'),
+        'status': context.get('status'),
+        'source_of_truth': context.get('source_of_truth'),
+        'professional_role': context.get('professional_role'),
+        'knowledge_count': context.get('knowledge_count', len(items)),
+        'knowledge_ids': list(context.get('knowledge_ids') or [])[:100],
+        'knowledge': compact_items,
+        'knowledge_items_returned': len(compact_items),
+        'knowledge_items_truncated': len(items) > limit,
+        'reasoning_input_ready': context.get('reasoning_input_ready') is True,
+        'role_projection_enforced': context.get('role_projection_enforced') is True,
+        'professional_model_auto_update': False,
+    }
+
+
+def _compact_restored_continuity(value: Any) -> dict:
+    continuity = value if isinstance(value, dict) else {}
+    state = continuity.get('professional_runtime_state') if isinstance(continuity.get('professional_runtime_state'), dict) else {}
+    identity = state.get('professional_identity') if isinstance(state.get('professional_identity'), dict) else {}
+    active_work = state.get('active_work') if isinstance(state.get('active_work'), dict) else {}
+    cycle = active_work.get('engineering_cycle') if isinstance(active_work.get('engineering_cycle'), dict) else {}
+    return {
+        'status': continuity.get('status'),
+        'recovery_type': continuity.get('recovery_type'),
+        'state_id': state.get('state_id'),
+        'professional_role': identity.get('role'),
+        'checks': continuity.get('checks') if isinstance(continuity.get('checks'), dict) else {},
+        'continuity_questions': state.get('continuity_questions') if isinstance(state.get('continuity_questions'), dict) else {},
+        'active_engineering_cycle': {
+            key: cycle.get(key)
+            for key in ('cycle_id', 'title', 'status', 'current_focus', 'next_recommended_step', 'updated_at')
+            if cycle.get(key) is not None
+        },
+        'recommended_next_action': continuity.get('recommended_next_action'),
+        'chat_history_required': continuity.get('chat_history_required') is True,
+        'release': continuity.get('release'),
+        'response_mode': 'compact',
+    }
+
+
 @router.get('/vectra/laboratory/state/restore', summary='Restore VECTRA Laboratory professional state')
 def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
@@ -10260,14 +10334,37 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
     }
     professional_continuity = restore_professional_continuity(professional_role='vectra_laboratory')
     continuity_state = professional_continuity.get('professional_runtime_state') or {}
+    compact_continuity = _compact_restored_continuity(professional_continuity)
+    compact_knowledge = _compact_restored_knowledge_context(
+        continuity_state.get('professional_knowledge_context')
+        if isinstance(continuity_state, dict)
+        else {}
+    )
+    memory_continuity = get_organizational_memory_continuity_status()
     result = {
-        'status': 'ok' if professional_body.get('status') == 'PASS' and professional_continuity.get('status') == 'PASS' else 'degraded',
+        'status': (
+            'ok'
+            if professional_body.get('status') == 'PASS'
+            and professional_continuity.get('status') == 'PASS'
+            and memory_continuity.get('status') == 'PASS'
+            else 'degraded'
+        ),
         'render_mode': 'vectra_laboratory_state_restore',
         'professional_state': professional_summary,
-        'professional_continuity': professional_continuity,
-        'professional_knowledge_context': continuity_state.get('professional_knowledge_context') if isinstance(continuity_state, dict) else {},
-        'active_engineering_cycle': ((continuity_state.get('active_work') or {}).get('engineering_cycle') if isinstance(continuity_state, dict) else {}),
-        'open_decisions': ((continuity_state.get('decision_state') or {}).get('open_decisions') if isinstance(continuity_state, dict) else []),
+        'professional_continuity': compact_continuity,
+        'professional_knowledge_context': compact_knowledge,
+        'knowledge_application': {
+            'professional_role': compact_knowledge.get('professional_role'),
+            'knowledge_ids': compact_knowledge.get('knowledge_ids'),
+            'reasoning_input_ready': compact_knowledge.get('reasoning_input_ready'),
+            'role_projection_enforced': compact_knowledge.get('role_projection_enforced'),
+        },
+        'active_engineering_cycle': compact_continuity.get('active_engineering_cycle'),
+        'open_decisions': {
+            'count': ((continuity_state.get('decision_state') or {}).get('open_count') if isinstance(continuity_state, dict) else 0),
+            'full_records_available_in_runtime': True,
+        },
+        'organizational_memory_continuity': memory_continuity,
         'business_selection_status': 'required',
         'available_businesses': compact_domains,
         'active_business_domain': None,
@@ -10275,11 +10372,36 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
         'business_readiness_status': 'BUSINESS_DOMAIN_NOT_ACTIVE',
         'business_data_connected': False,
         'business_data_auto_started': False,
-        'final_status': 'PROFESSIONAL_READY' if professional_body.get('status') == 'PASS' else 'PROFESSIONAL_RESTORE_FAILED',
+        'final_status': (
+            'PROFESSIONAL_READY'
+            if professional_body.get('status') == 'PASS'
+            and professional_continuity.get('status') == 'PASS'
+            and memory_continuity.get('status') == 'PASS'
+            else (
+                'ORGANIZATIONAL_MEMORY_CONTINUITY_FAILED'
+                if memory_continuity.get('status') != 'PASS'
+                else 'PROFESSIONAL_RESTORE_FAILED'
+            )
+        ),
         'recommended_next_action': professional_continuity.get('recommended_next_action') or 'select_business_domain',
         'next_dialogue': 'Профессиональная модель и незавершённая профессиональная работа восстановлены. Продолжите с рекомендованного шага; Business Data подключайте только при необходимости.',
+        'response_contract': {
+            'mode': 'compact',
+            'full_state_preserved_in_runtime': True,
+            'duplicate_full_models_omitted': True,
+            'max_returned_knowledge_items': 12,
+        },
     }
-    return json_response(_facade_response('restore_laboratory_state', 'laboratory.restore_state', '/vectra/laboratory/state/restore', result, next_action=result.get('recommended_next_action') or 'Continue restored professional work.'))
+    response = _facade_response(
+        'restore_laboratory_state',
+        'laboratory.restore_state',
+        '/vectra/laboratory/state/restore',
+        result,
+        next_action=result.get('recommended_next_action') or 'Continue restored professional work.',
+    )
+    response['response_size_bytes'] = len(json.dumps(response, ensure_ascii=False, default=str).encode('utf-8'))
+    response['response_size_status'] = 'PASS' if response['response_size_bytes'] <= 48000 else 'FAIL'
+    return json_response(response)
 
 
 @router.post('/vectra/laboratory/facade/knowledge', summary='Execute VECTRA Knowledge facade operation')
@@ -10424,7 +10546,10 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             return json_response(_facade_response(operation_type, service, endpoint, result))
         if operation_type == 'get_professional_knowledge_context':
             kid = str(payload.get('knowledge_id') or '').strip()
-            result = build_vectra_professional_knowledge_context(knowledge_id=kid or None)
+            result = build_vectra_professional_knowledge_context(
+                knowledge_id=kid or None,
+                professional_role=str(payload.get('professional_role') or '').strip() or None,
+            )
             return json_response(_facade_response(
                 operation_type,
                 'professional_knowledge_runtime.build_professional_knowledge_context',

@@ -9,6 +9,7 @@ from app.assistant_runtime.repository import _read_json, _write_json, ensure_rep
 
 
 MIGRATION_ID = "RESTORE-PK-002-AFTER-EPHEMERAL-DEPLOY-001"
+DEVELOPMENT_JOURNAL_MIGRATION_ID = "DEVELOPMENT-JOURNAL-CONTINUITY-001"
 PK_002_CANDIDATE_ID = "KC-PK-002-OPERATIONAL-CAPABILITY-READINESS-001"
 PK_002_KNOWLEDGE_ID = "PK-002"
 PK_002_CONTENT = (
@@ -132,4 +133,43 @@ def reconcile_lost_pk002_candidate() -> Dict[str, Any]:
         "knowledge_written": False,
         "professional_model_auto_update": False,
         "candidate_status": matches[0].get("status") if len(matches) == 1 else None,
+    }
+
+
+def reconcile_development_journal_continuity() -> Dict[str, Any]:
+    """Record the confirmed DEV-0001 loss and activate monotonic continuity."""
+    ensure_repository()
+    from app.development_journal import (
+        get_development_journal_continuity_status,
+        register_unrecoverable_development_record,
+    )
+
+    recovery = register_unrecoverable_development_record(
+        "DEV-0001",
+        migration_id=DEVELOPMENT_JOURNAL_MIGRATION_ID,
+        evidence={
+            "observed_get_status": "not_found",
+            "observed_list_records_count": 0,
+            "observed_list_readback_status": "PASS",
+            "historical_record_content_available": False,
+            "confirmed_on": "2026-07-23",
+        },
+    )
+    continuity = get_development_journal_continuity_status()
+    return {
+        "status": (
+            "PASS"
+            if recovery.get("readback_status") == "PASS"
+            and continuity.get("readback_status") == "PASS"
+            and int(continuity.get("next_sequence") or 0) >= 2
+            else "FAIL"
+        ),
+        "migration_id": DEVELOPMENT_JOURNAL_MIGRATION_ID,
+        "record_id": "DEV-0001",
+        "recovery_status": recovery.get("recovery_status"),
+        "historical_content_reconstructed": False,
+        "next_sequence": continuity.get("next_sequence"),
+        "source_of_truth": continuity.get("source_of_truth"),
+        "durable_across_deploys": continuity.get("durable_across_deploys"),
+        "readback_status": recovery.get("readback_status"),
     }
