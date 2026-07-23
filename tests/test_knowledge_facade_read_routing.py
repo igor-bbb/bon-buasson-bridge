@@ -161,6 +161,72 @@ def test_openapi_publishes_explicit_create_candidate_contract() -> None:
     assert "Do not place this value in working_context" in properties["content"]["description"]
 
 
+def test_openapi_publishes_dedicated_candidate_action_with_stable_budget() -> None:
+    schema = routes._laboratory_facade_openapi_schema()
+    candidate_action = schema["paths"]["/vectra/knowledge/candidates"]["post"]
+    request_schema = candidate_action["requestBody"]["content"]["application/json"]["schema"]
+
+    assert candidate_action["operationId"] == "createVectraKnowledgeCandidate"
+    assert request_schema["required"] == [
+        "candidate_id",
+        "knowledge_id",
+        "knowledge_type",
+        "title",
+        "content",
+        "product_owner_approval",
+        "source",
+    ]
+    assert "operation_type" not in request_schema["properties"]
+    assert "payload" not in request_schema["properties"]
+    assert request_schema["properties"]["product_owner_approval"]["enum"] == [True]
+    assert request_schema["additionalProperties"] is False
+
+    operation_ids = {
+        operation["operationId"]
+        for methods in schema["paths"].values()
+        for operation in methods.values()
+    }
+    assert "createVectraKnowledgeCandidate" in operation_ids
+    assert "verifyVectraKnowledgeMemoryPersistence" not in operation_ids
+    assert routes._count_openapi_operations(schema) == 30
+
+
+def test_dedicated_candidate_action_routes_long_content_once(monkeypatch) -> None:
+    calls = []
+
+    def handler(payload):
+        calls.append(payload)
+        return {
+            "status": "ok",
+            "candidate": dict(payload),
+            "capitalization_allowed": True,
+        }
+
+    monkeypatch.setattr(routes, "create_vectra_knowledge_candidate", handler)
+    content = (
+        "Профессиональная способность цифрового коллеги считается эксплуатационно "
+        "доступной только тогда, когда согласованы исполняемый Runtime, API, "
+        "Capability Registry, Action Manifest и пользовательская маршрутизация. "
+        "Наличие внутренней функции без опубликованного профессионального контракта "
+        "не делает способность доступной цифровому коллеге."
+    )
+    candidate = {
+        "candidate_id": "KC-PK-002-OPERATIONAL-CAPABILITY-READINESS-001",
+        "knowledge_id": "PK-002",
+        "knowledge_type": "professional",
+        "title": "Критерий эксплуатационной доступности профессиональной способности цифрового коллеги",
+        "content": content,
+        "product_owner_approval": True,
+        "source": "Product Verification",
+    }
+
+    response = client.post("/vectra/knowledge/candidates", json=candidate)
+
+    assert response.status_code == 200
+    assert calls == [candidate]
+    assert response.json()["candidate"]["content"] == content
+
+
 def test_http_action_routes_top_level_create_candidate_fields_once(
     monkeypatch,
 ) -> None:
