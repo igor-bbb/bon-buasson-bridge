@@ -1,8 +1,10 @@
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.api import routes
+from app.main import app
 
 
 READ_OPERATION_CASES = [
@@ -59,6 +61,9 @@ READ_OPERATION_CASES = [
 
 def _response_payload(response) -> dict:
     return json.loads(response.body.decode("utf-8"))
+
+
+client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +131,169 @@ def test_openapi_publishes_every_manifest_read_alias() -> None:
 
     expected = {case[0] for case in READ_OPERATION_CASES}
     assert expected <= published_operations
+
+
+def test_openapi_publishes_explicit_knowledge_id_contract() -> None:
+    schema = routes._laboratory_facade_openapi_schema()
+    request_schema = schema["paths"]["/vectra/laboratory/facade/knowledge"]["post"][
+        "requestBody"
+    ]["content"]["application/json"]["schema"]
+
+    assert request_schema["properties"]["knowledge_id"]["type"] == "string"
+    assert request_schema["properties"]["domain"]["type"] == "string"
+    assert request_schema["properties"]["payload"]["properties"]["knowledge_id"]["type"] == "string"
+    assert "object_type" not in request_schema["properties"]
+
+
+@pytest.mark.parametrize(
+    ("operation_type", "knowledge_id", "domain", "handler_name"),
+    [
+        (
+            "getVectraProfessionalKnowledgeById",
+            "PK-001",
+            None,
+            "get_vectra_professional_knowledge",
+        ),
+        (
+            "verifyVectraProfessionalKnowledgeReadback",
+            "PK-001",
+            None,
+            "verify_vectra_professional_knowledge_readback",
+        ),
+        (
+            "getVectraDomainKnowledgeById",
+            "BK-001",
+            "bon_buasson",
+            "get_vectra_domain_knowledge_by_id",
+        ),
+        (
+            "verifyVectraDomainKnowledgeReadback",
+            "BK-001",
+            "bon_buasson",
+            "verify_vectra_domain_knowledge_readback",
+        ),
+    ],
+)
+def test_http_action_routes_top_level_knowledge_id(
+    monkeypatch,
+    operation_type,
+    knowledge_id,
+    domain,
+    handler_name,
+) -> None:
+    calls = []
+
+    def handler(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return {
+            "status": "ok",
+            "knowledge_id": knowledge_id,
+            "verification_status": "PASS",
+            "readback_status": "PASS",
+        }
+
+    monkeypatch.setattr(routes, handler_name, handler)
+    request = {"operation_type": operation_type, "knowledge_id": knowledge_id}
+    if domain:
+        request["domain"] = domain
+
+    response = client.post("/vectra/laboratory/facade/knowledge", json=request)
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["operation_type"] == operation_type
+    assert body["verification_status"] == "PASS"
+    assert len(calls) == 1
+    assert calls[0]["kwargs"]["knowledge_id"] == knowledge_id
+    if domain:
+        assert calls[0]["kwargs"]["domain"] == domain
+
+
+@pytest.mark.parametrize(
+    "operation_type",
+    [
+        "getVectraProfessionalKnowledgeById",
+        "verifyVectraProfessionalKnowledgeReadback",
+        "getVectraDomainKnowledgeById",
+        "verifyVectraDomainKnowledgeReadback",
+    ],
+)
+def test_http_action_rejects_missing_knowledge_id_before_runtime_call(
+    monkeypatch,
+    operation_type,
+) -> None:
+    for handler_name in (
+        "get_vectra_professional_knowledge",
+        "verify_vectra_professional_knowledge_readback",
+        "get_vectra_domain_knowledge_by_id",
+        "verify_vectra_domain_knowledge_readback",
+    ):
+        monkeypatch.setattr(
+            routes,
+            handler_name,
+            lambda *args, **kwargs: pytest.fail("Runtime handler must not be called"),
+        )
+
+    response = client.post(
+        "/vectra/laboratory/facade/knowledge",
+        json={"operation_type": operation_type},
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "error"
+    assert body["verification_status"] == "FAIL"
+    assert "knowledge_id is required" in body["error"]["message"]
+
+
+def test_http_action_rejects_object_type_with_controlled_error() -> None:
+    response = client.post(
+        "/vectra/laboratory/facade/knowledge",
+        json={
+            "operation_type": "getVectraProfessionalKnowledgeById",
+            "object_type": "PK-001",
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "error"
+    assert body["verification_status"] == "FAIL"
+    assert "object_type is not supported" in body["error"]["message"]
+    assert "knowledge_id" in body["next_recommended_action"]
+
+
+def test_http_action_preserves_unknown_knowledge_id_for_runtime_readback(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def handler(*, knowledge_id):
+        calls.append(knowledge_id)
+        return {
+            "status": "error",
+            "knowledge_id": knowledge_id,
+            "exists": False,
+            "verification_status": "FAIL",
+            "readback_status": "FAIL",
+            "failure_reason": "knowledge_not_found",
+        }
+
+    monkeypatch.setattr(routes, "verify_vectra_professional_knowledge_readback", handler)
+    response = client.post(
+        "/vectra/laboratory/facade/knowledge",
+        json={
+            "operation_type": "verifyVectraProfessionalKnowledgeReadback",
+            "knowledge_id": "PK-UNKNOWN",
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert calls == ["PK-UNKNOWN"]
+    assert body["verification_status"] == "FAIL"
+    assert body["readback_status"] == "FAIL"
 
 
 def test_openapi_action_budget_and_production_server_are_unchanged() -> None:
