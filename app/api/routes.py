@@ -8231,6 +8231,44 @@ _FACADE_INTERNAL_ENDPOINTS = sorted(
 
 
 def _facade_operation_request_schema() -> dict:
+    knowledge_facade_operations = [
+        'get_capitalization_status',
+        'create_candidate',
+        'create_package',
+        'write_professional_knowledge',
+        'write_business_knowledge',
+        'read_professional_knowledge',
+        'read_business_knowledge',
+        'verify_readback',
+        'list_memory_objects',
+        'read_memory_object',
+        'search_memory_object',
+        'verify_memory_object_readback',
+        'get_memory_overview',
+        'verify_memory_repository',
+        'list_memory_spaces',
+        'validate_memory_space',
+        'classify_knowledge_item',
+        'classify_knowledge_package',
+        'verify_automatic_classification',
+        'inspect_memory',
+        'inspect_memory_object',
+        'inspect_memory_space',
+        'get_memory_statistics',
+        'get_memory_integrity_report',
+        'get_memory_readback_report',
+        'create_report',
+        'capitalize_confirmed_knowledge',
+        # Compatibility aliases published by the internal Action Manifest.
+        'getVectraProfessionalKnowledge',
+        'getVectraProfessionalKnowledgeOverview',
+        'getVectraProfessionalKnowledgeById',
+        'verifyVectraProfessionalKnowledgeReadback',
+        'getVectraDomainKnowledge',
+        'getVectraDomainKnowledgeOverview',
+        'getVectraDomainKnowledgeById',
+        'verifyVectraDomainKnowledgeReadback',
+    ]
     knowledge_item_schema = {
         'type': 'object',
         'required': ['title', 'description'],
@@ -8290,7 +8328,17 @@ def _facade_operation_request_schema() -> dict:
     return {
         'type': 'object',
         'properties': {
-            'operation_type': {'type': 'string', 'description': 'Professional operation to execute through the facade. For operation_type=capitalize_confirmed_knowledge Runtime runs AUTO_CAPITALIZATION_PIPELINE instead of a direct low-level write.'},
+            'operation_type': {
+                'type': 'string',
+                'enum': knowledge_facade_operations,
+                'description': (
+                    'Professional operation to execute through the facade. '
+                    'The getVectra... aliases match the internal Action Manifest and are accepted '
+                    'for Professional Knowledge and Business Domain Knowledge read-only operations. '
+                    'For operation_type=capitalize_confirmed_knowledge Runtime runs '
+                    'AUTO_CAPITALIZATION_PIPELINE instead of a direct low-level write.'
+                ),
+            },
             'payload': {'type': 'object', 'description': 'Operation-specific payload. For operation_type=capitalize_confirmed_knowledge, may also include prepared_knowledge_package prepared by VECTRA; Runtime will then skip raw-context reanalysis and execute storage, diff, write, readback, snapshot and report.', 'additionalProperties': True},
             'working_context': {'type': 'string', 'description': 'LABORATORY-KNOWLEDGE-0010-PV required field. Current Laboratory working context or compressed confirmed session context. Used by Runtime extraction when prepared_knowledge_package is not supplied.'},
             'source_type': {'type': 'string', 'description': 'Source type for working_context, for example laboratory_session.'},
@@ -9981,17 +10029,72 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             if domain:
                 payload['domain'] = domain
             return json_response(_facade_response(operation_type, 'knowledge_capitalization.write_business_knowledge', '/vectra/domain/{domain}/knowledge/capitalization/write', write_vectra_business_knowledge(payload), next_action='Verify Business Knowledge readback.'))
-        if operation_type == 'read_professional_knowledge':
+        if operation_type in {'read_professional_knowledge', 'getVectraProfessionalKnowledge'}:
             kid = str(payload.get('knowledge_id') or '').strip()
             result = get_vectra_professional_knowledge(knowledge_id=kid) if kid else list_vectra_professional_knowledge()
             endpoint = '/vectra/knowledge/professional/{knowledge_id}' if kid else '/vectra/knowledge/professional'
             return json_response(_facade_response(operation_type, 'knowledge_capitalization.read_professional_knowledge', endpoint, result))
-        if operation_type == 'read_business_knowledge':
+        if operation_type == 'getVectraProfessionalKnowledgeOverview':
+            result = get_vectra_professional_knowledge_overview()
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.get_professional_knowledge_overview',
+                '/vectra/knowledge/professional/overview',
+                result,
+            ))
+        if operation_type == 'getVectraProfessionalKnowledgeById':
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = get_vectra_professional_knowledge(knowledge_id=kid)
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.get_professional_knowledge',
+                '/vectra/knowledge/professional/{knowledge_id}',
+                result,
+            ))
+        if operation_type == 'verifyVectraProfessionalKnowledgeReadback':
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = verify_vectra_professional_knowledge_readback(knowledge_id=kid)
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.verify_professional_knowledge_readback',
+                '/vectra/knowledge/professional/{knowledge_id}/readback',
+                result,
+            ))
+        if operation_type in {'read_business_knowledge', 'getVectraDomainKnowledge'}:
             d = domain or str(payload.get('domain') or 'bonboason')
             kid = str(payload.get('knowledge_id') or '').strip()
             result = get_vectra_domain_knowledge_by_id(domain=d, knowledge_id=kid) if kid else get_vectra_domain_knowledge(domain=d)
             endpoint = '/vectra/domain/{domain}/knowledge/{knowledge_id}' if kid else '/vectra/domain/{domain}/knowledge'
             return json_response(_facade_response(operation_type, 'knowledge_capitalization.read_business_knowledge', endpoint, result))
+        if operation_type == 'getVectraDomainKnowledgeOverview':
+            d = domain or str(payload.get('domain') or 'bonboason')
+            result = get_vectra_domain_knowledge_overview(domain=d)
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.get_domain_knowledge_overview',
+                '/vectra/domain/{domain}/knowledge/overview',
+                result,
+            ))
+        if operation_type == 'getVectraDomainKnowledgeById':
+            d = domain or str(payload.get('domain') or 'bonboason')
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = get_vectra_domain_knowledge_by_id(domain=d, knowledge_id=kid)
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.get_domain_knowledge_by_id',
+                '/vectra/domain/{domain}/knowledge/{knowledge_id}',
+                result,
+            ))
+        if operation_type == 'verifyVectraDomainKnowledgeReadback':
+            d = domain or str(payload.get('domain') or 'bonboason')
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = verify_vectra_domain_knowledge_readback(domain=d, knowledge_id=kid)
+            return json_response(_facade_response(
+                operation_type,
+                'knowledge_capitalization.verify_domain_knowledge_readback',
+                '/vectra/domain/{domain}/knowledge/{knowledge_id}/readback',
+                result,
+            ))
         if operation_type == 'verify_readback':
             kt = str(payload.get('knowledge_type') or '').lower()
             kid = str(payload.get('knowledge_id') or '').strip()
