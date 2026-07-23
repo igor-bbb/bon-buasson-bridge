@@ -8339,7 +8339,27 @@ def _facade_operation_request_schema() -> dict:
                     'AUTO_CAPITALIZATION_PIPELINE instead of a direct low-level write.'
                 ),
             },
-            'payload': {'type': 'object', 'description': 'Operation-specific payload. For operation_type=capitalize_confirmed_knowledge, may also include prepared_knowledge_package prepared by VECTRA; Runtime will then skip raw-context reanalysis and execute storage, diff, write, readback, snapshot and report.', 'additionalProperties': True},
+            'payload': {
+                'type': 'object',
+                'description': (
+                    'Operation-specific payload retained for backward compatibility. '
+                    'For by-id and readback operations prefer the explicit top-level '
+                    'knowledge_id and domain fields published by this Action contract. '
+                    'For operation_type=capitalize_confirmed_knowledge, payload may also '
+                    'include prepared_knowledge_package.'
+                ),
+                'properties': {
+                    'knowledge_id': {
+                        'type': 'string',
+                        'description': 'Knowledge identifier, for example PK-001 or BK-001.',
+                    },
+                    'domain': {
+                        'type': 'string',
+                        'description': 'Business Domain identifier, for example bon_buasson.',
+                    },
+                },
+                'additionalProperties': True,
+            },
             'working_context': {'type': 'string', 'description': 'LABORATORY-KNOWLEDGE-0010-PV required field. Current Laboratory working context or compressed confirmed session context. Used by Runtime extraction when prepared_knowledge_package is not supplied.'},
             'source_type': {'type': 'string', 'description': 'Source type for working_context, for example laboratory_session.'},
             'extraction_mode': {'type': 'string', 'description': 'Extraction mode, for example confirmed_knowledge_only.'},
@@ -8351,12 +8371,32 @@ def _facade_operation_request_schema() -> dict:
             'prepared_package': prepared_package_schema,
             'product_owner_approval': {'type': 'boolean', 'description': 'Required true for write/capitalization operations.'},
             'domain': {'type': 'string', 'description': 'Business Domain identifier when applicable.'},
+            'knowledge_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': (
+                    'Required for getVectraProfessionalKnowledgeById, '
+                    'verifyVectraProfessionalKnowledgeReadback, '
+                    'getVectraDomainKnowledgeById and '
+                    'verifyVectraDomainKnowledgeReadback. '
+                    'Pass the exact identifier returned by the corresponding list operation.'
+                ),
+            },
             'session_id': {'type': 'string', 'description': 'Laboratory session id.'},
             'request_id': {'type': 'string', 'description': 'Client request id for traceability.'},
         },
         'required': ['operation_type'],
         'additionalProperties': True,
         'examples': [
+            {
+                'operation_type': 'getVectraProfessionalKnowledgeById',
+                'knowledge_id': 'PK-001',
+            },
+            {
+                'operation_type': 'verifyVectraDomainKnowledgeReadback',
+                'domain': 'bon_buasson',
+                'knowledge_id': 'BK-001',
+            },
             {
                 'operation_type': 'capitalize_confirmed_knowledge',
                 'product_owner_approval': True,
@@ -9085,7 +9125,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-GPT-INTEGRATION-STABILIZATION-004',
+            'version': 'VECTRA-GPT-INTEGRATION-STABILIZATION-005',
             'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
@@ -9265,6 +9305,14 @@ def _normalize_facade_request(request: dict | None) -> tuple[str, dict, bool, st
     session_id = str(request.get('session_id') or payload.get('session_id') or '').strip()
     request_id = str(request.get('request_id') or payload.get('request_id') or '').strip()
     payload = dict(payload)
+
+    # KNOWLEDGE-FACADE-ID-PARAMETER-ROUTING-001:
+    # GPT Actions exposes knowledge_id as a first-class argument. Normalize it
+    # into the existing Runtime payload so both the published Action contract
+    # and legacy nested-payload callers reach the same handlers.
+    knowledge_id = str(request.get('knowledge_id') or payload.get('knowledge_id') or '').strip()
+    if knowledge_id:
+        payload['knowledge_id'] = knowledge_id
 
     # LABORATORY-KNOWLEDGE-0007/0008:
     # GPT Actions must be able to send the package as a first-class request field,
@@ -10010,6 +10058,13 @@ def vectra_laboratory_state_restore(x_vectra_laboratory_key: str | None = Header
 @router.post('/vectra/laboratory/facade/knowledge', summary='Execute VECTRA Knowledge facade operation')
 def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
+    if isinstance(request, dict) and 'object_type' in request:
+        return json_response(_facade_error(
+            str(request.get('operation_type') or '').strip(),
+            'object_type is not supported by the Knowledge facade. Use knowledge_id for by-id and readback operations.',
+            runtime_service='knowledge_facade',
+            next_action='Retry executeVectraKnowledgeOperation with the knowledge_id returned by the list operation.',
+        ))
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     if not operation_type:
         return json_response(_facade_error('', 'operation_type is required', runtime_service='knowledge_facade'))
@@ -10044,6 +10099,14 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             ))
         if operation_type == 'getVectraProfessionalKnowledgeById':
             kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(
+                    operation_type,
+                    'knowledge_id is required for getVectraProfessionalKnowledgeById.',
+                    runtime_service='knowledge_capitalization.get_professional_knowledge',
+                    endpoint='/vectra/knowledge/professional/{knowledge_id}',
+                    next_action='Pass the knowledge_id returned by getVectraProfessionalKnowledge.',
+                ))
             result = get_vectra_professional_knowledge(knowledge_id=kid)
             return json_response(_facade_response(
                 operation_type,
@@ -10053,6 +10116,14 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
             ))
         if operation_type == 'verifyVectraProfessionalKnowledgeReadback':
             kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(
+                    operation_type,
+                    'knowledge_id is required for verifyVectraProfessionalKnowledgeReadback.',
+                    runtime_service='knowledge_capitalization.verify_professional_knowledge_readback',
+                    endpoint='/vectra/knowledge/professional/{knowledge_id}/readback',
+                    next_action='Pass the same knowledge_id that was successfully read by id.',
+                ))
             result = verify_vectra_professional_knowledge_readback(knowledge_id=kid)
             return json_response(_facade_response(
                 operation_type,
@@ -10078,6 +10149,14 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
         if operation_type == 'getVectraDomainKnowledgeById':
             d = domain or str(payload.get('domain') or 'bonboason')
             kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(
+                    operation_type,
+                    'knowledge_id is required for getVectraDomainKnowledgeById.',
+                    runtime_service='knowledge_capitalization.get_domain_knowledge_by_id',
+                    endpoint='/vectra/domain/{domain}/knowledge/{knowledge_id}',
+                    next_action='Pass the knowledge_id returned by getVectraDomainKnowledge.',
+                ))
             result = get_vectra_domain_knowledge_by_id(domain=d, knowledge_id=kid)
             return json_response(_facade_response(
                 operation_type,
@@ -10088,6 +10167,14 @@ def vectra_laboratory_facade_knowledge(request: dict = None, x_vectra_laboratory
         if operation_type == 'verifyVectraDomainKnowledgeReadback':
             d = domain or str(payload.get('domain') or 'bonboason')
             kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(
+                    operation_type,
+                    'knowledge_id is required for verifyVectraDomainKnowledgeReadback.',
+                    runtime_service='knowledge_capitalization.verify_domain_knowledge_readback',
+                    endpoint='/vectra/domain/{domain}/knowledge/{knowledge_id}/readback',
+                    next_action='Pass the same knowledge_id that was successfully read by id.',
+                ))
             result = verify_vectra_domain_knowledge_readback(domain=d, knowledge_id=kid)
             return json_response(_facade_response(
                 operation_type,
