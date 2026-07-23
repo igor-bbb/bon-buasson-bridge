@@ -8144,6 +8144,7 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'getVectraActionManifest': '/vectra/laboratory/actions/manifest',
     'verifyVectraActionCompleteness': '/vectra/laboratory/actions/verify',
     'executeVectraKnowledgeOperation': '/vectra/laboratory/facade/knowledge',
+    'createVectraKnowledgeCandidate': '/vectra/knowledge/candidates',
     'executeVectraBusinessDomainOperation': '/vectra/laboratory/facade/business-domain',
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
     'executeVectraProductReviewOperation': '/vectra/laboratory/facade/product-review',
@@ -8190,6 +8191,11 @@ _LABORATORY_NON_ACTION_DIAGNOSTICS = [
         'endpoint': '/vectra/laboratory/research/foundation/verify',
         'reason': 'internal_diagnostic_superseded_in_gpt_actions_by_framework_services_manifest_and_registry',
     },
+    {
+        'operation_id': 'verifyVectraKnowledgeMemoryPersistence',
+        'endpoint': '/vectra/laboratory/memory/verify',
+        'reason': 'internal_diagnostic_available_via_knowledge_and_memory_runtime_operations',
+    },
 ]
 
 _FACADE_ACTIONS = [
@@ -8200,12 +8206,12 @@ _FACADE_ACTIONS = [
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
     ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Business Framework Service', 'Use for Business Framework operations other than self-audit. Select an explicit operation_type from the request schema.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
+    ('createVectraKnowledgeCandidate', 'POST', '/vectra/knowledge/candidates', 'Create VECTRA Knowledge Candidate', 'Dedicated Product Owner approval-gated Action for creating one Professional or Business Knowledge Candidate. This operation does not create a capitalization package and does not write confirmed knowledge.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
-    ('verifyVectraKnowledgeMemoryPersistence', 'GET', '/vectra/laboratory/memory/verify', 'Verify VECTRA Knowledge memory persistence', 'Post-release read-only verification for Professional Knowledge, Business Domain Knowledge, Recovery Snapshot and Repository Integrity.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
@@ -8544,6 +8550,82 @@ def _business_framework_service_action_request_schema() -> dict:
             {'operation_type': 'self_audit', 'current_workspace': 'laboratory', 'response_mode': 'compact'},
             {'operation_type': 'execute_end_to_end', 'period': '2026-02', 'max_steps': 7},
         ],
+    }
+
+
+def _knowledge_candidate_action_request_schema() -> dict:
+    """Dedicated GPT Action contract for one approval-gated candidate.
+
+    The contract intentionally has no operation_type or generic payload.  This
+    keeps the Action call small and deterministic while the existing Knowledge
+    facade remains available for backward compatibility.
+    """
+    return {
+        'type': 'object',
+        'required': [
+            'candidate_id',
+            'knowledge_id',
+            'knowledge_type',
+            'title',
+            'content',
+            'product_owner_approval',
+            'source',
+        ],
+        'properties': {
+            'candidate_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Exact Product Owner approved Knowledge Candidate identifier.',
+            },
+            'knowledge_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Exact target knowledge identifier, for example PK-002.',
+            },
+            'knowledge_type': {
+                'type': 'string',
+                'enum': ['professional', 'business'],
+                'description': 'Target knowledge repository type.',
+            },
+            'title': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Human-readable candidate title.',
+            },
+            'content': {
+                'type': 'string',
+                'minLength': 1,
+                'description': (
+                    'Full approved candidate knowledge text. Pass it directly in this '
+                    'field; do not serialize a second JSON object and do not place the '
+                    'text in working_context.'
+                ),
+            },
+            'product_owner_approval': {
+                'type': 'boolean',
+                'enum': [True],
+                'description': 'Must be true for this Product Owner approved candidate.',
+            },
+            'source': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Confirmed source or evidence reference for the candidate.',
+            },
+            'domain': {
+                'type': 'string',
+                'description': 'Business Domain identifier when knowledge_type is business.',
+            },
+        },
+        'additionalProperties': False,
+        'examples': [{
+            'candidate_id': 'KC-PK-002-OPERATIONAL-CAPABILITY-READINESS-001',
+            'knowledge_id': 'PK-002',
+            'knowledge_type': 'professional',
+            'title': 'Критерий эксплуатационной доступности профессиональной способности цифрового коллеги',
+            'content': 'Полный подтверждённый текст кандидата знания.',
+            'product_owner_approval': True,
+            'source': 'Product Verification',
+        }],
     }
 
 
@@ -9163,6 +9245,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_decision_framework_report_request_schema()
             elif operation_id == 'executeBusinessFrameworkService':
                 request_schema = _business_framework_service_action_request_schema()
+            elif operation_id == 'createVectraKnowledgeCandidate':
+                request_schema = _knowledge_candidate_action_request_schema()
             elif operation_id == 'executeVectraBusinessDomainOperation':
                 request_schema = _business_domain_action_request_schema()
             elif operation_id == 'executeVectraProductReviewOperation':
