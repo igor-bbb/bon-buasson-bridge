@@ -20,14 +20,18 @@ from typing import Any, Dict, Iterator, Optional, Tuple
 
 
 RELEASE_ID = "RUNTIME-REPOSITORY-DATABASE-PERSISTENCE-001"
+STARTUP_HOTFIX_RELEASE_ID = "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-001"
 SCHEMA_VERSION = "1"
 TABLE_NAME = "vectra_repository_documents"
 BACKEND_ENV = "VECTRA_PERSISTENCE_BACKEND"
 DATABASE_URL_ENV = "VECTRA_DATABASE_URL"
+CONNECT_TIMEOUT_ENV = "VECTRA_DATABASE_CONNECT_TIMEOUT_SECONDS"
+STATEMENT_TIMEOUT_ENV = "VECTRA_DATABASE_STATEMENT_TIMEOUT_SECONDS"
 
 _SYNC_LOCK = Lock()
 _INIT_LOCK = Lock()
 _SYNCHRONIZED: set[Tuple[str, str, str]] = set()
+_SYNCHRONIZATION_RESULTS: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
 _INITIALIZED: set[Tuple[str, str]] = set()
 
 
@@ -87,43 +91,96 @@ def _configured_database() -> Tuple[str, str]:
     return _dialect(url), url
 
 
+def _timeout_seconds(environment_name: str, default: int, maximum: int) -> int:
+    raw = str(os.getenv(environment_name) or default).strip()
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RepositoryPersistenceError(
+            f"{environment_name} must be an integer number of seconds"
+        ) from exc
+    if value < 1 or value > maximum:
+        raise RepositoryPersistenceError(
+            f"{environment_name} must be between 1 and {maximum} seconds"
+        )
+    return value
+
+
+def database_connect_timeout_seconds() -> int:
+    return _timeout_seconds(CONNECT_TIMEOUT_ENV, default=5, maximum=30)
+
+
+def database_statement_timeout_seconds() -> int:
+    return _timeout_seconds(STATEMENT_TIMEOUT_ENV, default=15, maximum=120)
+
+
 @contextmanager
 def _connection() -> Iterator[Tuple[str, Any]]:
     dialect, url = _configured_database()
-    if dialect == "sqlite":
-        database_path = url.removeprefix("sqlite:///")
-        if not database_path:
-            raise RepositoryPersistenceError("SQLite database path is empty")
-        path = Path(database_path).resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(path, timeout=10)
-    else:
-        try:
-            import psycopg
-        except ImportError as exc:  # pragma: no cover - exercised in production image
-            raise RepositoryPersistenceError(
-                "PostgreSQL persistence requires the psycopg package"
-            ) from exc
-        normalized_url = "postgresql://" + url[len("postgres://") :] if url.startswith("postgres://") else url
-        connection = psycopg.connect(normalized_url, connect_timeout=10)
+    connect_timeout = database_connect_timeout_seconds()
+    connection = None
     try:
+        if dialect == "sqlite":
+            database_path = url.removeprefix("sqlite:///")
+            if not database_path:
+                raise RepositoryPersistenceError("SQLite database path is empty")
+            path = Path(database_path).resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(path, timeout=connect_timeout)
+        else:
+            try:
+                import psycopg
+            except ImportError as exc:  # pragma: no cover - exercised in production image
+                raise RepositoryPersistenceError(
+                    "PostgreSQL persistence requires the psycopg package"
+                ) from exc
+            normalized_url = "postgresql://" + url[len("postgres://") :] if url.startswith("postgres://") else url
+            connection = psycopg.connect(
+                normalized_url,
+                connect_timeout=connect_timeout,
+            )
+            connection.execute(
+                "SELECT set_config('statement_timeout', %s, false)",
+                (f"{database_statement_timeout_seconds()}s",),
+            )
         yield dialect, connection
         connection.commit()
     except Exception as exc:
-        connection.rollback()
+        if connection is not None:
+            connection.rollback()
         if isinstance(exc, RepositoryPersistenceError):
             raise
         raise RepositoryPersistenceError(
             f"Durable Runtime Repository operation failed: {type(exc).__name__}"
         ) from exc
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def _execute(connection: Any, dialect: str, query: str, parameters: tuple = ()) -> Any:
     if dialect == "sqlite":
         query = query.replace("%s", "?")
     return connection.execute(query, parameters)
+
+
+def _initialize_database_on_connection(dialect: str, connection: Any) -> None:
+    timestamp_type = "TEXT" if dialect == "sqlite" else "TIMESTAMPTZ"
+    _execute(
+        connection,
+        dialect,
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+            document_path TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            version BIGINT NOT NULL DEFAULT 1,
+            schema_version TEXT NOT NULL,
+            created_at {timestamp_type} NOT NULL,
+            updated_at {timestamp_type} NOT NULL
+        )
+        """,
+    )
 
 
 def initialize_database() -> None:
@@ -135,22 +192,7 @@ def initialize_database() -> None:
         if key in _INITIALIZED:
             return
         with _connection() as (active_dialect, connection):
-            timestamp_type = "TEXT" if active_dialect == "sqlite" else "TIMESTAMPTZ"
-            _execute(
-                connection,
-                active_dialect,
-                f"""
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    document_path TEXT PRIMARY KEY,
-                    payload TEXT NOT NULL,
-                    checksum TEXT NOT NULL,
-                    version BIGINT NOT NULL DEFAULT 1,
-                    schema_version TEXT NOT NULL,
-                    created_at {timestamp_type} NOT NULL,
-                    updated_at {timestamp_type} NOT NULL
-                )
-                """,
-            )
+            _initialize_database_on_connection(active_dialect, connection)
         _INITIALIZED.add(key)
 
 
@@ -373,45 +415,87 @@ def synchronize_repository(repository_root: Path) -> Dict[str, Any]:
     )
     with _SYNC_LOCK:
         if key in _SYNCHRONIZED:
-            return get_persistence_status(repository_root)
-        initialize_database()
-        documents = _list_documents()
-        for relative, payload in documents.items():
-            path = _local_path_for_document(relative, repository_root)
-            if path.suffix.lower() == ".json":
-                _write_local_json(path, payload)
-            else:
-                _write_local_text(path, str(payload))
-        local_documents = []
-        if repository_root.exists():
-            local_documents = sorted(
-                path
-                for path in repository_root.rglob("*")
-                if path.is_file() and path.suffix.lower() in {".json", ".md"}
-            )
-        project_runtime = configured_project_root() / "runtime"
-        if project_runtime.exists():
-            local_documents.extend(
-                sorted(
-                    path
-                    for path in project_runtime.rglob("*.json")
-                    if path.is_file()
-                )
-            )
-        new_documents: Dict[str, Any] = {}
-        for path in local_documents:
-            relative = _relative_document_path(path, repository_root)
-            if relative and relative not in documents:
-                payload = (
-                    _read_local_json(path, {})
-                    if path.suffix.lower() == ".json"
-                    else path.read_text(encoding="utf-8")
-                )
-                new_documents[relative] = payload
-                documents[relative] = True
-        _upsert_documents(new_documents)
+            return deepcopy(_SYNCHRONIZATION_RESULTS[key])
+
+        # The complete startup hydration/import deliberately uses one database
+        # connection and one transaction. Repeated ensure_repository() calls
+        # return the cached result above and never touch the network.
+        with _INIT_LOCK:
+            with _connection() as (active_dialect, connection):
+                _initialize_database_on_connection(active_dialect, connection)
+                rows = _execute(
+                    connection,
+                    active_dialect,
+                    f"SELECT document_path, payload FROM {TABLE_NAME} ORDER BY document_path",
+                ).fetchall()
+                documents: Dict[str, Any] = {}
+                for document_path, encoded in rows:
+                    try:
+                        documents[str(document_path)] = json.loads(encoded)
+                    except Exception as exc:
+                        raise RepositoryPersistenceError(
+                            f"Database document is not valid JSON: {document_path}"
+                        ) from exc
+
+                for relative, payload in documents.items():
+                    path = _local_path_for_document(relative, repository_root)
+                    if path.suffix.lower() == ".json":
+                        _write_local_json(path, payload)
+                    else:
+                        _write_local_text(path, str(payload))
+
+                local_documents = []
+                if repository_root.exists():
+                    local_documents = sorted(
+                        path
+                        for path in repository_root.rglob("*")
+                        if path.is_file() and path.suffix.lower() in {".json", ".md"}
+                    )
+                project_runtime = configured_project_root() / "runtime"
+                if project_runtime.exists():
+                    local_documents.extend(
+                        sorted(
+                            path
+                            for path in project_runtime.rglob("*.json")
+                            if path.is_file()
+                        )
+                    )
+                imported_count = 0
+                for path in local_documents:
+                    relative = _relative_document_path(path, repository_root)
+                    if relative and relative not in documents:
+                        payload = (
+                            _read_local_json(path, {})
+                            if path.suffix.lower() == ".json"
+                            else path.read_text(encoding="utf-8")
+                        )
+                        _upsert_on_connection(
+                            connection,
+                            active_dialect,
+                            relative,
+                            payload,
+                        )
+                        documents[relative] = payload
+                        imported_count += 1
+            _INITIALIZED.add((dialect, url))
+
+        result = {
+            "status": "PASS",
+            "release": RELEASE_ID,
+            "startup_hotfix_release": STARTUP_HOTFIX_RELEASE_ID,
+            "backend": "database",
+            "source_of_truth": "database",
+            "durable_across_deploys": True,
+            "database_url_configured": True,
+            "database_engine": dialect,
+            "schema_version": SCHEMA_VERSION,
+            "documents_count": len(documents),
+            "imported_documents_count": imported_count,
+            "failure_reason": None,
+        }
+        _SYNCHRONIZATION_RESULTS[key] = deepcopy(result)
         _SYNCHRONIZED.add(key)
-    return get_persistence_status(repository_root)
+    return result
 
 
 def get_persistence_status(repository_root: Optional[Path] = None) -> Dict[str, Any]:
@@ -419,11 +503,14 @@ def get_persistence_status(repository_root: Optional[Path] = None) -> Dict[str, 
     result = {
         "status": "PASS",
         "release": RELEASE_ID,
+        "startup_hotfix_release": STARTUP_HOTFIX_RELEASE_ID,
         "backend": backend,
         "source_of_truth": "database" if backend == "database" else "filesystem",
         "durable_across_deploys": backend == "database",
         "database_url_configured": bool(_database_url()),
         "schema_version": SCHEMA_VERSION,
+        "connect_timeout_seconds": database_connect_timeout_seconds(),
+        "statement_timeout_seconds": database_statement_timeout_seconds(),
         "documents_count": None,
         "failure_reason": None,
     }
@@ -453,5 +540,6 @@ def reset_persistence_runtime_cache() -> None:
     """Test helper for simulating a new process/deployment."""
     with _SYNC_LOCK:
         _SYNCHRONIZED.clear()
+        _SYNCHRONIZATION_RESULTS.clear()
     with _INIT_LOCK:
         _INITIALIZED.clear()

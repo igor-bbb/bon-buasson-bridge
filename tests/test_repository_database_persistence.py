@@ -1,4 +1,6 @@
 from pathlib import Path
+from contextlib import contextmanager
+import time
 
 import pytest
 
@@ -16,8 +18,10 @@ from app.assistant_runtime.repository_persistence import (
     get_persistence_status,
     read_repository_text,
     reset_persistence_runtime_cache,
+    synchronize_repository,
     write_repository_text,
 )
+from app.assistant_runtime import repository_persistence
 
 
 @pytest.fixture()
@@ -166,3 +170,86 @@ def test_database_mode_fails_closed_without_database_url(
 
     with pytest.raises(RepositoryPersistenceError):
         ensure_repository()
+
+
+def test_repeated_repository_ensure_does_not_repeat_database_network_calls(
+    database_environment,
+    monkeypatch,
+) -> None:
+    repository = database_environment / "deploy" / "assistant_repository"
+    repository.mkdir(parents=True)
+    (repository / "manifest.json").write_text('{"status":"ready"}', encoding="utf-8")
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(repository))
+
+    actual_connection = repository_persistence._connection
+    connection_calls = 0
+
+    @contextmanager
+    def delayed_connection():
+        nonlocal connection_calls
+        connection_calls += 1
+        time.sleep(0.03)
+        with actual_connection() as active:
+            yield active
+
+    monkeypatch.setattr(repository_persistence, "_connection", delayed_connection)
+
+    first = synchronize_repository(repository)
+    for _ in range(25):
+        repeated = synchronize_repository(repository)
+
+    assert first["status"] == "PASS"
+    assert repeated == first
+    assert connection_calls == 1
+
+
+def test_initial_repository_import_uses_one_connection_and_transaction(
+    database_environment,
+    monkeypatch,
+) -> None:
+    repository = database_environment / "deploy" / "assistant_repository"
+    repository.mkdir(parents=True)
+    (repository / "manifest.json").write_text('{"status":"ready"}', encoding="utf-8")
+    knowledge_dir = repository / "knowledge"
+    knowledge_dir.mkdir()
+    (knowledge_dir / "professional_knowledge.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(repository))
+    monkeypatch.setenv("VECTRA_PROJECT_ROOT", str(database_environment / "deploy"))
+
+    actual_connection = repository_persistence._connection
+    connection_calls = 0
+
+    @contextmanager
+    def counted_connection():
+        nonlocal connection_calls
+        connection_calls += 1
+        with actual_connection() as active:
+            yield active
+
+    monkeypatch.setattr(repository_persistence, "_connection", counted_connection)
+
+    result = synchronize_repository(repository)
+
+    assert result["status"] == "PASS"
+    assert result["documents_count"] == 2
+    assert result["imported_documents_count"] == 2
+    assert connection_calls == 1
+
+
+def test_database_timeouts_are_bounded_and_reported(
+    database_environment,
+    monkeypatch,
+) -> None:
+    repository = database_environment / "deploy" / "assistant_repository"
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(repository))
+    monkeypatch.setenv("VECTRA_DATABASE_CONNECT_TIMEOUT_SECONDS", "4")
+    monkeypatch.setenv("VECTRA_DATABASE_STATEMENT_TIMEOUT_SECONDS", "12")
+
+    ensure_repository()
+    status = get_persistence_status(repository)
+
+    assert status["connect_timeout_seconds"] == 4
+    assert status["statement_timeout_seconds"] == 12
+    assert status["startup_hotfix_release"] == (
+        "RUNTIME-REPOSITORY-DATABASE-STARTUP-HOTFIX-001"
+    )

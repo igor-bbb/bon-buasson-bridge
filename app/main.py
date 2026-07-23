@@ -46,28 +46,79 @@ app.openapi = _vectra_action_openapi_schema
 def warmup_vectra_runtime():
     from app.query.entity_dictionary import refresh_entity_dictionary
     from app.data.loader import get_csv_text  # 🔴 ДОБАВИЛИ
+    from app.assistant_runtime.repository_persistence import (
+        STARTUP_HOTFIX_RELEASE_ID,
+        database_persistence_enabled,
+    )
 
     try:
         from app.assistant_runtime.repository import ensure_repository
         from app.assistant_runtime.repository_migrations import reconcile_lost_pk002_candidate
 
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=repository_sync status=STARTED",
+            flush=True,
+        )
         ensure_repository()
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=repository_sync status=PASS",
+            flush=True,
+        )
+
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=repository_migration status=STARTED",
+            flush=True,
+        )
         migration = reconcile_lost_pk002_candidate()
         if migration.get("status") != "PASS":
             raise RuntimeError("Runtime Repository migration failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=repository_migration status=PASS",
+            flush=True,
+        )
 
         # 🔴 preload DATA
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=data_preload status=STARTED",
+            flush=True,
+        )
         get_csv_text()
 
         # 🔴 preload dictionary
         refresh_entity_dictionary()
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=data_preload status=PASS",
+            flush=True,
+        )
 
         # GENESIS-0002: after successful runtime startup/deploy, persist the
         # official Runtime Snapshot for VECTRA Laboratory Product Verification.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_snapshot status=STARTED",
+            flush=True,
+        )
         from app.assistant_runtime.observability import create_startup_runtime_snapshot
         create_startup_runtime_snapshot()
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_snapshot status=PASS",
+            flush=True,
+        )
 
-        print("✅ VECTRA warmed up: DATA + dictionary + Runtime Snapshot loaded")
+        print("✅ VECTRA warmed up: DATA + dictionary + Runtime Snapshot loaded", flush=True)
 
     except Exception as e:
-        print(f"❌ Warmup error: {e}")
+        print(
+            f"❌ VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            f"status=FAIL error_type={type(e).__name__} error={e}",
+            flush=True,
+        )
+        if database_persistence_enabled():
+            raise
