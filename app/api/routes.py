@@ -8401,6 +8401,16 @@ def _facade_operation_request_schema() -> dict:
                         'type': 'string',
                         'description': 'Business Domain identifier, for example bon_buasson.',
                     },
+                    'response_mode': {
+                        'type': 'string',
+                        'enum': ['compact', 'step_summary', 'diagnostic'],
+                        'default': 'compact',
+                        'description': (
+                            'Response projection for registered Runtime Action sequences. '
+                            'compact is the default for GPT Actions; step_summary adds bounded per-step summaries; '
+                            'diagnostic returns the full saved Runtime state for technical diagnostics.'
+                        ),
+                    },
                 },
                 'additionalProperties': True,
             },
@@ -9358,7 +9368,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-001',
+        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-COMPACT-RESPONSE-001',
         'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],

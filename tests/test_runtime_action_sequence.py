@@ -76,7 +76,9 @@ def test_executes_five_registered_actions_with_context_preserved(monkeypatch, tm
 
 def test_executes_complete_product_verification_and_capitalization_sequence(monkeypatch, tmp_path):
     calls = _configure(monkeypatch, tmp_path)
-    result = sequence.execute_registered_action_sequence(_payload())
+    payload = _payload()
+    payload["response_mode"] = "step_summary"
+    result = sequence.execute_registered_action_sequence(payload)
     assert result["status"] == "PASS"
     assert result["verification_status"] == "PASS"
     assert result["sequence_status"] == "COMPLETED"
