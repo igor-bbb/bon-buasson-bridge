@@ -88,6 +88,39 @@ def test_shared_professional_knowledge_is_projected_into_multiple_roles(
         assert context["knowledge"][0]["role_applicability_verified"] is True
 
 
+@pytest.mark.parametrize(
+    "professional_role",
+    (
+        "vectra_laboratory",
+        "chief_engineer",
+        "digital_business_analyst",
+    ),
+)
+def test_public_knowledge_facade_preserves_requested_role_projection(
+    isolated_repository,
+    professional_role: str,
+) -> None:
+    response = routes.vectra_laboratory_facade_knowledge(
+        {
+            "operation_type": "get_professional_knowledge_context",
+            "knowledge_id": "PK-002",
+            "professional_role": professional_role,
+        }
+    )
+    body = json.loads(response.body.decode("utf-8"))
+
+    assert body["status"] == "ok"
+    assert body["operation_type"] == "get_professional_knowledge_context"
+    result = body["result"]
+    assert result["status"] == "PASS"
+    context = result["professional_knowledge_context"]
+    assert context["professional_role"] == professional_role
+    assert context["role_projection_enforced"] is True
+    assert context["knowledge_ids"] == ["PK-002"]
+    assert context["knowledge"][0]["applied_professional_role"] == professional_role
+    assert context["knowledge"][0]["role_applicability_verified"] is True
+
+
 def test_role_restricted_knowledge_is_not_applied_outside_role(
     isolated_repository,
 ) -> None:

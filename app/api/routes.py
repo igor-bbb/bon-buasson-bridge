@@ -9543,8 +9543,8 @@ def _normalize_facade_request(request: dict | None) -> tuple[str, dict, bool, st
     # first-class GPT Action arguments while routing them through the existing
     # Knowledge facade.
     for influence_key in (
-        'capability_id', 'trace_id', 'runtime_ready', 'api_ready',
-        'capability_registry_ready', 'action_manifest_ready',
+        'professional_role', 'capability_id', 'trace_id', 'runtime_ready',
+        'api_ready', 'capability_registry_ready', 'action_manifest_ready',
         'user_routing_ready', 'verification_reference',
     ):
         if influence_key in request:
