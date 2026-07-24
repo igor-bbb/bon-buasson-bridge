@@ -8625,6 +8625,19 @@ def _business_framework_service_action_request_schema() -> dict:
     }
 
 
+
+def _memory_facade_operation_request_schema() -> dict:
+    # Public contract for the existing Memory facade. Extends the shared
+    # schema only with already implemented Memory Runtime write/readback
+    # operations needed for a complete persistence cycle.
+    schema = _facade_operation_request_schema()
+    operations = schema['properties']['operation_type']['enum']
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge'):
+        if operation_type not in operations:
+            operations.append(operation_type)
+    return schema
+
+
 def _knowledge_candidate_action_request_schema() -> dict:
     """Dedicated GPT Action contract for one approval-gated candidate.
 
@@ -9323,6 +9336,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _business_domain_action_request_schema()
             elif operation_id == 'executeVectraProductReviewOperation':
                 request_schema = _product_review_action_request_schema()
+            elif operation_id == 'executeVectraMemoryOperation':
+                request_schema = _memory_facade_operation_request_schema()
             else:
                 request_schema = _facade_operation_request_schema()
             op['requestBody'] = {
@@ -9339,7 +9354,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-ORGANIZATIONAL-MEMORY-CONTINUITY-001',
+        'version': 'VECTRA-MEMORY-PUBLIC-ROUTING-001',
         'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
@@ -11557,6 +11572,65 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
             return json_response(_facade_response(operation_type, 'recovery_snapshot_sync.verify_recovery_snapshot_sync', '/vectra/laboratory/facade/memory', verify_vectra_recovery_snapshot_sync(payload), next_action='If PASS, Recovery Snapshot is synchronized with Repository and Readback.'))
         if operation_type in {'rebuild_recovery_snapshot', 'sync_recovery_snapshot', 'rebuild_recovery_snapshot_after_capitalization'}:
             return json_response(_facade_response(operation_type, 'recovery_snapshot_sync.rebuild_and_persist_recovery_snapshot_after_capitalization', '/vectra/laboratory/facade/memory', rebuild_vectra_recovery_snapshot_after_capitalization(payload), next_action='Run verify_repository_readback_consistency.'))
+        # VECTRA-MEMORY-PUBLIC-ROUTING-001:
+        # The public Memory facade must expose the unified repository operations
+        # already published by OpenAPI and the Action Manifest. These handlers
+        # intentionally reuse the existing repository/services; no new memory
+        # component or persistence model is introduced.
+        if operation_type == 'get_memory_overview':
+            result = get_vectra_memory_overview(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.get_memory_overview', '/vectra/memory/overview', result))
+        if operation_type == 'list_memory_objects':
+            result = list_vectra_memory_objects(
+                memory_space=payload.get('memory_space'),
+                domain=domain or payload.get('domain') or 'bonboason',
+                limit=int(payload.get('limit') or 100),
+            )
+            return json_response(_facade_response(operation_type, 'memory_repository.list_memory_objects', '/vectra/memory/objects', result))
+        if operation_type == 'read_memory_object':
+            result = get_vectra_memory_object(
+                object_id=str(payload.get('object_id') or ''),
+                domain=domain or payload.get('domain') or 'bonboason',
+            )
+            return json_response(_facade_response(operation_type, 'memory_repository.get_memory_object', '/vectra/memory/objects/{object_id}', result))
+        if operation_type == 'search_memory_object':
+            result = readback_vectra_memory_object(
+                knowledge_id=str(payload.get('knowledge_id') or ''),
+                memory_space=payload.get('memory_space'),
+                domain=domain or payload.get('domain') or 'bonboason',
+            )
+            return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
+        if operation_type == 'verify_memory_object_readback':
+            result = readback_vectra_memory_object(
+                object_id=payload.get('object_id'),
+                knowledge_id=payload.get('knowledge_id'),
+                memory_space=payload.get('memory_space'),
+                domain=domain or payload.get('domain') or 'bonboason',
+            )
+            return json_response(_facade_response(operation_type, 'memory_repository.readback_memory_object', '/vectra/memory/readback', result))
+        if operation_type == 'verify_memory_repository':
+            result = verify_vectra_memory_repository_integrity(domain=domain or payload.get('domain') or 'bonboason')
+            return json_response(_facade_response(operation_type, 'memory_repository.verify_memory_repository_integrity', '/vectra/memory/verify', result))
+        if operation_type in {'read_professional_knowledge', 'getVectraProfessionalKnowledge'}:
+            kid = str(payload.get('knowledge_id') or '').strip()
+            result = get_vectra_professional_knowledge(knowledge_id=kid) if kid else list_vectra_professional_knowledge()
+            endpoint = '/vectra/knowledge/professional/{knowledge_id}' if kid else '/vectra/knowledge/professional'
+            return json_response(_facade_response(operation_type, 'knowledge_capitalization.read_professional_knowledge', endpoint, result))
+        if operation_type == 'getVectraProfessionalKnowledgeOverview':
+            result = get_vectra_professional_knowledge_overview()
+            return json_response(_facade_response(operation_type, 'knowledge_capitalization.get_professional_knowledge_overview', '/vectra/knowledge/professional/overview', result))
+        if operation_type == 'getVectraProfessionalKnowledgeById':
+            kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(operation_type, 'knowledge_id is required for getVectraProfessionalKnowledgeById.', runtime_service='knowledge_capitalization.get_professional_knowledge', endpoint='/vectra/knowledge/professional/{knowledge_id}'))
+            result = get_vectra_professional_knowledge(knowledge_id=kid)
+            return json_response(_facade_response(operation_type, 'knowledge_capitalization.get_professional_knowledge', '/vectra/knowledge/professional/{knowledge_id}', result))
+        if operation_type == 'verifyVectraProfessionalKnowledgeReadback':
+            kid = str(payload.get('knowledge_id') or '').strip()
+            if not kid:
+                return json_response(_facade_error(operation_type, 'knowledge_id is required for verifyVectraProfessionalKnowledgeReadback.', runtime_service='knowledge_capitalization.verify_professional_knowledge_readback', endpoint='/vectra/knowledge/professional/{knowledge_id}/readback'))
+            result = verify_vectra_professional_knowledge_readback(knowledge_id=kid)
+            return json_response(_facade_response(operation_type, 'knowledge_capitalization.verify_professional_knowledge_readback', '/vectra/knowledge/professional/{knowledge_id}/readback', result))
         if operation_type in {'product_knowledge', 'list_product_knowledge'}:
             return json_response(_facade_response(operation_type, 'product_knowledge.list_product_knowledge', '/vectra/memory/product-knowledge', list_vectra_product_knowledge_runtime(limit=int(payload.get('limit') or 100))))
         if operation_type == 'write_product_knowledge':
