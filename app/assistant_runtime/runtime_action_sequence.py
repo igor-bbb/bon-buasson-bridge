@@ -1,4 +1,4 @@
-"""VECTRA-RUNTIME-ACTION-SEQUENCE-COMPACT-RESPONSE-001.
+"""VECTRA-RUNTIME-ACTION-SEQUENCE-READBACK-ID-001.
 
 Server-side execution of bounded, registered Runtime operation sequences.
 This is an orchestration mechanism inside the existing Runtime and facade; it
@@ -14,6 +14,7 @@ import uuid
 
 from app.assistant_runtime.durable_runtime_state import read_json_state, write_json_state
 from app.assistant_runtime.memory_repository import (
+    find_memory_object_by_knowledge_id,
     get_memory_object,
     get_memory_overview,
     list_memory_objects,
@@ -25,7 +26,7 @@ from app.assistant_runtime.knowledge_capitalization import (
     get_professional_knowledge,
 )
 
-RELEASE_ID = "VECTRA-RUNTIME-ACTION-SEQUENCE-COMPACT-RESPONSE-001"
+RELEASE_ID = "VECTRA-RUNTIME-ACTION-SEQUENCE-READBACK-ID-001"
 
 SUPPORTED_RESPONSE_MODES = {"compact", "step_summary", "diagnostic"}
 DEFAULT_RESPONSE_MODE = "compact"
@@ -83,8 +84,11 @@ def _step_summary(step: Dict[str, Any]) -> Dict[str, Any]:
     elif operation_type in {"read_memory_object", "verify_memory_object_readback"}:
         summary["readback_status"] = result.get("readback_status") or result.get("verification_status") or step.get("status")
         object_ids = _collect_ids(result, {"object_id"})
+        knowledge_ids = _collect_ids(result, {"knowledge_id"})
         if object_ids:
             summary["object_id"] = object_ids[0]
+        if knowledge_ids:
+            summary["knowledge_id"] = knowledge_ids[0]
     elif operation_type == "verify_memory_repository":
         summary["memory_integrity_status"] = result.get("verification_status") or result.get("integrity_status") or step.get("status")
     return {
@@ -140,6 +144,11 @@ def _project_sequence(record: Dict[str, Any], response_mode: str, *, restored: b
         "capitalized_knowledge_ids": capitalized_ids,
         "created_object_ids": created_ids,
         "updated_object_ids": updated_ids,
+        "selected_readback_knowledge_id": (record.get("context") or {}).get("selected_readback_knowledge_id"),
+        "selected_readback_object_id": (record.get("context") or {}).get("selected_readback_object_id"),
+        "readback_objects_count": len((record.get("context") or {}).get("readback_results") or []),
+        "readback_pass_count": sum(1 for item in ((record.get("context") or {}).get("readback_results") or []) if str(item.get("readback_status") or "").upper() == "PASS"),
+        "readback_fail_count": sum(1 for item in ((record.get("context") or {}).get("readback_results") or []) if str(item.get("readback_status") or "").upper() != "PASS"),
         "readback_status": readback_result.get("readback_status") or readback_result.get("verification_status") or ("PASS" if completed and readback_step else None),
         "memory_integrity_status": integrity_result.get("verification_status") or integrity_result.get("integrity_status") or ("PASS" if completed and integrity_step else None),
         "failed_step": failed_step,
@@ -175,8 +184,161 @@ def _status_ok(result: Dict[str, Any]) -> bool:
 
 def _knowledge_ids(payload: Dict[str, Any]) -> List[str]:
     package = payload.get("prepared_knowledge_package") if isinstance(payload.get("prepared_knowledge_package"), dict) else {}
-    items = package.get("professional_knowledge") if isinstance(package.get("professional_knowledge"), list) else []
-    return [str(item.get("knowledge_id")) for item in items if isinstance(item, dict) and item.get("knowledge_id")]
+    values: List[str] = []
+    for collection_name in ("professional_knowledge", "business_knowledge", "product_knowledge", "knowledge"):
+        items = package.get(collection_name) if isinstance(package.get(collection_name), list) else []
+        for item in items:
+            if isinstance(item, dict) and item.get("knowledge_id"):
+                value = str(item["knowledge_id"]).strip()
+                if value and value not in values:
+                    values.append(value)
+    return values
+
+
+def _unique(values: Iterable[Any]) -> List[str]:
+    result: List[str] = []
+    for value in values:
+        if isinstance(value, (str, int)) and str(value).strip():
+            text = str(value).strip()
+            if text not in result:
+                result.append(text)
+    return result
+
+
+def _extract_capitalization_identifiers(result: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Extract deterministic readback identifiers from one capitalization result.
+
+    The capitalization service has accumulated several compatible response
+    shapes over time. Orchestration therefore consumes its semantic fields,
+    rather than depending on one shallow response layout.
+    """
+    created = _collect_ids(result, {
+        "created_knowledge_id", "created_knowledge_ids", "written_knowledge_id",
+        "written_knowledge_ids", "knowledge_id",
+    })
+    updated = _collect_ids(result, {"updated_knowledge_id", "updated_knowledge_ids"})
+    existing = _collect_ids(result, {
+        "existing_knowledge_id", "existing_knowledge_ids", "unchanged_knowledge_id",
+        "unchanged_knowledge_ids",
+    })
+    all_ids = _collect_ids(result, {
+        "knowledge_id", "knowledge_ids", "capitalized_knowledge_id",
+        "capitalized_knowledge_ids", "created_knowledge_id", "created_knowledge_ids",
+        "updated_knowledge_id", "updated_knowledge_ids", "existing_knowledge_id",
+        "existing_knowledge_ids",
+    })
+
+    # Prepared-package identifiers are valid fallback candidates only when the
+    # capitalization result confirms success/no-change for that same package.
+    package_ids = _knowledge_ids(payload)
+    final_status = str(result.get("final_status") or "").upper()
+    status = str(result.get("status") or "").upper()
+    if final_status in {"CAPITALIZED", "NO_NEW_KNOWLEDGE_TO_CAPITALIZE", "NO_CONFIRMED_KNOWLEDGE_TO_CAPITALIZE"} or status in {"OK", "PASS", "SUCCESS"}:
+        all_ids = _unique([*all_ids, *package_ids])
+        if not created and final_status == "CAPITALIZED":
+            created = _unique(package_ids)
+        if not existing and final_status == "NO_NEW_KNOWLEDGE_TO_CAPITALIZE":
+            existing = _unique(package_ids)
+
+    created = _unique(created)
+    updated = _unique(updated)
+    existing = _unique(existing)
+    all_ids = _unique([*created, *updated, *existing, *all_ids])
+    return {
+        "capitalized_knowledge_ids": all_ids,
+        "created_knowledge_ids": created,
+        "updated_knowledge_ids": updated,
+        "existing_knowledge_ids": existing,
+    }
+
+
+def _select_readback_knowledge_id(context: Dict[str, Any]) -> str:
+    priorities = (
+        ("created_knowledge_ids", "first_created"),
+        ("updated_knowledge_ids", "first_updated"),
+        ("existing_knowledge_ids", "first_existing_confirmed"),
+        ("capitalized_knowledge_ids", "first_capitalized"),
+    )
+    for field, reason in priorities:
+        values = context.get(field) if isinstance(context.get(field), list) else []
+        values = _unique(values)
+        if values:
+            selected = values[0]
+            context["selected_readback_knowledge_id"] = selected
+            context["readback_target_selection_reason"] = reason
+            context["readback_target_selection_source_step"] = "capitalize_confirmed_knowledge"
+            return selected
+    return ""
+
+
+def _resolve_readback_target(context: Dict[str, Any], domain: str) -> Dict[str, Any]:
+    knowledge_id = str(context.get("selected_readback_knowledge_id") or _select_readback_knowledge_id(context) or "").strip()
+    if not knowledge_id:
+        return {
+            "status": "FAIL",
+            "verification_status": "FAIL",
+            "code": "capitalization_completed_without_readback_identifier",
+            "message": "Capitalization did not provide a knowledge_id or object_id for mandatory readback.",
+        }
+
+    object_id = str(context.get("selected_readback_object_id") or "").strip()
+    if object_id:
+        return {
+            "status": "PASS",
+            "verification_status": "PASS",
+            "knowledge_id": knowledge_id,
+            "object_id": object_id,
+            "resolution_source": "sequence_context",
+        }
+
+    mapping = context.get("knowledge_object_mapping") if isinstance(context.get("knowledge_object_mapping"), dict) else {}
+    mapped = str(mapping.get(knowledge_id) or "").strip()
+    if mapped:
+        context["selected_readback_object_id"] = mapped
+        return {
+            "status": "PASS",
+            "verification_status": "PASS",
+            "knowledge_id": knowledge_id,
+            "object_id": mapped,
+            "resolution_source": "sequence_mapping",
+        }
+
+    found = find_memory_object_by_knowledge_id(knowledge_id=knowledge_id, domain=domain)
+    matches = found.get("matches") if isinstance(found.get("matches"), list) else []
+    exact = next((item for item in matches if isinstance(item, dict) and str(item.get("knowledge_id")) == knowledge_id and item.get("object_id")), None)
+    if not exact:
+        return {
+            "status": "FAIL",
+            "verification_status": "FAIL",
+            "code": "readback_object_resolution_failed",
+            "message": f"No unified memory object was found for knowledge_id {knowledge_id}.",
+            "knowledge_id": knowledge_id,
+        }
+    object_id = str(exact["object_id"])
+    context.setdefault("knowledge_object_mapping", {})[knowledge_id] = object_id
+    context["selected_readback_object_id"] = object_id
+    context["readback_target_resolved_at"] = _now()
+    return {
+        "status": "PASS",
+        "verification_status": "PASS",
+        "knowledge_id": knowledge_id,
+        "object_id": object_id,
+        "resolution_source": "memory_repository_mapping",
+    }
+
+
+def _restore_context_from_record(record: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+    context = deepcopy(record.get("context")) if isinstance(record.get("context"), dict) else {}
+    context["sequence_id"] = record.get("sequence_id")
+    steps = record.get("steps_completed") if isinstance(record.get("steps_completed"), list) else []
+    capitalization_step = next((s for s in steps if s.get("operation_type") == "capitalize_confirmed_knowledge" and str(s.get("status")).upper() == "PASS"), None)
+    if capitalization_step and isinstance(capitalization_step.get("runtime_result"), dict):
+        ids = _extract_capitalization_identifiers(capitalization_step["runtime_result"], payload)
+        for key, values in ids.items():
+            context[key] = _unique([*(context.get(key) if isinstance(context.get(key), list) else []), *values])
+        context["knowledge_ids"] = list(context.get("capitalized_knowledge_ids") or [])
+        _select_readback_knowledge_id(context)
+    return context
 
 
 def _registry(payload: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Callable[[], Dict[str, Any]]]:
@@ -186,31 +348,48 @@ def _registry(payload: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Cal
     def capitalize() -> Dict[str, Any]:
         result = auto_capitalize_confirmed_knowledge(payload)
         context["capitalization"] = deepcopy(result)
-        ids = _knowledge_ids(payload)
-        context["knowledge_ids"] = ids
+        identifiers = _extract_capitalization_identifiers(result, payload)
+        for key, values in identifiers.items():
+            context[key] = values
+        context["knowledge_ids"] = list(identifiers["capitalized_knowledge_ids"])
+        selected = _select_readback_knowledge_id(context)
+        if _status_ok(result) and not selected:
+            return {
+                "status": "FAIL",
+                "verification_status": "FAIL",
+                "code": "capitalization_completed_without_readback_identifier",
+                "message": "Capitalization did not provide a knowledge_id or object_id for mandatory readback.",
+                "capitalization_result": deepcopy(result),
+            }
         return result
 
     def read_memory() -> Dict[str, Any]:
-        object_id = str(payload.get("object_id") or context.get("object_id") or "")
-        if object_id:
-            return get_memory_object(object_id=object_id, domain=domain)
-        ids = context.get("knowledge_ids") or _knowledge_ids(payload)
-        if not ids:
-            return {"status": "FAIL", "reason": "object_id_or_capitalized_knowledge_id_required"}
-        result = readback_memory_object(knowledge_id=str(ids[0]), domain=domain)
-        obj = result.get("memory_object") if isinstance(result, dict) else None
-        if isinstance(obj, dict) and obj.get("object_id"):
-            context["object_id"] = obj["object_id"]
+        resolved = _resolve_readback_target(context, domain)
+        context["readback_target_resolution"] = deepcopy(resolved)
+        if not _status_ok(resolved):
+            return resolved
+        object_id = str(resolved["object_id"])
+        knowledge_id = str(resolved["knowledge_id"])
+        result = get_memory_object(object_id=object_id, domain=domain)
+        if isinstance(result, dict):
+            result.setdefault("knowledge_id", knowledge_id)
+            result.setdefault("object_id", object_id)
+        context["read_memory_object_result"] = deepcopy(result)
         return result
 
     def verify_readback() -> Dict[str, Any]:
-        object_id = str(payload.get("object_id") or context.get("object_id") or "")
-        ids = context.get("knowledge_ids") or _knowledge_ids(payload)
-        return readback_memory_object(
-            object_id=object_id or None,
-            knowledge_id=None if object_id else (str(ids[0]) if ids else None),
-            domain=domain,
-        )
+        resolved = _resolve_readback_target(context, domain)
+        if not _status_ok(resolved):
+            return resolved
+        object_id = str(resolved["object_id"])
+        knowledge_id = str(resolved["knowledge_id"])
+        result = readback_memory_object(object_id=object_id, knowledge_id=knowledge_id, domain=domain)
+        context["readback_results"] = [{
+            "knowledge_id": knowledge_id,
+            "object_id": object_id,
+            "readback_status": result.get("readback_status") if isinstance(result, dict) else "FAIL",
+        }]
+        return result
 
     return {
         "get_memory_overview": lambda: get_memory_overview(domain=domain),
@@ -238,59 +417,92 @@ def execute_registered_action_sequence(payload: Dict[str, Any] | None = None) ->
     payload = payload if isinstance(payload, dict) else {}
     response_mode = _response_mode(payload)
     sequence_id = str(payload.get("sequence_id") or f"RAS-{uuid.uuid4().hex[:12].upper()}")
-    steps = payload.get("steps") if isinstance(payload.get("steps"), list) else DEFAULT_MEMORY_CAPITALIZATION_SEQUENCE
-    steps = [str(step).strip() for step in steps if str(step).strip()]
-    if not steps:
+    requested_steps = payload.get("steps") if isinstance(payload.get("steps"), list) else DEFAULT_MEMORY_CAPITALIZATION_SEQUENCE
+    requested_steps = [str(step).strip() for step in requested_steps if str(step).strip()]
+    if not requested_steps:
         return {"status": "FAIL", "release": RELEASE_ID, "reason": "steps_required", "response_mode": response_mode}
 
-    existing = _load().get("sequences", {}).get(sequence_id)
+    store = _load()
+    existing = store.get("sequences", {}).get(sequence_id)
     if isinstance(existing, dict) and str(existing.get("status") or "").upper() == "COMPLETED":
         result = _project_sequence(existing, response_mode, restored=True)
+        result["release"] = RELEASE_ID
         result["sequence_reused"] = True
+        result["capitalization_reexecuted"] = False
         return result
 
-    context: Dict[str, Any] = {"sequence_id": sequence_id}
+    # Resume preserves the original approved package and every successful step.
+    if isinstance(existing, dict) and str(existing.get("status") or "").upper() == "FAILED":
+        stored_payload = existing.get("request_payload") if isinstance(existing.get("request_payload"), dict) else {}
+        effective_payload = deepcopy(stored_payload)
+        effective_payload.update({k: deepcopy(v) for k, v in payload.items() if v is not None})
+        effective_payload["sequence_id"] = sequence_id
+        steps = existing.get("steps_requested") if isinstance(existing.get("steps_requested"), list) else requested_steps
+        completed_steps = existing.get("steps_completed") if isinstance(existing.get("steps_completed"), list) else []
+        first_failed = next((i for i, step in enumerate(completed_steps) if str(step.get("status") or "").upper() == "FAIL"), len(completed_steps))
+        successful_steps = deepcopy(completed_steps[:first_failed])
+        context = _restore_context_from_record(existing, effective_payload)
+        record = deepcopy(existing)
+        record["release"] = RELEASE_ID
+        record["status"] = "RUNNING"
+        record["updated_at"] = _now()
+        record["resumed_at"] = _now()
+        record["resume_count"] = int(record.get("resume_count") or 0) + 1
+        record["resume_from_step_number"] = first_failed + 1
+        record["steps_completed"] = successful_steps
+        record["context"] = deepcopy(context)
+        record["request_payload"] = deepcopy(effective_payload)
+        record["runtime_initialization_count"] = int(record.get("runtime_initialization_count") or 1)
+        payload = effective_payload
+        results = successful_steps
+        start_index = first_failed
+        resumed = True
+    else:
+        steps = requested_steps
+        context = {"sequence_id": sequence_id}
+        initialized_at = _now()
+        record = {
+            "sequence_id": sequence_id,
+            "release": RELEASE_ID,
+            "program_type": str(payload.get("program_type") or "knowledge_capitalization"),
+            "status": "RUNNING",
+            "initialized_at": initialized_at,
+            "updated_at": initialized_at,
+            "runtime_initialization_count": 1,
+            "steps_requested": steps,
+            "steps_completed": [],
+            "context": deepcopy(context),
+            "request_payload": deepcopy(payload),
+            "resume_count": 0,
+        }
+        results = []
+        start_index = 0
+        resumed = False
+
     registry = _registry(payload, context)
     unknown = [step for step in steps if step not in registry]
     if unknown:
         return {
-            "status": "FAIL",
-            "release": RELEASE_ID,
-            "sequence_id": sequence_id,
-            "response_mode": response_mode,
-            "reason": "unsupported_registered_operation",
-            "unsupported_operations": unknown,
-            "registered_operations": sorted(registry),
+            "status": "FAIL", "release": RELEASE_ID, "sequence_id": sequence_id,
+            "response_mode": response_mode, "reason": "unsupported_registered_operation",
+            "unsupported_operations": unknown, "registered_operations": sorted(registry),
         }
 
     store = _load()
-    initialized_at = _now()
-    record = {
-        "sequence_id": sequence_id,
-        "release": RELEASE_ID,
-        "program_type": str(payload.get("program_type") or "knowledge_capitalization"),
-        "status": "RUNNING",
-        "initialized_at": initialized_at,
-        "updated_at": initialized_at,
-        "runtime_initialization_count": 1,
-        "steps_requested": steps,
-        "steps_completed": [],
-        "context": deepcopy(context),
-        "request_payload": deepcopy(payload),
-    }
-    store["sequences"][sequence_id] = record
+    store["sequences"][sequence_id] = deepcopy(record)
     _save(store)
 
-    results: List[Dict[str, Any]] = []
-    for index, operation_type in enumerate(steps, start=1):
+    for zero_index in range(start_index, len(steps)):
+        operation_type = steps[zero_index]
         result = registry[operation_type]()
         passed = _status_ok(result)
         step_result = {
-            "index": index,
+            "index": zero_index + 1,
             "operation_type": operation_type,
             "status": "PASS" if passed else "FAIL",
             "runtime_result": deepcopy(result),
             "executed_at": _now(),
+            "execution_mode": "resume" if resumed else "initial",
         }
         results.append(step_result)
         record["steps_completed"] = deepcopy(results)
@@ -307,6 +519,7 @@ def execute_registered_action_sequence(payload: Dict[str, Any] | None = None) ->
     record["status"] = "COMPLETED" if completed else "FAILED"
     record["completed_at"] = _now() if completed else None
     record["updated_at"] = _now()
+    record["context"] = deepcopy(context)
     store = _load()
     store["sequences"][sequence_id] = deepcopy(record)
     _save(store)
@@ -314,6 +527,10 @@ def execute_registered_action_sequence(payload: Dict[str, Any] | None = None) ->
     projected = _project_sequence(record, response_mode)
     projected["release"] = RELEASE_ID
     projected["transport_action_calls_required"] = 1
+    projected["sequence_resumed"] = resumed
+    projected["capitalization_reexecuted"] = bool(
+        resumed and any(step.get("operation_type") == "capitalize_confirmed_knowledge" and step.get("execution_mode") == "resume" for step in results)
+    )
     projected["next_action"] = (
         "Laboratory may declare RESEARCH_CYCLE_CLOSED only after reviewing every PASS result."
         if completed else

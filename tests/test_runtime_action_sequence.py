@@ -21,6 +21,7 @@ def _configure(monkeypatch, tmp_path):
     monkeypatch.setattr(sequence, "get_memory_overview", mark("get_memory_overview", {"status": "ok", "verification_status": "PASS"}))
     monkeypatch.setattr(sequence, "list_memory_objects", mark("list_memory_objects", {"status": "ok", "objects": [], "verification_status": "PASS"}))
     monkeypatch.setattr(sequence, "get_professional_knowledge", mark("read_professional_knowledge", {"status": "ok", "knowledge": [], "verification_status": "PASS"}))
+    monkeypatch.setattr(sequence, "find_memory_object_by_knowledge_id", lambda knowledge_id, **_: {"status": "ok", "readback_status": "PASS", "matches": [{"knowledge_id": knowledge_id, "object_id": f"professional_memory:{knowledge_id}"}]})
     monkeypatch.setattr(sequence, "auto_capitalize_confirmed_knowledge", mark("capitalize_confirmed_knowledge", {"status": "PASS", "final_status": "PASS"}))
     monkeypatch.setattr(sequence, "get_memory_object", mark("read_memory_object", {"status": "ok", "readback_status": "PASS", "verification_status": "PASS"}))
 

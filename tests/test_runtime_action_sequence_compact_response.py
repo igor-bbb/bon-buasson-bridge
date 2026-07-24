@@ -28,6 +28,8 @@ def _configure(monkeypatch, tmp_path, *, fail_operation=None):
             "full_payload": "x" * 10000,
         })
 
+    monkeypatch.setattr(sequence, "find_memory_object_by_knowledge_id", lambda knowledge_id, **_: {"status": "ok", "readback_status": "PASS", "matches": [{"knowledge_id": knowledge_id, "object_id": f"professional_memory:{knowledge_id}"}]})
+    monkeypatch.setattr(sequence, "get_memory_object", lambda object_id, **_: {"status": "ok", "verification_status": "PASS", "readback_status": "PASS", "object_id": object_id, "memory_object": {"object_id": object_id, "knowledge_id": object_id.split(":", 1)[-1], "content": "x" * 10000}})
     monkeypatch.setattr(sequence, "auto_capitalize_confirmed_knowledge", capitalize)
     monkeypatch.setattr(sequence, "readback_memory_object", lambda **_: result("verify_memory_object_readback", {
         "status": "ok", "verification_status": "PASS", "readback_status": "PASS",

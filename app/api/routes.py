@@ -9368,7 +9368,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-COMPACT-RESPONSE-001',
+        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-READBACK-ID-001',
         'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
