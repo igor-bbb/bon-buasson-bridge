@@ -429,6 +429,10 @@ from app.assistant_runtime.memory_classification import (
     classify_knowledge_package as classify_vectra_knowledge_package,
     verify_automatic_classification as verify_vectra_automatic_classification,
 )
+from app.assistant_runtime.runtime_action_sequence import (
+    execute_registered_action_sequence as execute_vectra_registered_action_sequence,
+    get_registered_action_sequence as get_vectra_registered_action_sequence,
+)
 from app.assistant_runtime.memory_inspection import (
     inspect_memory_object as inspect_vectra_memory_object,
     inspect_memory_space as inspect_vectra_memory_space,
@@ -8632,7 +8636,7 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence'):
         if operation_type not in operations:
             operations.append(operation_type)
     return schema
@@ -9354,7 +9358,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-MEMORY-PUBLIC-ROUTING-001',
+        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-001',
         'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
@@ -11271,6 +11275,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type == 'execute_registered_action_sequence':
+            result = execute_vectra_registered_action_sequence(payload)
+            return json_response(_facade_response(operation_type, 'runtime_action_sequence.execute_registered_action_sequence', '/vectra/laboratory/facade/memory', result, next_action=result.get('next_action') if isinstance(result, dict) else 'Review sequence result.'))
+        if operation_type == 'get_registered_action_sequence':
+            result = get_vectra_registered_action_sequence(payload)
+            return json_response(_facade_response(operation_type, 'runtime_action_sequence.get_registered_action_sequence', '/vectra/laboratory/facade/memory', result))
         if operation_type in {'core_ontology_manifest', 'vectra_core_ontology'}:
             return json_response(_facade_response(operation_type, 'core_ontology.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_core_ontology_manifest(), next_action='Classify proposed concepts before architecture or implementation work.'))
         if operation_type in {'classify_core_concept', 'ontology_classify_concept'}:
