@@ -139,6 +139,27 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-EXECUTION-RUNTIME-001: load Execution Runtime only after
+        # Verification Runtime is ready.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=execution_runtime status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.execution_runtime import initialize_execution_runtime
+        execution_state = initialize_execution_runtime(force=True)
+        if (
+            execution_state.get("status") != "PASS"
+            or not execution_state.get("architecture_registry_loaded")
+            or not execution_state.get("verification_runtime_loaded")
+        ):
+            raise RuntimeError("Execution Runtime initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=execution_runtime status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
