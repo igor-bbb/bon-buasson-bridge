@@ -122,6 +122,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-VERIFICATION-RUNTIME-001: load the permanent Verification
+        # Runtime after Architecture Registry is available.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=verification_runtime status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.verification_runtime import initialize_verification_runtime
+        verification_state = initialize_verification_runtime(force=True)
+        if verification_state.get("status") != "PASS" or not verification_state.get("architecture_registry_loaded"):
+            raise RuntimeError("Verification Runtime initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=verification_runtime status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
