@@ -447,6 +447,9 @@ from app.assistant_runtime.verification_runtime import (
 from app.assistant_runtime.execution_runtime import (
     execute_execution_runtime_operation as execute_vectra_execution_runtime_operation,
 )
+from app.assistant_runtime.execution_orchestrator_runtime import (
+    execute_orchestrator_operation as execute_vectra_orchestrator_operation,
+)
 from app.assistant_runtime.memory_inspection import (
     inspect_memory_object as inspect_vectra_memory_object,
     inspect_memory_space as inspect_vectra_memory_space,
@@ -8660,7 +8663,7 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans'):
         if operation_type not in operations:
             operations.append(operation_type)
     return schema
@@ -11349,6 +11352,17 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
                 'search_execution_results': 'Select an execution_id for status or history inspection.',
             }
             return json_response(_facade_response(operation_type, f'execution_runtime.{operation_type}', '/vectra/laboratory/facade/memory', result, next_action=next_actions.get(operation_type)))
+        if operation_type in {'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans'}:
+            result = execute_vectra_orchestrator_operation(operation_type, payload)
+            next_actions = {
+                'get_orchestrator_status': 'Create an Execution Plan from registered architecture objects.',
+                'create_execution_plan': 'Start the deterministic Execution Plan.',
+                'start_execution_plan': 'Inspect plan status and execution queue.',
+                'get_execution_plan_status': 'Inspect the queue or repeat a completed plan explicitly.',
+                'get_execution_queue': 'Use queue and orchestration log for Product Verification.',
+                'search_execution_plans': 'Select an execution_plan_id for status or queue inspection.',
+            }
+            return json_response(_facade_response(operation_type, f'execution_orchestrator_runtime.{operation_type}', '/vectra/laboratory/facade/memory', result, next_action=next_actions.get(operation_type)))
         if operation_type in {'core_ontology_manifest', 'vectra_core_ontology'}:
             return json_response(_facade_response(operation_type, 'core_ontology.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_core_ontology_manifest(), next_action='Classify proposed concepts before architecture or implementation work.'))
         if operation_type in {'classify_core_concept', 'ontology_classify_concept'}:

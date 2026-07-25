@@ -160,6 +160,28 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-EXECUTION-ORCHESTRATOR-001: load Orchestrator only after
+        # Execution Runtime is ready.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=execution_orchestrator status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.execution_orchestrator_runtime import initialize_execution_orchestrator
+        orchestrator_state = initialize_execution_orchestrator(force=True)
+        if (
+            orchestrator_state.get("status") != "PASS"
+            or not orchestrator_state.get("architecture_registry_loaded")
+            or not orchestrator_state.get("verification_runtime_loaded")
+            or not orchestrator_state.get("execution_runtime_loaded")
+        ):
+            raise RuntimeError("Execution Orchestrator initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=execution_orchestrator status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
