@@ -1,0 +1,8 @@
+{
+  "repository_id": "VECTRA-RUNTIME-EVENT-REPOSITORY-001",
+  "release_id": "VECTRA-RUNTIME-SUPERVISOR-001",
+  "schema_version": "1.0",
+  "events": [],
+  "last_evaluation": null,
+  "updated_at": null
+}

@@ -205,6 +205,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-SUPERVISOR-001: load Runtime Supervisor only after
+        # Session Runtime is ready. The Supervisor reads published statuses only.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_supervisor status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_supervisor import initialize_runtime_supervisor
+        supervisor_state = initialize_runtime_supervisor(force=True)
+        if supervisor_state.get("status") != "PASS" or not supervisor_state.get("loaded"):
+            raise RuntimeError("Runtime Supervisor initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_supervisor status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
