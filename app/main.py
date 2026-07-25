@@ -182,6 +182,29 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-SESSION-RUNTIME-001: load Session Runtime only after
+        # Execution Orchestrator Runtime is ready.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=session_runtime status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.session_runtime import initialize_session_runtime
+        session_state = initialize_session_runtime(force=True)
+        if (
+            session_state.get("status") != "PASS"
+            or not session_state.get("architecture_registry_loaded")
+            or not session_state.get("verification_runtime_loaded")
+            or not session_state.get("execution_runtime_loaded")
+            or not session_state.get("execution_orchestrator_loaded")
+        ):
+            raise RuntimeError("Session Runtime initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=session_runtime status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
