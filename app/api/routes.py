@@ -433,6 +433,11 @@ from app.assistant_runtime.runtime_action_sequence import (
     execute_registered_action_sequence as execute_vectra_registered_action_sequence,
     get_registered_action_sequence as get_vectra_registered_action_sequence,
 )
+from app.assistant_runtime.architecture_object_registry import (
+    get_architecture_registry_pilot as get_vectra_architecture_registry_pilot,
+    evaluate_registry_compliance as evaluate_vectra_architecture_registry_compliance,
+    load_architecture_registry as load_vectra_architecture_registry,
+)
 from app.assistant_runtime.memory_inspection import (
     inspect_memory_object as inspect_vectra_memory_object,
     inspect_memory_space as inspect_vectra_memory_space,
@@ -8646,7 +8651,7 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot'):
         if operation_type not in operations:
             operations.append(operation_type)
     return schema
@@ -11291,6 +11296,12 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
         if operation_type == 'get_registered_action_sequence':
             result = get_vectra_registered_action_sequence(payload)
             return json_response(_facade_response(operation_type, 'runtime_action_sequence.get_registered_action_sequence', '/vectra/laboratory/facade/memory', result))
+        if operation_type == 'get_architecture_registry_pilot':
+            result = get_vectra_architecture_registry_pilot()
+            return json_response(_facade_response(operation_type, 'architecture_object_registry.get_architecture_registry_pilot', '/vectra/laboratory/facade/memory', result, next_action='Run verify_architecture_registry_pilot and review object-level traceability.'))
+        if operation_type == 'verify_architecture_registry_pilot':
+            result = evaluate_vectra_architecture_registry_compliance(load_vectra_architecture_registry())
+            return json_response(_facade_response(operation_type, 'architecture_object_registry.evaluate_registry_compliance', '/vectra/laboratory/facade/memory', result, next_action='Issue PASS only when verification_status is PASS and every pilot object is compliant.'))
         if operation_type in {'core_ontology_manifest', 'vectra_core_ontology'}:
             return json_response(_facade_response(operation_type, 'core_ontology.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_core_ontology_manifest(), next_action='Classify proposed concepts before architecture or implementation work.'))
         if operation_type in {'classify_core_concept', 'ontology_classify_concept'}:
