@@ -1,0 +1,34 @@
+{
+  "report_id": "VECTRA-AOMM-PILOT-VALIDATION-001",
+  "release_id": "VECTRA-AOMM-PILOT-001",
+  "status": "PASS",
+  "aot_version": "1.0",
+  "aomm_version": "1.0",
+  "pilot_objects_count": 24,
+  "object_types_covered_count": 15,
+  "relationship_types_used": [
+    "capitalizes",
+    "depends_on",
+    "governed_by",
+    "implements",
+    "maps_to",
+    "specializes",
+    "uses",
+    "verifies"
+  ],
+  "confirmed_findings": {
+    "all_objects_use_single_aomm": true,
+    "only_approved_object_types_used": true,
+    "only_approved_relationship_types_used": true,
+    "special_object_models_required": false,
+    "full_traceability_confirmed": true,
+    "compliance_computed_automatically": true,
+    "registry_integrity_pass": true
+  },
+  "confirmed_limitations": [
+    "Pilot validates 24 selected normative architecture objects and does not claim complete digitization of the entire Master Architecture.",
+    "The registry is a pilot runtime-readable JSON registry; no new public GPT Action was introduced.",
+    "AOT and AOMM remain frozen at v1.0; expansion requires a separately confirmed pilot defect."
+  ],
+  "verdict": "AOMM v1.0 represented all pilot objects without special object-specific models. AOT v1.0 was sufficient for the selected pilot set."
+}
