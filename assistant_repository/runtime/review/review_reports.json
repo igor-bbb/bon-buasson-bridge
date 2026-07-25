@@ -1,0 +1,64 @@
+[
+  {
+    "report_id": "REVIEW-REPORT-20260722T093625Z-09bf19fc",
+    "created_at": "2026-07-22T09:36:25Z",
+    "identity_root": "VECTRA",
+    "review_release": "GENESIS-0010",
+    "review_session_id": "REVIEW-SESSION-20260722T093625Z-faabdc62",
+    "responsible_product_owner": "Product Owner",
+    "review_status": "OPEN_FOR_REVIEW",
+    "decision": null,
+    "changes_composition": [
+      {
+        "object_id": "laboratory_state",
+        "object_type": "runtime_state",
+        "change_type": "Unchanged",
+        "reason": "No detailed synchronization diff is available; review confirms that no changes are applied automatically."
+      }
+    ],
+    "diff_preview": {
+      "source": "GENESIS-0009 synchronization reports",
+      "objects": [
+        {
+          "object_id": "laboratory_state",
+          "object_type": "runtime_state",
+          "change_type": "Unchanged",
+          "reason": "No detailed synchronization diff is available; review confirms that no changes are applied automatically."
+        }
+      ],
+      "classification_counts": {
+        "New": 0,
+        "Updated": 0,
+        "Removed": 0,
+        "Unchanged": 1
+      },
+      "application_status": "NOT_APPLIED"
+    },
+    "affected_professional_areas": [
+      "active_responsibilities",
+      "architecture",
+      "identity",
+      "methodology",
+      "mission",
+      "principles",
+      "product_decisions",
+      "professional_model",
+      "standards"
+    ],
+    "impact_assessment": {
+      "professional_model_change": "not_applied",
+      "working_vectra_change": "not_applied",
+      "requires_product_owner_decision": true,
+      "risk_level": "controlled"
+    },
+    "final_decision": null,
+    "application_status": "NOT_APPLIED",
+    "boundaries": {
+      "changes_applied": false,
+      "professional_model_unchanged": true,
+      "working_vectra_not_modified_automatically": true,
+      "automatic_product_owner_approval": false,
+      "automatic_publication_to_working_vectra": false
+    }
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "status": "active",
+  "release": "VECTRA-PBM-FOUNDATION-001-INCREMENT-005",
+  "purpose": "Persistent professional memory and operating environment for VECTRA.",
+  "repository_is": "internal VECTRA runtime workspace",
+  "repository_is_not": "separate digital organization platform",
+  "storage_model": "file-based JSON/Markdown foundation, replaceable by database or Git-backed persistence later",
+  "created_at": "2026-07-07T07:23:12Z",
+  "professional_business_model": "assistant_repository/business_domains/bon_buasson/professional_business_model.json",
+  "object_passport_contract": "assistant_repository/business_domains/bon_buasson/object_passport_contract.json",
+  "business_research_execution_model": "assistant_repository/business_domains/bon_buasson/business_research_execution_model.json",
+  "professional_understanding_runtime": "app/assistant_runtime/business_understanding_runtime.py",
+  "professional_understanding_state": "runtime/business_domains/bon_buasson/professional_understanding_state.json",
+  "updated_at": "2026-07-17T01:00:00Z",
+  "canonical_business_model": "assistant_repository/business_domains/bon_buasson/canonical_business_model.json",
+  "modern_trade_model": "assistant_repository/business_domains/bon_buasson/modern_trade_model.json",
+  "dialogue_business_research_program": "app/assistant_runtime/dialogue_business_research_program.py",
+  "dialogue_business_research_state": "runtime/business_domains/bon_buasson/dialogue_research_state.json"
+}

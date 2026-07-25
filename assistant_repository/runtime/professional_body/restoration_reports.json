@@ -1,0 +1,13 @@
+[
+  {
+    "report_id": "professional-body-restore-85bbe08dbd",
+    "timestamp": "2026-07-22T09:36:25Z",
+    "status": "PASS",
+    "source_of_state": "Runtime Repository",
+    "chat_memory_used_as_source": false,
+    "professional_model_auto_update": false,
+    "product_owner_approval_required_for_identity_changes": true,
+    "life_model_included": true,
+    "vos_included": true
+  }
+]

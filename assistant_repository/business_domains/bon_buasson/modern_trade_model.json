@@ -1,0 +1,247 @@
+{
+  "model_id": "BON-BUASSON-MODERN-TRADE-MODEL",
+  "version": "1.0",
+  "status": "ACTIVE_RESEARCH",
+  "business_domain": "bon_buasson",
+  "area_id": "modern_trade",
+  "display_name": "Modern Trade",
+  "purpose": "Управление продажами, прибыльностью, клиентскими контрактами и исполнением в национальных и региональных торговых сетях.",
+  "model_boundaries": {
+    "is": "Первая глубоко цифровизируемая коммерческая область.",
+    "is_not": "Весь бизнес Бон Буассон."
+  },
+  "operating_contours": [
+    {
+      "id": "negotiation",
+      "name": "Переговоры и управление контрактами",
+      "responsibility": "Коммерческие условия, ассортимент, цена, контракт, совместное развитие клиента."
+    },
+    {
+      "id": "field_execution",
+      "name": "Полевое исполнение",
+      "responsibility": "Выполнение договорённостей в торговых точках, представленность, наличие, стандарты и контроль."
+    },
+    {
+      "id": "administration",
+      "name": "Административное сопровождение",
+      "responsibility": "Планограммы, документооборот, сверки и поддержка коммерческой команды."
+    },
+    {
+      "id": "trade_marketing_link",
+      "name": "Связь с Trade Marketing",
+      "responsibility": "Промо, полочное пространство, торговые активности и поддержка продаж."
+    }
+  ],
+  "confirmed_current_structure": {
+    "negotiation_block": {
+      "roles": [
+        {
+          "role_id": "national_key_accounts_manager",
+          "display_name": "Национальный менеджер",
+          "reports_to": "commercial_director",
+          "responsibility": "Руководство переговорами и портфелем ключевых сетей."
+        },
+        {
+          "role_id": "kam",
+          "display_name": "КАМ",
+          "count_status": "KNOWN_PARTIALLY",
+          "responsibility": "Управление закреплёнными сетями и контрактами."
+        }
+      ]
+    },
+    "field_execution_block": {
+      "structure": "6 дивизионов в исходной модели исполнения",
+      "roles": [
+        {
+          "role_id": "dmrs",
+          "display_name": "Дивизиональный менеджер развития сетей",
+          "responsibility": "Управление дивизионом и полевым исполнением."
+        },
+        {
+          "role_id": "mrs",
+          "display_name": "Менеджер развития сетей",
+          "responsibility": "Исполнение и развитие сетей в городах/территориях."
+        },
+        {
+          "role_id": "merchandiser",
+          "display_name": "Мерчендайзер",
+          "known_count": 84,
+          "count_source": "PRODUCT_OWNER_CONFIRMED_CONTEXT",
+          "responsibility": "Физическое исполнение стандартов и представленности в торговых точках."
+        }
+      ]
+    },
+    "administration_block": {
+      "roles": [
+        {
+          "role_id": "admin_manager",
+          "display_name": "Административный менеджер",
+          "known_count": 4,
+          "responsibility": "Планограммы, документооборот и сверки."
+        }
+      ]
+    },
+    "trade_marketing_block": {
+      "roles": [
+        {
+          "role_id": "trade_marketing_head",
+          "display_name": "Руководитель Trade Marketing",
+          "known_count": 1
+        },
+        {
+          "role_id": "trade_marketing_manager",
+          "display_name": "Менеджер Trade Marketing",
+          "known_count": 2
+        },
+        {
+          "role_id": "business_engineer",
+          "display_name": "Бизнес-инженер",
+          "known_count_status": "ROLE_CONFIRMED_COUNT_UNSPECIFIED"
+        }
+      ],
+      "digital_control": "EFFIE — контроль фотоотчётов и сторчеков"
+    }
+  },
+  "approved_target_transition": {
+    "status": "APPROVED_DIRECTION_NOT_FULLY_IMPLEMENTED",
+    "structure": [
+      "commercial_director",
+      "national_key_accounts",
+      "regional_management_4_regions",
+      "territorial_managers_modern_and_traditional"
+    ],
+    "regions": [
+      "Центр",
+      "Запад",
+      "Юго-Восток",
+      "Северо-Восток"
+    ],
+    "dmrs_target_count": 4,
+    "principle": "Территориальный менеджер отвечает за Modern и Traditional на территории; дистрибьютор исполняет логистику и работу команды."
+  },
+  "core_business_objects": [
+    {
+      "object_type": "contract",
+      "specialization": "modern_trade_network_contract",
+      "decision_role": "primary_commercial_decision_object"
+    },
+    {
+      "object_type": "network",
+      "decision_role": "customer_and_execution_context"
+    },
+    {
+      "object_type": "category",
+      "decision_role": "assortment_and_category_management"
+    },
+    {
+      "object_type": "sku",
+      "decision_role": "business_atom_and_root_cause_object"
+    },
+    {
+      "object_type": "professional_role",
+      "decision_role": "responsibility_and_resultative_action_owner"
+    }
+  ],
+  "contract_model": {
+    "type": "contract",
+    "specialization": "network_contract",
+    "commercial_economics": [
+      "price",
+      "retro_bonus",
+      "logistics",
+      "personnel",
+      "service",
+      "profitability"
+    ],
+    "product_development": [
+      "assortment",
+      "category",
+      "marketing",
+      "trade_marketing",
+      "availability",
+      "sku"
+    ],
+    "reason": "Контракт соединяет договорную экономику клиента и продуктовую логику развития продаж."
+  },
+  "research_paths": {
+    "aggregation": [
+      "sku",
+      "tmc_group",
+      "category",
+      "contract",
+      "manager",
+      "top_manager",
+      "business"
+    ],
+    "causal_investigation": [
+      "business_or_selected_object",
+      "responsibility_owner",
+      "contract",
+      "category",
+      "tmc_group",
+      "sku",
+      "cause"
+    ],
+    "rule": "Проход по уровням без цифр, причин и паспортов является проверкой каркаса, а не исследованием бизнеса."
+  },
+  "professional_role_efficiency": {
+    "principle": "Количество своевременных и результативных действий роли на единицу времени.",
+    "merchandiser_example": {
+      "false_load_metric": "number_of_stores_only",
+      "required_load_factors": [
+        "sku_count",
+        "layout_volume",
+        "store_format",
+        "visit_frequency",
+        "travel_time",
+        "task_complexity",
+        "store_priority_category"
+      ],
+      "optimization_space": [
+        "route",
+        "visit_frequency",
+        "A_B_C_store_priority",
+        "workload_distribution",
+        "digital_automation"
+      ],
+      "headcount_rule": "Численность не оптимизируется изолированно от модели работы и результата."
+    }
+  },
+  "known_networks": [
+    "Варус",
+    "Сильпо",
+    "Новус",
+    "Фора",
+    "Рукавичка",
+    "Метро",
+    "Нива",
+    "Эконом"
+  ],
+  "knowledge_state": {
+    "confirmed": [
+      "overall_structure",
+      "contract_logic",
+      "object_hierarchy",
+      "commercial_kpi_logic",
+      "workspace_concept"
+    ],
+    "partial": [
+      "complete_kam_portfolio",
+      "all_current_reporting_lines",
+      "all_field_processes",
+      "complete_trade_marketing_processes"
+    ],
+    "unknown": [
+      "complete_current_org_chart_as_of_today",
+      "role_level_workload_norms",
+      "all_operational_sla",
+      "complete_workspace_contracts"
+    ]
+  },
+  "dialogue_research_contract": {
+    "when_gap_blocks_task": "State the missing context, ask whether to research now, and limit the current conclusion if deferred.",
+    "when_area_is_only_mentioned": "Register the area and do not interrupt the active priority.",
+    "after_product_owner_confirmation": "Prepare structured PBM capitalization request for engineering implementation."
+  },
+  "updated_at": "2026-07-17T00:00:00Z"
+}

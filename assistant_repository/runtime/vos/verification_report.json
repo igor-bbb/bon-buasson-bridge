@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "render_mode": "vectra_operating_system_verify",
+  "release": "VOS-001",
+  "verification": "VECTRA Operating System = PASS",
+  "checks": {
+    "vos_repository_exists": true,
+    "operating_model_json_exists": true,
+    "operating_model_markdown_exists": true,
+    "required_sections_present": true,
+    "runtime_restoration_sequence_present": true,
+    "knowledge_lifecycle_requires_product_owner": true,
+    "professional_model_auto_update_disabled": true,
+    "product_owner_approval_required": true,
+    "bon_buasson_supported_as_first_domain": true,
+    "chat_history_not_memory": true
+  },
+  "verified_at": "2026-07-22T09:36:25Z",
+  "professional_model_changed": false,
+  "identity_level_changes_to_pending_review": true
+}

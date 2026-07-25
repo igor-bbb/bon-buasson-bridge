@@ -1,0 +1,21 @@
+{
+  "status": "active",
+  "identity_root": "VECTRA",
+  "execution_release": "GENESIS-0011",
+  "mode": "controlled_synchronization_execution",
+  "approved_session_available": false,
+  "approved_review_session_id": null,
+  "execution_status": "NOT_EXECUTED",
+  "latest_execution_id": null,
+  "reports_count": 0,
+  "history_count": 0,
+  "boundaries": {
+    "automatic_execution": false,
+    "requires_approved_session": true,
+    "professional_model_changed_without_approved_session": false,
+    "reflection_triggered_automatically": false,
+    "knowledge_consolidation_triggered_automatically": false,
+    "new_synchronization_session_created_automatically": false
+  },
+  "updated_at": "2026-07-22T09:36:25Z"
+}

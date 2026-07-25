@@ -1,0 +1,83 @@
+{
+  "status": "ok",
+  "release": "BUSINESS-CORE-LOADER-001",
+  "domain": "bon_buasson",
+  "domain_display_name": "Бон Буассон",
+  "domain_activation_status": "active",
+  "business_core_status": "loaded",
+  "business_readiness_status": "BUSINESS_READY",
+  "business_core_version": "1.0",
+  "loaded_at": "2026-07-22T09:36:25Z",
+  "business_core_index": {
+    "sections": {
+      "business_identity": {
+        "status": "loaded",
+        "item_count": 6
+      },
+      "business_strategy": {
+        "status": "loaded",
+        "item_count": 2
+      },
+      "business_model": {
+        "status": "loaded",
+        "item_count": 4
+      },
+      "object_model": {
+        "status": "loaded",
+        "item_count": 3
+      },
+      "vocabulary": {
+        "status": "loaded",
+        "item_count": 15
+      },
+      "business_standards": {
+        "status": "loaded",
+        "item_count": 1
+      },
+      "business_knowledge": {
+        "status": "loaded",
+        "item_count": 2
+      },
+      "business_decisions": {
+        "status": "loaded",
+        "item_count": 3
+      },
+      "active_projects": {
+        "status": "loaded",
+        "item_count": 1
+      },
+      "workspace_model": {
+        "status": "loaded",
+        "item_count": 2
+      }
+    },
+    "loaded_sections": [
+      "business_identity",
+      "business_strategy",
+      "business_model",
+      "object_model",
+      "vocabulary",
+      "business_standards",
+      "business_knowledge",
+      "business_decisions",
+      "active_projects",
+      "workspace_model"
+    ],
+    "missing_sections": [],
+    "empty_sections": [],
+    "knowledge_access_mode": "context_driven"
+  },
+  "verification": {
+    "domain_isolation_confirmed": true,
+    "readback_confirmed": true,
+    "knowledge_integrity_confirmed": true,
+    "recovery_snapshot_consistent": true
+  },
+  "warnings": [],
+  "errors": [],
+  "business_data_connected": false,
+  "business_data_auto_started": false,
+  "automatic_knowledge_write": false,
+  "next_dialogue": "Бизнес-контекст готов. Продолжайте обычный рабочий диалог; Business Data подключается только когда вопрос требует фактических показателей.",
+  "updated_at": "2026-07-22T09:36:25Z"
+}
