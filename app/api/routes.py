@@ -456,6 +456,9 @@ from app.assistant_runtime.session_runtime import (
 from app.assistant_runtime.runtime_supervisor import (
     execute_runtime_supervisor_operation as execute_vectra_runtime_supervisor_operation,
 )
+from app.assistant_runtime.runtime_recovery import (
+    execute_runtime_recovery_operation as execute_vectra_runtime_recovery_operation,
+)
 from app.assistant_runtime.memory_inspection import (
     inspect_memory_object as inspect_vectra_memory_object,
     inspect_memory_space as inspect_vectra_memory_space,
@@ -8669,7 +8672,7 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan'):
         if operation_type not in operations:
             operations.append(operation_type)
     return schema
@@ -11391,6 +11394,16 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
                 'get_runtime_diagnostics': 'Resolve blocking conditions before resuming the operational contour.',
             }
             return json_response(_facade_response(operation_type, f'runtime_supervisor.{operation_type}', '/vectra/laboratory/facade/memory', result, next_action=next_actions.get(operation_type)))
+        if operation_type in {'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan'}:
+            result = execute_vectra_runtime_recovery_operation(operation_type, payload)
+            next_actions = {
+                'get_runtime_recovery_status': 'Inspect the registered Recovery Plan before starting recovery.',
+                'get_runtime_recovery_plan': 'Start recovery only when Runtime Supervisor reports BLOCKED or UNHEALTHY.',
+                'start_runtime_recovery': 'Inspect Recovery History and the Supervisor reevaluation.',
+                'get_runtime_recovery_history': 'Search Recovery executions by plan, target component or result.',
+                'search_runtime_recovery': 'Inspect the selected Recovery execution Evidence.',
+            }
+            return json_response(_facade_response(operation_type, f'runtime_recovery.{operation_type}', '/vectra/laboratory/facade/memory', result, next_action=next_actions.get(operation_type)))
         if operation_type in {'core_ontology_manifest', 'vectra_core_ontology'}:
             return json_response(_facade_response(operation_type, 'core_ontology.get_manifest', '/vectra/laboratory/facade/memory', get_vectra_core_ontology_manifest(), next_action='Classify proposed concepts before architecture or implementation work.'))
         if operation_type in {'classify_core_concept', 'ontology_classify_concept'}:

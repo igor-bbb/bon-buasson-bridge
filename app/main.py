@@ -222,6 +222,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-RECOVERY-001: load Runtime Recovery only after
+        # Runtime Supervisor is available. Recovery executes registered procedures only.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_recovery status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_recovery import initialize_runtime_recovery
+        recovery_state = initialize_runtime_recovery(force=True)
+        if recovery_state.get("status") != "PASS" or not recovery_state.get("loaded") or not recovery_state.get("supervisor_available"):
+            raise RuntimeError("Runtime Recovery initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_recovery status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
