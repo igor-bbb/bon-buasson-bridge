@@ -397,6 +397,86 @@ def record_observation(
     }
 
 
+def verify_runtime_operation_blockers(
+    *,
+    operation_type: str,
+    runtime_service: str,
+    endpoint: str,
+    verification_status: str,
+) -> Dict[str, Any]:
+    """Close Professional Pipeline blockers disproved by a successful readback.
+
+    This is an evidence transition, not a Product Owner decision: it only
+    verifies open blocker candidates that were created automatically by the
+    Professional Pipeline for the exact Runtime operation now returning a
+    terminal success.
+    """
+    normalized_status = str(verification_status or "").strip().upper()
+    if normalized_status not in {"PASS", "OK", "READY", "COMPLETED", "VERIFIED", "SUCCESS"}:
+        return {
+            "status": "NOT_APPLICABLE",
+            "verified_blockers_count": 0,
+            "verified_engineering_item_ids": [],
+            "read_only": True,
+        }
+
+    operation = str(operation_type or "").strip()
+    expected_title_prefix = f"Runtime operation {operation} returned "
+    verified_items: List[Dict[str, Any]] = []
+
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        state = _merge_seed(current)
+        observations = {
+            str(item.get("observation_id")): item
+            for item in state.get("observations", [])
+            if isinstance(item, dict) and item.get("observation_id")
+        }
+        for item in state.get("engineering_queue", []):
+            if not isinstance(item, dict):
+                continue
+            if item.get("blocking") is not True:
+                continue
+            if item.get("status") in {"IMPLEMENTED", "VERIFIED", "CLOSED", "REJECTED"}:
+                continue
+            if not str(item.get("title") or "").startswith(expected_title_prefix):
+                continue
+            observation = observations.get(str(item.get("observation_id") or ""))
+            if not isinstance(observation, dict):
+                continue
+            if not str(observation.get("source") or "").startswith("professional_pipeline:"):
+                continue
+
+            evidence = {
+                "operation_type": operation,
+                "runtime_service": runtime_service,
+                "endpoint": endpoint,
+                "verification_status": normalized_status,
+                "verified_at": _now(),
+            }
+            item["status"] = "VERIFIED"
+            item["verification"] = deepcopy(evidence)
+            item["updated_at"] = evidence["verified_at"]
+            observation["status"] = "CLOSED"
+            observation["closure_reason"] = "runtime_operation_successfully_reverified"
+            observation["verification"] = deepcopy(evidence)
+            observation["updated_at"] = evidence["verified_at"]
+            verified_items.append(deepcopy(item))
+        return state
+
+    state, diagnostic = update_json_state(STATE_FILE, _seed, dict, updater)
+    _persist_root(state)
+    return {
+        "status": "PASS",
+        "verified_blockers_count": len(verified_items),
+        "verified_engineering_item_ids": [
+            item.get("engineering_item_id") for item in verified_items
+        ],
+        "attention": _attention_summary(state),
+        "readback_verified": bool(diagnostic.get("readback_verified")),
+        "read_only": False,
+    }
+
+
 def register_decision_candidate(
     *,
     title: str,

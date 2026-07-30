@@ -22,6 +22,7 @@ from app.assistant_runtime.professional_runtime_state import persist_professiona
 from app.assistant_runtime.self_governance_runtime import (
     get_self_governance_snapshot,
     record_observation,
+    verify_runtime_operation_blockers,
 )
 
 RELEASE_ID = "VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002"
@@ -248,15 +249,22 @@ def process_professional_response(
     next_action: str = "",
 ) -> Dict[str, Any]:
     """Evaluate one Runtime result before it is returned to the GPT layer."""
+    family = _operation_family(operation_type, runtime_service)
+    normalized_status = _normalize_status(result)
+    blocker_reconciliation = verify_runtime_operation_blockers(
+        operation_type=operation_type,
+        runtime_service=runtime_service,
+        endpoint=endpoint,
+        verification_status=normalized_status,
+    )
     snapshot = get_self_governance_snapshot()
     active_context = snapshot.get("active_work_context") if isinstance(snapshot.get("active_work_context"), dict) else {}
     continuity = snapshot.get("professional_continuity") if isinstance(snapshot.get("professional_continuity"), dict) else {}
     attention = snapshot.get("attention") if isinstance(snapshot.get("attention"), dict) else {}
 
-    family = _operation_family(operation_type, runtime_service)
     focus_family = _focus_family(active_context)
-    normalized_status = _normalize_status(result)
     blocker = _confirmed_blocker(result, normalized_status)
+    accumulated_blocker = bool(attention.get("stop_recommended"))
     unrelated = focus_family not in {"general_professional_activity", family} and family not in {
         "professional_identity", "professional_runtime", "professional_continuity", "self_governance"
     }
@@ -265,6 +273,10 @@ def process_professional_response(
         governance_decision = "STOP_AND_PREPARE_ENGINEERING_TASK"
         governance_status = "HOLD"
         response_requirement = "Report the confirmed Runtime blocker precisely and do not continue as if the operation succeeded."
+    elif accumulated_blocker:
+        governance_decision = "STOP_FOR_OPEN_ENGINEERING_BLOCKERS"
+        governance_status = "HOLD"
+        response_requirement = "Report the successful Runtime result, but do not continue past the remaining open engineering blockers."
     elif unrelated and str(active_context.get("status") or "").upper() == "ACTIVE":
         governance_decision = "PRESERVE_ACTIVE_FOCUS_AND_OPEN_EXPLICIT_BRANCH"
         governance_status = "NOTICE"
@@ -301,6 +313,11 @@ def process_professional_response(
             normalized_status=normalized_status,
             result=result,
         )
+    if observation is not None:
+        refreshed_snapshot = get_self_governance_snapshot()
+        refreshed_attention = refreshed_snapshot.get("attention")
+        if isinstance(refreshed_attention, dict):
+            attention = refreshed_attention
     professional_state_result = persist_professional_runtime_state()
     professional_runtime_state = professional_state_result.get("professional_runtime_state")
     if not isinstance(professional_runtime_state, dict):
@@ -325,6 +342,7 @@ def process_professional_response(
             "new_branch_detected": unrelated,
             "attention": deepcopy(attention),
         },
+        "blocker_reconciliation": blocker_reconciliation,
         "engineering_observation": observation,
         "recommended_next_action": next_action or active_context.get("next_recommended_step") or continuity.get("resume_from"),
         "runtime_state_updated": bool(previous_state.get("diagnostic", {}).get("readback_verified")),
