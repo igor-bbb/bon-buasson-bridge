@@ -1,0 +1,9 @@
+{
+  "repository_id": "VECTRA-RUNTIME-OBSERVABILITY-REPOSITORY-001",
+  "release_id": "VECTRA-RUNTIME-OBSERVABILITY-001",
+  "schema_version": "1.0",
+  "repository_status": "EMPTY",
+  "observations": [],
+  "aggregation_history": [],
+  "updated_at": "1970-01-01T00:00:00Z"
+}

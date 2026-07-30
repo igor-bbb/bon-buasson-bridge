@@ -273,6 +273,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-OBSERVABILITY-001: aggregate only officially
+        # published Runtime data after Runtime Dependency Graph is ready.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_observability status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_observability import initialize_runtime_observability
+        observability_state = initialize_runtime_observability(force=True)
+        if observability_state.get("status") != "PASS" or not observability_state.get("loaded"):
+            raise RuntimeError("Runtime Observability initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_observability status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
