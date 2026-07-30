@@ -290,6 +290,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-HEALTH-001: derive consolidated health only from
+        # approved published Runtime sources after Observability is ready.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_health status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_health import initialize_runtime_health
+        health_state = initialize_runtime_health(force=True)
+        if health_state.get("status") != "PASS" or not health_state.get("loaded"):
+            raise RuntimeError("Runtime Health initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_health status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
