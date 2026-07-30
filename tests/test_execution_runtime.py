@@ -159,7 +159,7 @@ def test_runtime_facade_exposes_execution_operations_without_new_action(isolated
         "search_execution_results",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
 
     _verify()
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)

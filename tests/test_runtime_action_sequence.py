@@ -121,4 +121,4 @@ def test_openapi_publishes_sequence_without_increasing_action_count():
     request_schema = schema["paths"]["/vectra/laboratory/facade/memory"]["post"]["requestBody"]["content"]["application/json"]["schema"]
     operations = set(request_schema["properties"]["operation_type"]["enum"])
     assert {"execute_registered_action_sequence", "get_registered_action_sequence"} <= operations
-    assert routes._count_openapi_operations(schema) == 29
+    assert routes._count_openapi_operations(schema) == 30

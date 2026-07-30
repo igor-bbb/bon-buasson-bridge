@@ -312,7 +312,7 @@ def test_openapi_keeps_one_facade_action_and_publishes_influence_contract() -> N
         assert properties[gate]["type"] == "boolean"
     assert properties["package_id"]["type"] == "string"
     assert properties["professional_role"]["type"] == "string"
-    assert routes._count_openapi_operations(schema) == 29
+    assert routes._count_openapi_operations(schema) == 30
 
 
 def test_restore_action_returns_bounded_role_aware_response(monkeypatch) -> None:

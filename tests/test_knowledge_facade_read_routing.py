@@ -188,7 +188,7 @@ def test_openapi_publishes_dedicated_candidate_action_with_stable_budget() -> No
     }
     assert "createVectraKnowledgeCandidate" in operation_ids
     assert "verifyVectraKnowledgeMemoryPersistence" not in operation_ids
-    assert routes._count_openapi_operations(schema) == 29
+    assert routes._count_openapi_operations(schema) == 30
 
 
 def test_dedicated_candidate_action_routes_long_content_once(monkeypatch) -> None:
@@ -464,5 +464,5 @@ def test_openapi_action_budget_and_production_server_are_unchanged() -> None:
     schema = routes._laboratory_facade_openapi_schema()
     operation_count = sum(len(methods) for methods in schema["paths"].values())
 
-    assert operation_count == 29
+    assert operation_count == 30
     assert schema["servers"] == [{"url": "https://bon-buasson-api.onrender.com"}]

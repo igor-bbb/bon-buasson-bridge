@@ -56,7 +56,7 @@ def test_openapi_and_action_manifest_publish_routed_memory_operations():
         'read_professional_knowledge', 'write_general_knowledge', 'verify_general_knowledge',
     }
     assert required <= published
-    assert routes._count_openapi_operations(schema) == 29
+    assert routes._count_openapi_operations(schema) == 30
 
 
 def test_existing_write_and_readback_operations_remain_routable(monkeypatch):

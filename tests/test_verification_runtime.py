@@ -152,7 +152,7 @@ def test_runtime_facade_exposes_verification_operations_without_new_action(isola
         "search_verification_results",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
 
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     monkeypatch.setattr(routes, "execute_vectra_verification_runtime_operation", vr.execute_verification_runtime_operation)

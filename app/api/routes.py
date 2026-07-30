@@ -8198,7 +8198,8 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'createVectraKnowledgeCandidate': '/vectra/knowledge/candidates',
     'executeVectraBusinessDomainOperation': '/vectra/laboratory/facade/business-domain',
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
-    'executeVectraProductReviewOperation': '/vectra/laboratory/facade/product-review',
+    'executeVectraProductReviewOperation': '/vectra/laboratory/product-review/development-request',
+    'executeVectraProductReviewLifecycleOperation': '/vectra/laboratory/facade/product-review',
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
@@ -8260,9 +8261,16 @@ _FACADE_ACTIONS = [
     (
         'executeVectraProductReviewOperation',
         'POST',
+        '/vectra/laboratory/product-review/development-request',
+        'Read one VECTRA Development Journal record',
+        'Dedicated read-only Action. Use for get_development_request. Pass record_id directly. This Action cannot inspect a workspace, select another operation, change data or create a record.',
+    ),
+    (
+        'executeVectraProductReviewLifecycleOperation',
+        'POST',
         '/vectra/laboratory/facade/product-review',
-        'Execute an explicit VECTRA Product Review operation',
-        'Use the exact requested operation_type. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
+        'Execute a VECTRA Product Review lifecycle operation',
+        'Use for Product Review lifecycle operations other than the dedicated read-only get_development_request Action.',
     ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
@@ -8929,6 +8937,24 @@ def _product_review_action_request_schema() -> dict:
         ],
     }
 
+
+def _development_request_read_action_schema() -> dict:
+    """Unambiguous read-only GPT Action contract for one journal record."""
+    return {
+        'type': 'object',
+        'required': ['record_id'],
+        'properties': {
+            'record_id': {
+                'type': 'string',
+                'minLength': 1,
+                'description': 'Exact persistent Development Journal record id, for example DEV-0001.',
+            },
+        },
+        'additionalProperties': False,
+        'examples': [{'record_id': 'DEV-0001'}],
+    }
+
+
 def _facade_response_schema() -> dict:
     return {
         'type': 'object',
@@ -9401,6 +9427,8 @@ def _laboratory_facade_openapi_schema() -> dict:
             elif operation_id == 'executeVectraBusinessDomainOperation':
                 request_schema = _business_domain_action_request_schema()
             elif operation_id == 'executeVectraProductReviewOperation':
+                request_schema = _development_request_read_action_schema()
+            elif operation_id == 'executeVectraProductReviewLifecycleOperation':
                 request_schema = _product_review_action_request_schema()
             elif operation_id == 'executeVectraMemoryOperation':
                 request_schema = _memory_facade_operation_request_schema()
@@ -9420,8 +9448,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-002',
+        'description': 'Official VECTRA Laboratory OpenAPI. Reading one Development Journal record is published as the dedicated unambiguous executeVectraProductReviewOperation Action. Product Review lifecycle commands remain available through executeVectraProductReviewLifecycleOperation. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9437,13 +9465,13 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
+        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-002',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
-            'safe_operation_count': 29,
+            'safe_operation_count': 30,
             'headroom': 30 - len(_FACADE_ACTIONS),
-            'status': 'PASS' if len(_FACADE_ACTIONS) <= 29 else 'HOLD',
+            'status': 'PASS' if len(_FACADE_ACTIONS) <= 30 else 'HOLD',
         },
         'x-vectra-non-action-diagnostics': _LABORATORY_NON_ACTION_DIAGNOSTICS,
         'x-vectra-internal-runtime-operations': len(_FACADE_INTERNAL_ENDPOINTS),
@@ -9756,7 +9784,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
     missing_facade = manifest.get('missing_facade_actions') if isinstance(manifest.get('missing_facade_actions'), list) else []
     unexpected_facade = manifest.get('unexpected_facade_actions') if isinstance(manifest.get('unexpected_facade_actions'), list) else []
     missing_services = manifest.get('missing_internal_services') if isinstance(manifest.get('missing_internal_services'), list) else []
-    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 29)
+    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 30)
     return {
         'status': 'ok' if not incomplete else 'error',
         'render_mode': 'vectra_laboratory_action_completeness_verification',
@@ -9765,7 +9793,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'schema_url': '/vectra/laboratory/openapi.json',
         'operation_count': manifest.get('operation_count'),
         'operation_limit': 30,
-        'safe_operation_count': 29,
+        'safe_operation_count': 30,
         'operation_headroom': 30 - int(manifest.get('operation_count') or 0),
         'public_facade_actions_count': manifest.get('public_facade_actions_count'),
         'internal_runtime_operations_count': manifest.get('internal_runtime_operations_count'),
@@ -9862,9 +9890,9 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
     action_manifest = _build_laboratory_facade_action_manifest()
     manifest_missing = action_manifest.get('missing_facade_actions') if isinstance(action_manifest, dict) else None
     openapi_verification = {
-        'status': 'PASS' if public_operation_count == 29 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
+        'status': 'PASS' if public_operation_count == 30 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
         'public_operation_count': public_operation_count,
-        'expected_public_operation_count': 29,
+        'expected_public_operation_count': 30,
         'operation_limit': 30,
         'operation_headroom': 30 - public_operation_count,
         'production_server': production_server,
@@ -11069,6 +11097,34 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
     except Exception as exc:
         logger.exception('product_review_facade_operation_failed')
         return json_response(_facade_error(operation_type, str(exc), runtime_service='product_review_facade'))
+
+
+@router.post('/vectra/laboratory/product-review/development-request', summary='Read one VECTRA Development Journal record')
+def vectra_laboratory_get_development_request(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
+    """Dedicated read-only publication of get_development_request for GPT Actions."""
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    record_id = str((request or {}).get('record_id') or '').strip()
+    try:
+        if not record_id:
+            return json_response(_facade_error(
+                'get_development_request',
+                'record_id is required.',
+                runtime_service='development_journal.get_development_bridge',
+            ))
+        result = get_development_bridge(record_id, only_new=False, limit=1)
+        return json_response(_facade_response(
+            'get_development_request',
+            'development_journal.get_development_bridge',
+            '/vectra/laboratory/product-review/development-request',
+            result,
+        ))
+    except Exception as exc:
+        logger.exception('dedicated_development_request_read_failed')
+        return json_response(_facade_error(
+            'get_development_request',
+            str(exc),
+            runtime_service='development_journal.get_development_bridge',
+        ))
 
 
 

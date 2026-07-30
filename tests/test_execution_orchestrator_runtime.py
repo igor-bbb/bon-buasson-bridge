@@ -155,7 +155,7 @@ def test_runtime_facade_exposes_orchestrator_without_new_action(isolated_runtime
     enum = routes._memory_facade_operation_request_schema()["properties"]["operation_type"]["enum"]
     expected = {"get_orchestrator_status", "create_execution_plan", "start_execution_plan", "get_execution_plan_status", "get_execution_queue", "search_execution_plans"}
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     monkeypatch.setattr(routes, "execute_vectra_orchestrator_operation", orch.execute_orchestrator_operation)
     response = routes.vectra_laboratory_facade_memory({"operation_type": "create_execution_plan", "payload": {"object_ids": [OBJECTS[0]]}})

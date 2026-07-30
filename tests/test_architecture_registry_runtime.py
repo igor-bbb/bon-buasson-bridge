@@ -197,7 +197,7 @@ def test_existing_runtime_facade_exposes_operations_without_new_public_action(mo
         "evaluate_registry_compliance",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
 
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     response = routes.vectra_laboratory_facade_memory({

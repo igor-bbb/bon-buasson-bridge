@@ -137,7 +137,7 @@ def test_runtime_facade_exposes_sessions_without_new_action(isolated_session_run
         "close_runtime_session",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     monkeypatch.setattr(routes, "execute_vectra_session_runtime_operation", sr.execute_session_runtime_operation)
     response = routes.vectra_laboratory_facade_memory({"operation_type": "start_runtime_session", "payload": {}})
