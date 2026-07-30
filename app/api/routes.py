@@ -8200,6 +8200,8 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
     'executeVectraProductReviewOperation': '/vectra/laboratory/product-review/development-request',
     'executeVectraProductReviewLifecycleOperation': '/vectra/laboratory/facade/product-review',
+    'executeVectraRegisteredActionSequence': '/vectra/laboratory/runtime/action-sequences/execute',
+    'getVectraRegisteredActionSequence': '/vectra/laboratory/runtime/action-sequences/get',
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
@@ -8253,6 +8255,16 @@ _LABORATORY_NON_ACTION_DIAGNOSTICS = [
         'endpoint': '/vectra/laboratory/memory/verify',
         'reason': 'internal_diagnostic_available_via_knowledge_and_memory_runtime_operations',
     },
+    {
+        'operation_id': 'verify_business_research_execution',
+        'endpoint': '/vectra/laboratory/business-research/executions/verify',
+        'reason': 'internal_diagnostic_preserved_in_runtime_and_covered_by_research_execution_manifest',
+    },
+    {
+        'operation_id': 'verify_business_decision_framework_validation',
+        'endpoint': '/vectra/laboratory/business-decision-framework/verify',
+        'reason': 'internal_diagnostic_preserved_in_runtime_and_covered_by_validation_report',
+    },
 ]
 
 _FACADE_ACTIONS = [
@@ -8271,6 +8283,20 @@ _FACADE_ACTIONS = [
         '/vectra/laboratory/facade/product-review',
         'Execute a VECTRA Product Review lifecycle operation',
         'Use for Product Review lifecycle operations other than the dedicated read-only get_development_request Action.',
+    ),
+    (
+        'executeVectraRegisteredActionSequence',
+        'POST',
+        '/vectra/laboratory/runtime/action-sequences/execute',
+        'Execute one registered VECTRA Action sequence',
+        'Dedicated Product Verification Action. Executes the exact registered sequence payload without selecting an operation_type from the Memory facade.',
+    ),
+    (
+        'getVectraRegisteredActionSequence',
+        'POST',
+        '/vectra/laboratory/runtime/action-sequences/get',
+        'Read one registered VECTRA Action sequence',
+        'Dedicated read-only Product Verification Action. Reads the exact sequence_id without selecting an operation_type from the Memory facade.',
     ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
@@ -8292,10 +8318,8 @@ _FACADE_ACTIONS = [
     ('pause_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/pause', 'Pause Business Research Execution', 'Pauses the current guided research execution while preserving its professional context.'),
     ('resume_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/resume', 'Resume Business Research Execution', 'Restores a paused or held research execution from its Manifest.'),
     ('complete_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/complete', 'Complete Business Research Execution', 'Completes a guided research execution after all tasks and at least one evidence-backed Finding are present.'),
-    ('verify_business_research_execution', 'GET', '/vectra/laboratory/business-research/executions/verify', 'Verify Business Research Execution', 'Verifies Stage 2 guided research execution, persistence, Decision Lineage and read-only guarantees.'),
     ('run_business_decision_framework_validation', 'POST', '/vectra/laboratory/business-decision-framework/validate', 'Run Business Decision Framework Validation', 'Runs Stage 3 read-only validation of decision scenarios, Guided/Autonomous Decision readiness, Decision Traceability and Recommendation Quality.'),
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
-    ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
     ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Accepts the canonical research_snapshot_request returned by Business Object Discovery without transformation and returns one complete read-only professional snapshot.'),
     ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a scalable read-only catalogue with type filtering, pagination, search, sorting and summary-only mode.'),
 ]
@@ -8955,6 +8979,44 @@ def _development_request_read_action_schema() -> dict:
     }
 
 
+def _registered_action_sequence_execute_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['sequence_id', 'program_type', 'steps'],
+        'properties': {
+            'sequence_id': {'type': 'string', 'minLength': 1},
+            'program_type': {'type': 'string', 'minLength': 1},
+            'steps': {
+                'type': 'array',
+                'minItems': 1,
+                'items': {'type': 'string', 'minLength': 1},
+            },
+            'response_mode': {
+                'type': 'string',
+                'enum': ['compact', 'step_summary', 'diagnostic'],
+                'default': 'step_summary',
+            },
+        },
+        'additionalProperties': True,
+    }
+
+
+def _registered_action_sequence_read_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['sequence_id'],
+        'properties': {
+            'sequence_id': {'type': 'string', 'minLength': 1},
+            'response_mode': {
+                'type': 'string',
+                'enum': ['compact', 'step_summary', 'diagnostic'],
+                'default': 'step_summary',
+            },
+        },
+        'additionalProperties': False,
+    }
+
+
 def _facade_response_schema() -> dict:
     return {
         'type': 'object',
@@ -9430,6 +9492,10 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _development_request_read_action_schema()
             elif operation_id == 'executeVectraProductReviewLifecycleOperation':
                 request_schema = _product_review_action_request_schema()
+            elif operation_id == 'executeVectraRegisteredActionSequence':
+                request_schema = _registered_action_sequence_execute_schema()
+            elif operation_id == 'getVectraRegisteredActionSequence':
+                request_schema = _registered_action_sequence_read_schema()
             elif operation_id == 'executeVectraMemoryOperation':
                 request_schema = _memory_facade_operation_request_schema()
             else:
@@ -9448,8 +9514,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-002',
-        'description': 'Official VECTRA Laboratory OpenAPI. Reading one Development Journal record is published as the dedicated unambiguous executeVectraProductReviewOperation Action. Product Review lifecycle commands remain available through executeVectraProductReviewLifecycleOperation. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+            'version': 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001',
+            'description': 'Official VECTRA Laboratory OpenAPI. Registered Action sequence execution and readback are published as dedicated unambiguous Actions for Product Verification. Reading one Development Journal record remains available through executeVectraProductReviewOperation. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9465,7 +9531,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-002',
+        'x-vectra-release': 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11124,6 +11190,57 @@ def vectra_laboratory_get_development_request(request: dict = None, x_vectra_lab
             'get_development_request',
             str(exc),
             runtime_service='development_journal.get_development_bridge',
+        ))
+
+
+@router.post('/vectra/laboratory/runtime/action-sequences/execute', summary='Execute one registered VECTRA Action sequence')
+def vectra_execute_registered_action_sequence_action(
+    request: dict = None,
+    x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY'),
+):
+    """Dedicated publication of registered sequence execution for GPT Actions."""
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = dict(request or {})
+    try:
+        result = execute_vectra_registered_action_sequence(payload)
+        return json_response(_facade_response(
+            'execute_registered_action_sequence',
+            'runtime_action_sequence.execute_registered_action_sequence',
+            '/vectra/laboratory/runtime/action-sequences/execute',
+            result,
+            next_action=result.get('next_action') if isinstance(result, dict) else 'Read the same sequence_id.',
+        ))
+    except Exception as exc:
+        logger.exception('dedicated_registered_action_sequence_execute_failed')
+        return json_response(_facade_error(
+            'execute_registered_action_sequence',
+            str(exc),
+            runtime_service='runtime_action_sequence.execute_registered_action_sequence',
+        ))
+
+
+@router.post('/vectra/laboratory/runtime/action-sequences/get', summary='Read one registered VECTRA Action sequence')
+def vectra_get_registered_action_sequence_action(
+    request: dict = None,
+    x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY'),
+):
+    """Dedicated read-only publication of registered sequence readback."""
+    _verify_laboratory_api_key(x_vectra_laboratory_key)
+    payload = dict(request or {})
+    try:
+        result = get_vectra_registered_action_sequence(payload)
+        return json_response(_facade_response(
+            'get_registered_action_sequence',
+            'runtime_action_sequence.get_registered_action_sequence',
+            '/vectra/laboratory/runtime/action-sequences/get',
+            result,
+        ))
+    except Exception as exc:
+        logger.exception('dedicated_registered_action_sequence_read_failed')
+        return json_response(_facade_error(
+            'get_registered_action_sequence',
+            str(exc),
+            runtime_service='runtime_action_sequence.get_registered_action_sequence',
         ))
 
 

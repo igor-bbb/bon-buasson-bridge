@@ -144,7 +144,7 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
     }
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-GPT-ACTION-AVAILABILITY-002'
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001'
 
 
 def test_dedicated_development_request_action_is_read_only_and_deterministic(monkeypatch):
