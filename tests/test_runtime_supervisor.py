@@ -242,7 +242,7 @@ def test_all_supervisor_facade_operations_are_supported(isolated_supervisor, mon
         "get_runtime_events", "search_runtime_events", "get_runtime_diagnostics",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     monkeypatch.setattr(routes, "execute_vectra_runtime_supervisor_operation", rs.execute_runtime_supervisor_operation)
     response = routes.vectra_laboratory_facade_memory({"operation_type": "get_runtime_readiness", "payload": {}})

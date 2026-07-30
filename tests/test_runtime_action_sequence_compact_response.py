@@ -126,4 +126,4 @@ def test_openapi_publishes_response_modes_and_keeps_action_limit():
     response_mode = request_schema["properties"]["payload"]["properties"]["response_mode"]
     assert response_mode["default"] == "compact"
     assert set(response_mode["enum"]) == {"compact", "step_summary", "diagnostic"}
-    assert routes._count_openapi_operations(schema) == 30
+    assert routes._count_openapi_operations(schema) == 29

@@ -1,6 +1,7 @@
 import importlib
 
 from app.api.routes import _laboratory_facade_openapi_schema
+from app.main import app
 
 
 def _journal(tmp_path, monkeypatch):
@@ -119,6 +120,12 @@ def test_product_review_action_publishes_explicit_bridge_contract():
         'record_product_verification',
     }
     assert required_operations <= set(operation_schema['enum'])
+    assert operation_schema['enum'][0] == 'get_development_request'
+    assert request_schema['examples'][0] == {
+        'operation_type': 'get_development_request',
+        'payload': {'record_id': 'DEV-0001'},
+    }
+    assert 'do not replace it with inspect_workspace' in operation_schema['description']
 
     payload_properties = request_schema['properties']['payload']['properties']
     assert {'record_id', 'confirmed_gap', 'decision', 'stage', 'release_id', 'commit_sha', 'verdict'} <= set(payload_properties)
@@ -130,7 +137,19 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
     schema = _laboratory_facade_openapi_schema()
     operation_count = sum(len(methods) for methods in schema['paths'].values())
 
-    assert operation_count == 30
+    assert operation_count == 29
     assert schema['servers'] == [{'url': 'https://bon-buasson-api.onrender.com'}]
     operation_ids = [operation['operationId'] for methods in schema['paths'].values() for operation in methods.values()]
     assert operation_ids.count('executeVectraProductReviewOperation') == 1
+    assert operation_ids.index('executeVectraProductReviewOperation') == 2
+    assert 'getVectraCapabilities' not in operation_ids
+    assert schema['x-vectra-gpt-actions-operation-limit'] == {
+        'limit': 30,
+        'operation_count': 29,
+        'safe_operation_count': 29,
+        'headroom': 1,
+        'status': 'PASS',
+    }
+
+    root_schema = app.openapi()
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-GPT-ACTION-AVAILABILITY-001'

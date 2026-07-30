@@ -146,7 +146,7 @@ def test_step_summary_exposes_target_without_object_content(monkeypatch, tmp_pat
     assert len(json.dumps(result, ensure_ascii=False).encode("utf-8")) < SAFE_RESPONSE_LIMIT_BYTES
 
 
-def test_openapi_action_count_and_ep001_surface_are_unchanged():
+def test_openapi_action_count_and_action_availability_surface_are_current():
     schema = routes._laboratory_facade_openapi_schema()
-    assert routes._count_openapi_operations(schema) == 30
-    assert schema["info"]["version"] == "VECTRA-RUNTIME-ACTION-SEQUENCE-READBACK-ID-001"
+    assert routes._count_openapi_operations(schema) == 29
+    assert schema["info"]["version"] == "VECTRA-GPT-ACTION-AVAILABILITY-001"

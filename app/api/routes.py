@@ -8228,6 +8228,11 @@ _FACADE_OPERATION_TO_ENDPOINT = {
 # covered by Runtime Status, Capability Registry and Action Manifest.
 _LABORATORY_NON_ACTION_DIAGNOSTICS = [
     {
+        'operation_id': 'getVectraCapabilities',
+        'endpoint': '/vectra/capabilities',
+        'reason': 'internal_diagnostic_available_via_action_manifest_and_runtime_status',
+    },
+    {
         'operation_id': 'verifyVectraRuntime',
         'endpoint': '/vectra/runtime/verify',
         'reason': 'internal_diagnostic_available_via_runtime_status_and_capability_registry',
@@ -8252,7 +8257,13 @@ _LABORATORY_NON_ACTION_DIAGNOSTICS = [
 _FACADE_ACTIONS = [
     ('getVectraRuntimeStatus', 'GET', '/vectra/runtime/status', 'Check VECTRA Runtime status', 'Runtime status and deployment health.'),
     ('restoreVectraLaboratoryState', 'GET', '/vectra/laboratory/state/restore', 'Restore VECTRA Laboratory state', 'Restores professional state, active Business Domain, Professional Knowledge and Business Knowledge for a new working session.'),
-    ('getVectraCapabilities', 'GET', '/vectra/capabilities', 'Get VECTRA Capability Registry', 'Returns Runtime Capability Registry.'),
+    (
+        'executeVectraProductReviewOperation',
+        'POST',
+        '/vectra/laboratory/facade/product-review',
+        'Execute an explicit VECTRA Product Review operation',
+        'Use the exact requested operation_type. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
+    ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
     ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Business Framework Service', 'Use for Business Framework operations other than self-audit. Select an explicit operation_type from the request schema.'),
@@ -8260,7 +8271,6 @@ _FACADE_ACTIONS = [
     ('createVectraKnowledgeCandidate', 'POST', '/vectra/knowledge/candidates', 'Create VECTRA Knowledge Candidate', 'Dedicated Product Owner approval-gated Action for creating one Professional or Business Knowledge Candidate. This operation does not create a capitalization package and does not write confirmed knowledge.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
-    ('executeVectraProductReviewOperation', 'POST', '/vectra/laboratory/facade/product-review', 'Execute VECTRA Product Review operation', 'Facade for Product Review and Product Verification operations.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
@@ -8808,18 +8818,19 @@ def _product_review_action_request_schema() -> dict:
     """Explicit GPT Actions contract for Development Bridge operations.
 
     The bridge is intentionally exposed through the existing Product Review
-    Action so the public Action count stays at 30.  Operation names and their
+    Action so the public Action count stays below the 30-operation boundary.
+    Operation names and their
     inputs must be visible to the GPT Editor; a generic string/payload contract
     makes implemented Runtime capabilities undiscoverable to Laboratory.
     """
     operations = [
+        'get_development_request',
+        'get_development_requests',
+        'get_new_development_requests',
         'inspect_workspace',
         'verify_workspace',
         'detect_product_issue',
         'create_product_observation',
-        'get_development_request',
-        'get_development_requests',
-        'get_new_development_requests',
         'record_owner_decision',
         'create_engineering_task',
         'update_engineering_execution',
@@ -8874,7 +8885,10 @@ def _product_review_action_request_schema() -> dict:
                 'type': 'string',
                 'enum': operations,
                 'description': (
-                    'Development Bridge operation. For full Product Verification call inspect_workspace, '
+                    'Execute exactly the operation_type requested by Product Owner. When '
+                    'get_development_request is requested, pass payload.record_id and do not '
+                    'replace it with inspect_workspace or any other operation. For a full Product '
+                    'Verification lifecycle call inspect_workspace, '
                     'create_product_observation, get_development_request, record_owner_decision, '
                     'update_engineering_execution, record_product_verification, then read the same record again.'
                 ),
@@ -8889,6 +8903,7 @@ def _product_review_action_request_schema() -> dict:
         },
         'additionalProperties': False,
         'examples': [
+            {'operation_type': 'get_development_request', 'payload': {'record_id': 'DEV-0001'}},
             {'operation_type': 'inspect_workspace', 'payload': {}},
             {
                 'operation_type': 'create_product_observation',
@@ -8898,7 +8913,6 @@ def _product_review_action_request_schema() -> dict:
                     'proposal': 'Verify the complete Development Bridge lifecycle.',
                 },
             },
-            {'operation_type': 'get_development_request', 'payload': {'record_id': 'DEV-0001'}},
             {
                 'operation_type': 'record_owner_decision',
                 'product_owner_approval': True,
@@ -9406,8 +9420,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-RUNTIME-ACTION-SEQUENCE-READBACK-ID-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 30 public operations. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9423,11 +9437,13 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-ORGANIZATIONAL-MEMORY-CONTINUITY-001',
+        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
-            'status': 'PASS' if len(_FACADE_ACTIONS) <= 30 else 'HOLD',
+            'safe_operation_count': 29,
+            'headroom': 30 - len(_FACADE_ACTIONS),
+            'status': 'PASS' if len(_FACADE_ACTIONS) <= 29 else 'HOLD',
         },
         'x-vectra-non-action-diagnostics': _LABORATORY_NON_ACTION_DIAGNOSTICS,
         'x-vectra-internal-runtime-operations': len(_FACADE_INTERNAL_ENDPOINTS),
@@ -9683,7 +9699,7 @@ def _facade_action_for_internal(endpoint: str, operation_id: str = '') -> str:
     if '/runtime/verify' in endpoint or '/runtime/snapshot' in endpoint:
         return 'verifyVectraRuntime'
     if '/capabilities' in endpoint:
-        return 'getVectraCapabilities'
+        return 'getVectraActionManifest'
     if '/behavior/next-action' in endpoint:
         return 'determineVectraLaboratoryNextAction'
     if '/actions/manifest' in endpoint:
@@ -9740,7 +9756,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
     missing_facade = manifest.get('missing_facade_actions') if isinstance(manifest.get('missing_facade_actions'), list) else []
     unexpected_facade = manifest.get('unexpected_facade_actions') if isinstance(manifest.get('unexpected_facade_actions'), list) else []
     missing_services = manifest.get('missing_internal_services') if isinstance(manifest.get('missing_internal_services'), list) else []
-    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 30)
+    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 29)
     return {
         'status': 'ok' if not incomplete else 'error',
         'render_mode': 'vectra_laboratory_action_completeness_verification',
@@ -9749,6 +9765,8 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'schema_url': '/vectra/laboratory/openapi.json',
         'operation_count': manifest.get('operation_count'),
         'operation_limit': 30,
+        'safe_operation_count': 29,
+        'operation_headroom': 30 - int(manifest.get('operation_count') or 0),
         'public_facade_actions_count': manifest.get('public_facade_actions_count'),
         'internal_runtime_operations_count': manifest.get('internal_runtime_operations_count'),
         'missing_capability': [],
@@ -9844,9 +9862,11 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
     action_manifest = _build_laboratory_facade_action_manifest()
     manifest_missing = action_manifest.get('missing_facade_actions') if isinstance(action_manifest, dict) else None
     openapi_verification = {
-        'status': 'PASS' if public_operation_count == 30 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
+        'status': 'PASS' if public_operation_count == 29 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
         'public_operation_count': public_operation_count,
-        'expected_public_operation_count': 30,
+        'expected_public_operation_count': 29,
+        'operation_limit': 30,
+        'operation_headroom': 30 - public_operation_count,
         'production_server': production_server,
         'expected_production_server': 'https://bon-buasson-api.onrender.com',
     }

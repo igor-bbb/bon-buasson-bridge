@@ -181,7 +181,7 @@ def test_all_recovery_facade_operations_are_supported(isolated_recovery, monkeyp
         "search_runtime_recovery", "get_runtime_recovery_plan",
     }
     assert expected.issubset(enum)
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
     configure_registered_sources(monkeypatch)
     monkeypatch.setattr(routes, "_verify_laboratory_api_key", lambda *_: None)
     monkeypatch.setattr(routes, "execute_vectra_runtime_recovery_operation", rr.execute_runtime_recovery_operation)
