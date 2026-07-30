@@ -239,6 +239,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-CAPABILITY-REGISTRY-001: load only after Runtime Recovery.
+        # The Registry indexes metadata published by existing Runtime components.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_capability_registry status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_capability_registry import initialize_runtime_capability_registry
+        capability_registry_state = initialize_runtime_capability_registry(force=True)
+        if capability_registry_state.get("status") != "PASS" or not capability_registry_state.get("loaded"):
+            raise RuntimeError("Runtime Capability Registry initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_capability_registry status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "

@@ -1,0 +1,122 @@
+{
+  "capabilities": [
+    {
+      "capability_id": "runtime.architecture.registry.runtime",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Architecture Registry Runtime",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Architecture Registry Runtime",
+      "version": "VECTRA-ARCHITECTURE-REGISTRY-001"
+    },
+    {
+      "capability_id": "runtime.execution.orchestrator.runtime",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Execution Orchestrator Runtime",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Execution Orchestrator Runtime",
+      "version": "VECTRA-EXECUTION-ORCHESTRATOR-001"
+    },
+    {
+      "capability_id": "runtime.execution.runtime",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Execution Runtime",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Execution Runtime",
+      "version": "VECTRA-EXECUTION-RUNTIME-001"
+    },
+    {
+      "capability_id": "runtime.runtime.recovery",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Runtime Recovery",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Runtime Recovery",
+      "version": "VECTRA-RUNTIME-RECOVERY-001"
+    },
+    {
+      "capability_id": "runtime.runtime.supervisor",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27.987836+00:00",
+      "publisher": "Runtime Supervisor",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Runtime Supervisor",
+      "version": "VECTRA-RUNTIME-SUPERVISOR-001"
+    },
+    {
+      "capability_id": "runtime.session.runtime",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Session Runtime",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Session Runtime",
+      "version": "VECTRA-SESSION-RUNTIME-001"
+    },
+    {
+      "capability_id": "runtime.verification.runtime",
+      "last_verified_at": "2026-07-30T06:59:27Z",
+      "publication_status": "PUBLISHED",
+      "published_at": "2026-07-30T06:59:27Z",
+      "publisher": "Verification Runtime",
+      "registry_status": "REGISTERED",
+      "runtime_component": "Verification Runtime",
+      "version": "VECTRA-VERIFICATION-RUNTIME-001"
+    }
+  ],
+  "registration_history": [
+    {
+      "capability_id": "runtime.architecture.registry.runtime",
+      "publisher": "Architecture Registry Runtime",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.execution.orchestrator.runtime",
+      "publisher": "Execution Orchestrator Runtime",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.execution.runtime",
+      "publisher": "Execution Runtime",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.runtime.recovery",
+      "publisher": "Runtime Recovery",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.runtime.supervisor",
+      "publisher": "Runtime Supervisor",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.session.runtime",
+      "publisher": "Session Runtime",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    },
+    {
+      "capability_id": "runtime.verification.runtime",
+      "publisher": "Verification Runtime",
+      "registered_at": "2026-07-30T06:59:27Z",
+      "registry_status": "REGISTERED"
+    }
+  ],
+  "release_id": "VECTRA-RUNTIME-CAPABILITY-REGISTRY-001",
+  "repository_id": "VECTRA-RUNTIME-CAPABILITY-REGISTRY-REPOSITORY-001",
+  "schema_version": "1.0",
+  "updated_at": "2026-07-30T06:59:27Z"
+}
