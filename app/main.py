@@ -256,6 +256,23 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        # VECTRA-RUNTIME-DEPENDENCY-GRAPH-001: load only after Capability Registry.
+        # The graph contains only relations explicitly published by Runtime components.
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_dependency_graph status=STARTED",
+            flush=True,
+        )
+        from app.assistant_runtime.runtime_dependency_graph import initialize_runtime_dependency_graph
+        dependency_graph_state = initialize_runtime_dependency_graph(force=True)
+        if dependency_graph_state.get("status") != "PASS" or not dependency_graph_state.get("loaded"):
+            raise RuntimeError("Runtime Dependency Graph initialization failed")
+        print(
+            f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
+            "phase=runtime_dependency_graph status=PASS",
+            flush=True,
+        )
+
         # 🔴 preload DATA
         print(
             f"VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "

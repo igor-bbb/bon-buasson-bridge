@@ -1,0 +1,238 @@
+{
+  "build_history": [
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "built_at": "2026-07-30T07:24:49Z",
+      "graph_status": "READY",
+      "dependencies_count": 20
+    }
+  ],
+  "dependencies": [
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Execution Orchestrator Runtime",
+      "dependency_id": "dependency.execution.orchestrator.runtime.to.architecture.registry.runtime",
+      "publisher": "Execution Orchestrator Runtime",
+      "source_component": "Execution Orchestrator Runtime",
+      "target_component": "Architecture Registry Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Execution Orchestrator Runtime",
+      "dependency_id": "dependency.execution.orchestrator.runtime.to.execution.runtime",
+      "publisher": "Execution Orchestrator Runtime",
+      "source_component": "Execution Orchestrator Runtime",
+      "target_component": "Execution Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Execution Orchestrator Runtime",
+      "dependency_id": "dependency.execution.orchestrator.runtime.to.verification.runtime",
+      "publisher": "Execution Orchestrator Runtime",
+      "source_component": "Execution Orchestrator Runtime",
+      "target_component": "Verification Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Execution Runtime",
+      "dependency_id": "dependency.execution.runtime.to.architecture.registry.runtime",
+      "publisher": "Execution Runtime",
+      "source_component": "Execution Runtime",
+      "target_component": "Architecture Registry Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Execution Runtime",
+      "dependency_id": "dependency.execution.runtime.to.verification.runtime",
+      "publisher": "Execution Runtime",
+      "source_component": "Execution Runtime",
+      "target_component": "Verification Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Runtime Capability Registry",
+      "dependency_id": "dependency.runtime.capability.registry.to.runtime.recovery",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "Runtime Capability Registry",
+      "target_component": "Runtime Recovery",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Runtime Recovery",
+      "dependency_id": "dependency.runtime.recovery.to.runtime.supervisor",
+      "publisher": "Runtime Recovery",
+      "source_component": "Runtime Recovery",
+      "target_component": "Runtime Supervisor",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Runtime Supervisor",
+      "dependency_id": "dependency.runtime.supervisor.to.session.runtime",
+      "publisher": "Runtime Supervisor",
+      "source_component": "Runtime Supervisor",
+      "target_component": "Session Runtime",
+      "published_at": "2026-07-30T07:24:49.633237+00:00",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Session Runtime",
+      "dependency_id": "dependency.session.runtime.to.architecture.registry.runtime",
+      "publisher": "Session Runtime",
+      "source_component": "Session Runtime",
+      "target_component": "Architecture Registry Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Session Runtime",
+      "dependency_id": "dependency.session.runtime.to.execution.orchestrator.runtime",
+      "publisher": "Session Runtime",
+      "source_component": "Session Runtime",
+      "target_component": "Execution Orchestrator Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Session Runtime",
+      "dependency_id": "dependency.session.runtime.to.execution.runtime",
+      "publisher": "Session Runtime",
+      "source_component": "Session Runtime",
+      "target_component": "Execution Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Session Runtime",
+      "dependency_id": "dependency.session.runtime.to.verification.runtime",
+      "publisher": "Session Runtime",
+      "source_component": "Session Runtime",
+      "target_component": "Verification Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "Verification Runtime",
+      "dependency_id": "dependency.verification.runtime.to.architecture.registry.runtime",
+      "publisher": "Verification Runtime",
+      "source_component": "Verification Runtime",
+      "target_component": "Architecture Registry Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.architecture.registry.runtime",
+      "dependency_id": "dependency.runtime.architecture.registry.runtime.to.architecture.registry.runtime",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.architecture.registry.runtime",
+      "target_component": "Architecture Registry Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.execution.orchestrator.runtime",
+      "dependency_id": "dependency.runtime.execution.orchestrator.runtime.to.execution.orchestrator.runtime",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.execution.orchestrator.runtime",
+      "target_component": "Execution Orchestrator Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.execution.runtime",
+      "dependency_id": "dependency.runtime.execution.runtime.to.execution.runtime",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.execution.runtime",
+      "target_component": "Execution Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.runtime.recovery",
+      "dependency_id": "dependency.runtime.runtime.recovery.to.runtime.recovery",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.runtime.recovery",
+      "target_component": "Runtime Recovery",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.runtime.supervisor",
+      "dependency_id": "dependency.runtime.runtime.supervisor.to.runtime.supervisor",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.runtime.supervisor",
+      "target_component": "Runtime Supervisor",
+      "published_at": "2026-07-30T07:24:49.658255+00:00",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.session.runtime",
+      "dependency_id": "dependency.runtime.session.runtime.to.session.runtime",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.session.runtime",
+      "target_component": "Session Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    },
+    {
+      "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+      "node_id": "runtime.verification.runtime",
+      "dependency_id": "dependency.runtime.verification.runtime.to.verification.runtime",
+      "publisher": "Runtime Capability Registry",
+      "source_component": "runtime.verification.runtime",
+      "target_component": "Verification Runtime",
+      "published_at": "2026-07-30T07:24:49Z",
+      "last_verified_at": "2026-07-30T07:24:49Z",
+      "graph_status": "REGISTERED"
+    }
+  ],
+  "graph_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-CURRENT",
+  "graph_status": "READY",
+  "release_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-001",
+  "repository_id": "VECTRA-RUNTIME-DEPENDENCY-GRAPH-REPOSITORY-001",
+  "schema_version": "1.0",
+  "updated_at": "2026-07-30T07:24:49Z"
+}
