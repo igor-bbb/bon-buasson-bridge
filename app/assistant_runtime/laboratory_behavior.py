@@ -92,14 +92,16 @@ def determine_laboratory_next_action(command: str | None = None, runtime_access_
             "runtime_action_required": True,
             "primary_runtime_action": "getVectraRuntimeStatus",
             "primary_endpoint": "/vectra/runtime/status",
-            "fallback_runtime_actions": ["getVectraRuntimeSnapshot", "getVectraLaboratoryVerification"],
+            "fallback_runtime_actions": ["executeVectraMemoryOperation", "getVectraLaboratoryVerification"],
+            "fallback_operation_types": {"executeVectraMemoryOperation": "get_runtime_snapshot"},
         },
         "check_state": {
             "next_professional_step": "Check factual Runtime state before forming any conclusion.",
             "runtime_action_required": True,
             "primary_runtime_action": "getVectraRuntimeStatus",
             "primary_endpoint": "/vectra/runtime/status",
-            "fallback_runtime_actions": ["getVectraRuntimeSnapshot", "getVectraLaboratoryVerification"],
+            "fallback_runtime_actions": ["executeVectraMemoryOperation", "getVectraLaboratoryVerification"],
+            "fallback_operation_types": {"executeVectraMemoryOperation": "get_runtime_snapshot"},
         },
         "inspect_product": {
             "next_professional_step": "Inspect repository/runtime structure through Laboratory Repository Inspection before discussing product state.",

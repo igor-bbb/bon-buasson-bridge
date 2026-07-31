@@ -8273,7 +8273,7 @@ _FACADE_ACTIONS = [
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
-    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
+    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for memory, architecture, Runtime component status and read-only Runtime Snapshot operations. Use operation_type=get_runtime_snapshot for the official 12-root readback.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
@@ -8695,7 +8695,7 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_runtime_snapshot', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
         if operation_type not in operations:
             operations.append(operation_type)
     return schema
@@ -9421,8 +9421,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-RUNTIME-ROOTS-READBACK-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9438,7 +9438,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
+        'x-vectra-release': 'VECTRA-RUNTIME-ROOTS-READBACK-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9697,7 +9697,9 @@ def _facade_action_for_internal(endpoint: str, operation_id: str = '') -> str:
         return 'executeVectraKnowledgeOperation'
     if '/runtime/status' in endpoint:
         return 'getVectraRuntimeStatus'
-    if '/runtime/verify' in endpoint or '/runtime/snapshot' in endpoint:
+    if '/runtime/snapshot' in endpoint:
+        return 'executeVectraMemoryOperation'
+    if '/runtime/verify' in endpoint:
         return 'verifyVectraRuntime'
     if '/capabilities' in endpoint:
         return 'getVectraActionManifest'
@@ -11369,6 +11371,9 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type == 'get_runtime_snapshot':
+            result = get_vectra_runtime_snapshot(refresh=False)
+            return json_response(_facade_response(operation_type, 'observability.get_runtime_snapshot', '/vectra/laboratory/facade/memory', result, next_action='Use runtime_roots for SELF-AUDIT-RUNTIME-ROOTS-001 and do not infer missing lifecycle evidence.'))
         if operation_type == 'execute_registered_action_sequence':
             result = execute_vectra_registered_action_sequence(payload)
             return json_response(_facade_response(operation_type, 'runtime_action_sequence.execute_registered_action_sequence', '/vectra/laboratory/facade/memory', result, next_action=result.get('next_action') if isinstance(result, dict) else 'Review sequence result.'))

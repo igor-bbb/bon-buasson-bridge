@@ -109,8 +109,8 @@ def test_openapi_publishes_one_unambiguous_self_audit_route_and_no_auto_domain_a
     assert "Never call activate_domain automatically" in domain_description
     assert domain_schema["examples"] == [{"operation_type": "list_domains"}]
     assert schema["servers"] == [{"url": "https://bon-buasson-api.onrender.com"}]
-    assert schema["info"]["version"] == "VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001"
-    assert schema["x-vectra-release"] == "VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001"
+    assert schema["info"]["version"] == "VECTRA-RUNTIME-ROOTS-READBACK-001"
+    assert schema["x-vectra-release"] == "VECTRA-RUNTIME-ROOTS-READBACK-001"
     assert schema["x-vectra-gpt-actions-operation-limit"]["operation_count"] == 29
 
 

@@ -62,6 +62,7 @@ from app.assistant_runtime.review import (
     get_synchronization_execution_status, get_synchronization_execution_report, verify_synchronization_execution_readback,
     list_evolution_journal_entries, get_evolution_journal_latest, get_evolution_journal_status, verify_evolution_journal_readback,
 )
+from app.assistant_runtime.runtime_roots_readback import build_runtime_roots_readback
 
 OBSERVABILITY_VERSION = "GENESIS-0002"
 RUNTIME_VERIFICATION_AUTOMATION_RELEASE = "VOS-001"
@@ -623,11 +624,18 @@ def _build_runtime_snapshot(write: bool = True, reason: str = "runtime_observabi
     generated_at = _now()
     snapshot_id = f"runtime-snapshot-{generated_at.lower().replace(':', '').replace('-', '').replace('z', 'z')}-{uuid.uuid4().hex[:8]}"
     components = _build_components()
+    runtime_roots = build_runtime_roots_readback(
+        snapshot_id=snapshot_id,
+        generated_at=generated_at,
+        snapshot_release_id=OBSERVABILITY_VERSION,
+    )
     model_payload = get_professional_model()
     model_body = model_payload.get("professional_model") if isinstance(model_payload.get("professional_model"), dict) else {}
     sections = model_body.get("sections") if isinstance(model_body.get("sections"), dict) else {}
     model_verify = verify_professional_model_readback()
-    overall = "PASS" if all(c.get("status") == "PASS" for c in components.values()) else "WARNING" if any(c.get("status") == "WARNING" for c in components.values()) else "FAIL"
+    root_records = runtime_roots.get("root_components") if isinstance(runtime_roots.get("root_components"), dict) else {}
+    all_statuses = [c.get("status") for c in components.values()] + [c.get("status") for c in root_records.values()]
+    overall = "PASS" if all(status == "PASS" for status in all_statuses) else "WARNING" if any(status == "WARNING" for status in all_statuses) else "FAIL"
     if any(c.get("status") == "FAIL" for c in components.values()):
         overall = "FAIL"
 
@@ -677,6 +685,7 @@ def _build_runtime_snapshot(write: bool = True, reason: str = "runtime_observabi
         "deployment": deployment,
         "overall_status": overall,
         "components": components,
+        "runtime_roots": runtime_roots,
         "extensions": {},
         "product_owner_summary": {
             "short_answer": "Runtime Snapshot сформирован. Это официальный источник фактического состояния VECTRA для Product Verification.",
@@ -687,6 +696,12 @@ def _build_runtime_snapshot(write: bool = True, reason: str = "runtime_observabi
         "overall_status": overall,
         "deployment": deployment,
         "components": {k: {"status": v.get("status"), "summary": v.get("summary")} for k, v in components.items()},
+        "runtime_roots": {
+            "identity_completeness_status": runtime_roots.get("identity_completeness_status"),
+            "operational_completeness_status": runtime_roots.get("operational_completeness_status"),
+            "missing_roots": runtime_roots.get("missing_roots"),
+            "failed_roots": runtime_roots.get("failed_roots"),
+        },
     })
     if write:
         _write_json(_snapshot_file(), snapshot)

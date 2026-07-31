@@ -149,4 +149,4 @@ def test_step_summary_exposes_target_without_object_content(monkeypatch, tmp_pat
 def test_openapi_action_count_and_action_availability_surface_are_current():
     schema = routes._laboratory_facade_openapi_schema()
     assert routes._count_openapi_operations(schema) == 29
-    assert schema["info"]["version"] == "VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001"
+    assert schema["info"]["version"] == "VECTRA-RUNTIME-ROOTS-READBACK-001"
