@@ -269,23 +269,28 @@ def restore_personality_context(payload: Optional[Dict[str, Any]] = None) -> Dic
 
 
 def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    response_mode = str(payload.get("response_mode") or "compact").strip().lower()
+    if response_mode in {"diagnostic", "full"}:
+        from app.assistant_runtime.laboratory_self_audit_integrity import run_laboratory_self_audit
+        return run_laboratory_self_audit()
+
     from app.assistant_runtime.professional_behaviour_runtime import get_professional_behaviour_manifest
     from app.assistant_runtime.professional_procedures_runtime import get_professional_procedure_manifest
 
     personality = get_personality_core().get("personality_core") or {}
     capabilities = get_capability_understanding()
-    from app.assistant_runtime.self_model_runtime import persist_self_model_runtime_state
-    self_model_result = persist_self_model_runtime_state(payload)
-    self_model = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
+    from app.assistant_runtime.self_model_runtime import get_self_model_runtime_state
+    self_model_result = get_self_model_runtime_state()
+    self_model_root = self_model_result.get("self_model") if isinstance(self_model_result, dict) else {}
+    self_model = self_model_root.get("payload") if isinstance(self_model_root, dict) else {}
     behaviour = get_professional_behaviour_manifest("vectra_laboratory")
     procedures = get_professional_procedure_manifest()
-    from app.assistant_runtime.professional_runtime_state import persist_professional_runtime_state
+    from app.assistant_runtime.professional_runtime_state import get_professional_runtime_state
     from app.assistant_runtime.capability_verification_registry import get_capability_verification_registry
-    professional_state_result = persist_professional_runtime_state(professional_role="vectra_laboratory")
+    professional_state_result = get_professional_runtime_state()
     professional_state = professional_state_result.get("professional_runtime_state") if isinstance(professional_state_result, dict) else {}
     verification_registry = get_capability_verification_registry()
-    from app.assistant_runtime.professional_business_model import verify_professional_business_model
-    professional_business_model_verification = verify_professional_business_model("bon_buasson")
 
     inconsistencies: List[Dict[str, Any]] = []
     for capability_id in capabilities.get("not_integrated") or []:
@@ -304,8 +309,6 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         inconsistencies.append({"type": "professional_continuity_partial", "severity": "FAIL"})
     if verification_registry.get("status") != "PASS":
         inconsistencies.append({"type": "capability_verification_registry_not_ready", "severity": "FAIL"})
-    if professional_business_model_verification.get("status") != "PASS":
-        inconsistencies.append({"type": "professional_business_model_not_ready", "severity": "FAIL"})
 
     status = "PASS" if not inconsistencies else ("WARNING" if all(x.get("severity") == "WARNING" for x in inconsistencies) else "HOLD")
     next_action = "continue_professional_work" if status == "PASS" else "prepare_minimal_engineering_task_for_confirmed_inconsistency"
@@ -332,7 +335,6 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "use_assistant_response_verbatim": True,
         "assistant_response_field": "assistant_response",
     }
-    response_mode = str((payload or {}).get("response_mode") or "compact").strip().lower()
     compact_response = {
         "status": status,
         "audit_type": "VECTRA_SELF_AUDIT",
@@ -372,7 +374,7 @@ def run_self_audit(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "professional_procedures_ready": procedures_ready,
         "professional_runtime_state": professional_state,
         "professional_continuity_status": professional_state_result.get("status"),
-        "professional_business_model_verification": professional_business_model_verification,
+        "business_domain_required_for_self_audit": False,
         "capability_verification": {
             "status": verification_registry.get("status"),
             "verified_count": verification_registry.get("verified_count"),

@@ -95,7 +95,7 @@ def test_existing_memory_facade_exposes_pilot_without_new_action():
     operations = schema["properties"]["operation_type"]["enum"]
     assert "get_architecture_registry_pilot" in operations
     assert "verify_architecture_registry_pilot" in operations
-    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 30
+    assert routes._count_openapi_operations(routes._laboratory_full_openapi_schema()) == 29
 
 
 def test_memory_facade_returns_runtime_registry_and_verification(monkeypatch):

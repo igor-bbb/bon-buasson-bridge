@@ -1,89 +1,48 @@
-import json
+from __future__ import annotations
 
 from app.api import routes
 
 
-def _body(response):
-    return json.loads(response.body.decode("utf-8"))
+def test_action_sequence_is_published_through_memory_facade_without_extra_actions():
+    schema = routes._laboratory_facade_openapi_schema()
+    memory = schema["paths"]["/vectra/laboratory/facade/memory"]["post"]
+    request_schema = memory["requestBody"]["content"]["application/json"]["schema"]
+    operations = request_schema["properties"]["operation_type"]["enum"]
+
+    assert "execute_registered_action_sequence" in operations
+    assert "get_registered_action_sequence" in operations
+    assert routes._count_openapi_operations(schema) == 29
+    assert schema["x-vectra-gpt-actions-operation-limit"] == {
+        "limit": 30,
+        "operation_count": 29,
+        "safe_operation_count": 29,
+        "headroom": 1,
+        "status": "PASS",
+    }
 
 
-def test_dedicated_sequence_execute_action_calls_runtime(monkeypatch):
-    captured = {}
-
-    def execute(payload):
-        captured.update(payload)
-        return {
-            "status": "PASS",
-            "verification_status": "PASS",
-            "sequence_id": payload["sequence_id"],
-        }
-
-    monkeypatch.setattr(routes, "execute_vectra_registered_action_sequence", execute)
-    response = routes.vectra_execute_registered_action_sequence_action({
-        "sequence_id": "RAS-EP001-INC002-PV-001",
-        "program_type": "product_verification",
-        "steps": ["get_memory_overview", "list_memory_objects"],
-        "response_mode": "step_summary",
-    })
-    body = _body(response)
-
-    assert captured["steps"] == ["get_memory_overview", "list_memory_objects"]
-    assert body["status"] == "ok"
-    assert body["operation_type"] == "execute_registered_action_sequence"
-    assert body["runtime_service_called"] == "runtime_action_sequence.execute_registered_action_sequence"
-    assert body["internal_endpoint_called"] == "/vectra/laboratory/runtime/action-sequences/execute"
-    assert body["result"]["sequence_id"] == "RAS-EP001-INC002-PV-001"
-
-
-def test_dedicated_sequence_read_action_calls_runtime(monkeypatch):
-    monkeypatch.setattr(
-        routes,
-        "get_vectra_registered_action_sequence",
-        lambda payload: {
-            "status": "PASS",
-            "verification_status": "PASS",
-            "runtime_state_restored": True,
-            "sequence_id": payload["sequence_id"],
-        },
-    )
-    body = _body(routes.vectra_get_registered_action_sequence_action({
-        "sequence_id": "RAS-EP001-INC002-PV-001",
-        "response_mode": "step_summary",
-    }))
-
-    assert body["status"] == "ok"
-    assert body["operation_type"] == "get_registered_action_sequence"
-    assert body["runtime_service_called"] == "runtime_action_sequence.get_registered_action_sequence"
-    assert body["internal_endpoint_called"] == "/vectra/laboratory/runtime/action-sequences/get"
-    assert body["result"]["runtime_state_restored"] is True
-
-
-def test_openapi_publishes_two_unambiguous_sequence_actions_at_limit():
+def test_action_sequence_does_not_consume_dedicated_public_routes():
     schema = routes._laboratory_facade_openapi_schema()
     paths = schema["paths"]
+    operation_ids = {
+        operation["operationId"]
+        for methods in paths.values()
+        for operation in methods.values()
+    }
 
-    execute = paths["/vectra/laboratory/runtime/action-sequences/execute"]["post"]
-    execute_schema = execute["requestBody"]["content"]["application/json"]["schema"]
-    read = paths["/vectra/laboratory/runtime/action-sequences/get"]["post"]
-    read_schema = read["requestBody"]["content"]["application/json"]["schema"]
-
-    assert execute["operationId"] == "executeVectraRegisteredActionSequence"
-    assert execute_schema["required"] == ["sequence_id", "program_type", "steps"]
-    assert "operation_type" not in execute_schema["properties"]
-    assert read["operationId"] == "getVectraRegisteredActionSequence"
-    assert read_schema["required"] == ["sequence_id"]
-    assert "operation_type" not in read_schema["properties"]
-    assert routes._count_openapi_operations(schema) == 30
-    assert schema["info"]["version"] == "VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001"
+    assert "/vectra/laboratory/runtime/action-sequences/execute" not in paths
+    assert "/vectra/laboratory/runtime/action-sequences/read" not in paths
+    assert "executeVectraRegisteredActionSequence" not in operation_ids
+    assert "getVectraRegisteredActionSequence" not in operation_ids
 
 
-def test_displaced_diagnostics_remain_runtime_routes_but_not_gpt_actions():
+def test_action_sequence_contract_publishes_required_payload_fields():
     schema = routes._laboratory_facade_openapi_schema()
+    memory = schema["paths"]["/vectra/laboratory/facade/memory"]["post"]
+    request_schema = memory["requestBody"]["content"]["application/json"]["schema"]
+    payload = request_schema["properties"]["payload"]["properties"]
 
-    assert "/vectra/laboratory/business-research/executions/verify" not in schema["paths"]
-    assert "/vectra/laboratory/business-decision-framework/verify" not in schema["paths"]
-    non_actions = {item["operation_id"] for item in schema["x-vectra-non-action-diagnostics"]}
-    assert {
-        "verify_business_research_execution",
-        "verify_business_decision_framework_validation",
-    } <= non_actions
+    assert payload["sequence_id"]["type"] == "string"
+    assert payload["program_type"]["type"] == "string"
+    assert payload["steps"]["type"] == "array"
+    assert set(payload["response_mode"]["enum"]) == {"compact", "step_summary", "diagnostic"}

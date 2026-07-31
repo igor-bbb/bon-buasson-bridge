@@ -8269,11 +8269,11 @@ _FACADE_ACTIONS = [
         'Use the exact requested operation_type. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
     ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
-    ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
+    ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run complete VECTRA architectural self-audit', 'Mandatory and exclusive self-audit Action. Call immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. It is read-only, does not require or activate a Business Domain, and returns separated Runtime, normative reference, code, Product Verification and unconfirmed-gap evidence.'),
     ('executeBusinessFrameworkService', 'POST', '/vectra/laboratory/framework-services', 'Execute VECTRA Business Framework Service', 'Use for Business Framework operations other than self-audit. Select an explicit operation_type from the request schema.'),
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('createVectraKnowledgeCandidate', 'POST', '/vectra/knowledge/candidates', 'Create VECTRA Knowledge Candidate', 'Dedicated Product Owner approval-gated Action for creating one Professional or Business Knowledge Candidate. This operation does not create a capitalization package and does not write confirmed knowledge.'),
-    ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
+    ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Use list_domains to read published domains. Never activate a Business Domain automatically. Call activate_domain only after an explicit user entry into a specific business or for a task unambiguously belonging to that business.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for Product Knowledge, Product Decisions, General Knowledge, Revision Model, Release History, Memory Health, Architecture Conformance, Recovery Optimization and End-to-End Professional Memory Validation operations.'),
@@ -8630,7 +8630,6 @@ def _business_framework_service_action_request_schema() -> dict:
     execution operations without guessing an unsupported facade operation.
     """
     operations = [
-        'self_audit',
         'personality',
         'verify_personality',
         'manifest',
@@ -8653,10 +8652,9 @@ def _business_framework_service_action_request_schema() -> dict:
                 'type': 'string',
                 'enum': operations,
                 'description': (
-                    'Operation to execute. MUST use self_audit for commands '
-                    'Исследуй себя, Что ты знаешь о себе, Проверь своё состояние '
-                    'or Проведи самоисследование. Attempt the Action before '
-                    'claiming that Runtime is unavailable.'
+                    'Business Framework operation to execute. Self-audit is not '
+                    'available through this facade; use the dedicated '
+                    'runVectraSelfAudit Action.'
                 ),
             },
             'current_workspace': {
@@ -8685,7 +8683,6 @@ def _business_framework_service_action_request_schema() -> dict:
         },
         'additionalProperties': True,
         'examples': [
-            {'operation_type': 'self_audit', 'current_workspace': 'laboratory', 'response_mode': 'compact'},
             {'operation_type': 'execute_end_to_end', 'period': '2026-02', 'max_steps': 7},
         ],
     }
@@ -8703,6 +8700,19 @@ def _memory_facade_operation_request_schema() -> dict:
             operations.append(operation_type)
     payload_properties = schema['properties']['payload']['properties']
     payload_properties.update({
+        'sequence_id': {
+            'type': 'string',
+            'description': 'Registered Action Sequence identifier for execute_registered_action_sequence or get_registered_action_sequence.',
+        },
+        'program_type': {
+            'type': 'string',
+            'description': 'Registered Action Sequence program type, for example product_verification.',
+        },
+        'steps': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description': 'Ordered registered Runtime operation names for sequence execution.',
+        },
         'cycle_id': {
             'type': 'string',
             'description': 'Exact active parent cycle identifier expected in Runtime.',
@@ -8829,7 +8839,7 @@ def _knowledge_candidate_action_request_schema() -> dict:
 
 
 def _business_domain_action_request_schema() -> dict:
-    """Explicit GPT Actions contract for deterministic Business Domain startup."""
+    """Explicit GPT Actions contract for user-directed Business Domain selection."""
     return {
         'type': 'object',
         'required': ['operation_type'],
@@ -8848,9 +8858,10 @@ def _business_domain_action_request_schema() -> dict:
                     'verify_domain_knowledge',
                 ],
                 'description': (
-                    'Use list_domains during session startup. If exactly one domain '
-                    'has status active, immediately call activate_domain for it without '
-                    'asking Product Owner. Ask for selection only when multiple active domains exist.'
+                    'Use list_domains to read available domains without activating one. '
+                    'Never call activate_domain automatically, including when exactly one '
+                    'active domain exists. Activate only after explicit user entry into a '
+                    'specific business or an unambiguous business task.'
                 ),
             },
             'domain': {'type': 'string', 'description': 'Business Domain identifier.'},
@@ -8861,7 +8872,6 @@ def _business_domain_action_request_schema() -> dict:
         'additionalProperties': True,
         'examples': [
             {'operation_type': 'list_domains'},
-            {'operation_type': 'activate_domain', 'domain': 'bon_buasson'},
         ],
     }
 
@@ -9462,6 +9472,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 'required': True,
                 'content': {'application/json': {'schema': request_schema}},
             }
+        elif operation_id == 'runVectraSelfAudit':
+            op['x-openai-isConsequential'] = False
         elif operation_id == 'determineVectraLaboratoryNextAction':
             op['parameters'] = [
                 {'name': 'command', 'in': 'query', 'required': False, 'schema': {'type': 'string'}, 'description': 'Product Owner command.'},
@@ -9472,8 +9484,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. The Memory facade publishes Product Owner approved transition_active_work_context and read-only get_active_work_context operations with durable readback. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with exactly 29 public operations and one-operation headroom below the internal 30-operation boundary. Use runVectraSelfAudit as the mandatory and exclusive route for self-audit and attempt it before declaring Runtime unavailable. The self-audit is read-only and independent of Business Domain activation. List Business Domains without automatic activation; activate only after explicit user entry into a specific business or an unambiguous business task.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9489,7 +9501,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
+        'x-vectra-release': 'VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11204,18 +11216,9 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
 @router.get('/vectra/laboratory/self-audit', summary='Run VECTRA Self Audit')
 def vectra_run_self_audit_action(current_workspace: str = 'laboratory', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
-    result = execute_vectra_framework_service({
-        'operation_type': 'self_audit',
-        'current_workspace': current_workspace or 'laboratory',
-        'response_mode': 'compact',
-    })
-    return json_response(_facade_response(
-        'self_audit',
-        'personality_runtime.run_self_audit',
-        '/vectra/laboratory/self-audit',
-        result,
-        next_action=(result.get('next_action') if isinstance(result, dict) else None) or 'Continue professional work in the current VECTRA workspace.',
-    ))
+    del current_workspace
+    from app.assistant_runtime.laboratory_self_audit_integrity import run_laboratory_self_audit
+    return json_response(run_laboratory_self_audit())
 
 
 # BUSINESS-FRAMEWORK-END-TO-END-RESEARCH-READINESS-001: unified Framework Services facade.
