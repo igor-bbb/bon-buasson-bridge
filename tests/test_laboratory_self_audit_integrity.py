@@ -19,7 +19,7 @@ def _runtime_fingerprints() -> dict[str, str]:
     return {
         path.as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(Path("runtime").rglob("*"))
-        if path.is_file()
+        if path.is_file() and not path.name.endswith((".tmp", ".lock"))
     }
 
 
@@ -94,6 +94,10 @@ def test_openapi_publishes_one_unambiguous_self_audit_route_and_no_auto_domain_a
     assert self_audit["x-openai-isConsequential"] is False
     assert "mandatory and exclusive" in self_audit["description"].lower()
     assert "read-only" in self_audit["description"]
+    assert len(self_audit["description"]) <= 300
+
+    for operation in operations:
+        assert len(operation.get("description", "")) <= 300
 
     framework = schema["paths"]["/vectra/laboratory/framework-services"]["post"]
     framework_schema = framework["requestBody"]["content"]["application/json"]["schema"]

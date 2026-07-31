@@ -35,9 +35,19 @@ def _runtime_fingerprints() -> Dict[str, str]:
     if not root.exists():
         return {}
     fingerprints: Dict[str, str] = {}
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+    for path in sorted(
+        item
+        for item in root.rglob("*")
+        if item.is_file() and not item.name.endswith((".tmp", ".lock"))
+    ):
         relative = path.as_posix()
-        fingerprints[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        try:
+            fingerprints[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except FileNotFoundError:
+            # Atomic Runtime writes may remove a transient file between the
+            # directory scan and the read. Such a file is not persisted audit
+            # evidence and must not make a read-only self-audit fail.
+            continue
     return fingerprints
 
 
