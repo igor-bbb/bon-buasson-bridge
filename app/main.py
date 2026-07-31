@@ -1,4 +1,6 @@
 import os
+import threading
+from datetime import datetime, timezone
 from copy import deepcopy
 
 from fastapi import FastAPI
@@ -34,8 +36,8 @@ def _vectra_action_openapi_schema() -> dict:
         "status": "GPT_ACTIONS_READY",
         "standard_url": "/openapi.json",
         "production_url": PUBLIC_RUNTIME_URL,
-        "release_fix": "VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001",
-        "previous_release_fix": "VECTRA-GPT-ACTION-AVAILABILITY-001",
+        "release_fix": "VECTRA-GPT-ACTION-AVAILABILITY-001",
+        "previous_release_fix": "OPENAPI-SERVERS-HOTFIX-0001",
     }
     return schema
 
@@ -43,13 +45,39 @@ def _vectra_action_openapi_schema() -> dict:
 app.openapi = _vectra_action_openapi_schema
 
 
-@app.on_event('startup')
-def warmup_vectra_runtime():
+_warmup_lock = threading.Lock()
+_warmup_thread = None
+_warmup_state = {
+    "status": "NOT_STARTED",
+    "started_at": None,
+    "completed_at": None,
+    "failure_reason": None,
+}
+
+
+def get_vectra_warmup_state() -> dict:
+    """Return a stable process-local view of background Runtime restoration."""
+    with _warmup_lock:
+        return deepcopy(_warmup_state)
+
+
+def _set_warmup_state(status: str, *, failure_reason: str | None = None) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _warmup_lock:
+        _warmup_state["status"] = status
+        if status == "STARTING":
+            _warmup_state["started_at"] = now
+            _warmup_state["completed_at"] = None
+        elif status in {"READY", "FAILED"}:
+            _warmup_state["completed_at"] = now
+        _warmup_state["failure_reason"] = failure_reason
+
+
+def _warmup_vectra_runtime_sync():
     from app.query.entity_dictionary import refresh_entity_dictionary
     from app.data.loader import get_csv_text  # 🔴 ДОБАВИЛИ
     from app.assistant_runtime.repository_persistence import (
         STARTUP_HOTFIX_RELEASE_ID,
-        database_persistence_enabled,
     )
 
     try:
@@ -339,13 +367,50 @@ def warmup_vectra_runtime():
             flush=True,
         )
 
+        _set_warmup_state("READY")
         print("✅ VECTRA warmed up: DATA + dictionary + Runtime Snapshot loaded", flush=True)
 
     except Exception as e:
+        _set_warmup_state("FAILED", failure_reason=f"{type(e).__name__}: {e}")
         print(
             f"❌ VECTRA startup [{STARTUP_HOTFIX_RELEASE_ID}] "
             f"status=FAIL error_type={type(e).__name__} error={e}",
             flush=True,
         )
-        if database_persistence_enabled():
-            raise
+        # The HTTP listener must stay available so Render and Runtime diagnostics
+        # can observe the failed restoration. The Runtime itself remains non-ready.
+
+
+@app.on_event('startup')
+def warmup_vectra_runtime():
+    """Open the HTTP port immediately and restore the heavy Runtime in background.
+
+    Render scans for the bound port while FastAPI startup handlers are running.
+    The complete VECTRA restoration can take several minutes, so doing it inline
+    makes an otherwise healthy deploy fail with ``Port scan timeout``. A single
+    daemon worker preserves the approved restoration order without blocking the
+    ASGI server from accepting health and diagnostic traffic.
+    """
+    global _warmup_thread
+    with _warmup_lock:
+        if _warmup_thread is not None and _warmup_thread.is_alive():
+            return
+        _warmup_state.update(
+            {
+                "status": "STARTING",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": None,
+                "failure_reason": None,
+            }
+        )
+        _warmup_thread = threading.Thread(
+            target=_warmup_vectra_runtime_sync,
+            name="vectra-runtime-warmup",
+            daemon=True,
+        )
+        _warmup_thread.start()
+    print(
+        "VECTRA startup phase=http_listener status=READY "
+        "runtime_warmup_status=STARTING",
+        flush=True,
+    )

@@ -136,10 +136,6 @@ from app.assistant_runtime.vos import (
 )
 from app.assistant_runtime.professional_pipeline import process_professional_response
 from app.assistant_runtime.professional_runtime_state import restore_professional_continuity
-from app.assistant_runtime.self_governance_runtime import (
-    get_active_work_context_lifecycle as get_vectra_active_work_context_lifecycle,
-    transition_active_work_context as transition_vectra_active_work_context,
-)
 from app.assistant_runtime.organizational_memory_continuity import (
     get_organizational_memory_continuity_status,
 )
@@ -447,7 +443,6 @@ from app.assistant_runtime.architecture_registry_runtime import (
 )
 from app.assistant_runtime.verification_runtime import (
     execute_verification_runtime_operation as execute_vectra_verification_runtime_operation,
-    record_product_verification as record_vectra_product_verification,
 )
 from app.assistant_runtime.execution_runtime import (
     execute_execution_runtime_operation as execute_vectra_execution_runtime_operation,
@@ -8699,57 +8694,9 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'transition_active_work_context', 'get_active_work_context', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
         if operation_type not in operations:
             operations.append(operation_type)
-    payload_properties = schema['properties']['payload']['properties']
-    payload_properties.update({
-        'cycle_id': {
-            'type': 'string',
-            'description': 'Exact active parent cycle identifier expected in Runtime.',
-        },
-        'completed_work_id': {
-            'type': 'string',
-            'description': 'Exact completed increment or work item identifier.',
-        },
-        'expected_current_focus': {
-            'type': 'string',
-            'description': 'Exact current focus that must still be active before the transition.',
-        },
-        'completion_evidence_id': {
-            'type': 'string',
-            'description': 'Control Point or Product Verification evidence identifier.',
-        },
-        'completion_verdict': {
-            'type': 'string',
-            'enum': ['PASS'],
-            'description': 'Only a confirmed PASS may complete the current work increment.',
-        },
-        'next_focus': {
-            'type': 'string',
-            'description': 'Product Owner confirmed next focus inside the same parent cycle.',
-        },
-        'next_recommended_step': {
-            'type': 'string',
-            'description': 'Exact next operational step; it must not invent a new architectural priority.',
-        },
-    })
-    schema['examples'].extend([
-        {
-            'operation_type': 'transition_active_work_context',
-            'product_owner_approval': True,
-            'payload': {
-                'cycle_id': 'EP-001',
-                'completed_work_id': 'VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002',
-                'expected_current_focus': 'Professional Pipeline integration',
-                'completion_evidence_id': 'VECTRA-CONTROL-POINT-2026-07-31-001',
-                'completion_verdict': 'PASS',
-                'next_focus': 'VECTRA Laboratory restoration and architectural self-research',
-                'next_recommended_step': 'Restore VECTRA Laboratory from the confirmed control point and perform full architectural self-research before selecting the next priority.',
-            },
-        },
-        {'operation_type': 'get_active_work_context', 'payload': {}},
-    ])
     return schema
 
 
@@ -9473,8 +9420,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. The Memory facade publishes Product Owner approved transition_active_work_context and read-only get_active_work_context operations with durable readback. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9490,7 +9437,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
+        'x-vectra-release': 'VECTRA-GPT-ACTION-AVAILABILITY-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -9892,6 +9839,9 @@ def laboratory_openapi_schema_alias():
 @router.get('/vectra/runtime/status', summary='Read VECTRA Runtime deployment and health status')
 def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
+    # Imported lazily to avoid a module cycle while app.main registers routes.
+    from app.main import get_vectra_warmup_state
+    warmup = get_vectra_warmup_state()
     runtime_payload = get_vectra_assistant_runtime_status()
     runtime_body = runtime_payload.get('runtime') if isinstance(runtime_payload, dict) and isinstance(runtime_payload.get('runtime'), dict) else {}
     snapshot_payload = get_vectra_runtime_snapshot(refresh=False)
@@ -9937,25 +9887,10 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
     product_verification['action_manifest'] = action_manifest_verification
     product_verification['final_status'] = 'FAIL' if combined_failures else product_verification.get('status')
     product_verification['blocking_failures'] = combined_failures
-    persistence = record_vectra_product_verification({
-        'release_id': product_verification.get('release_id'),
-        'verdict': product_verification.get('final_status') if product_verification.get('final_status') in {'PASS', 'FAIL'} else 'BLOCKED',
-        'deployment_version': deployment_version,
-        'deployment_time': deployment_time,
-        'verification_source': 'Runtime Status compact Product Verification',
-        'runtime_source': '/vectra/runtime/status',
-        'evidence': {
-            'contract_version': product_verification.get('contract_version'),
-            'domain_id': product_verification.get('domain_id'),
-            'components': product_verification.get('components'),
-            'summary': product_verification.get('summary'),
-            'openapi': openapi_verification,
-            'action_manifest': action_manifest_verification,
-            'blocking_failures': combined_failures,
-        },
-        'failure_reason': ','.join(combined_failures) if combined_failures else None,
-    })
-    product_verification['evidence_persistence'] = persistence
+    if warmup.get('status') == 'STARTING':
+        health = 'STARTING'
+    elif warmup.get('status') == 'FAILED':
+        health = 'FAILED'
     return json_response({
         'status': 'ok',
         'render_mode': 'vectra_runtime_status',
@@ -9964,6 +9899,7 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
         'deployment_time': deployment_time,
         'current_release': current_release,
         'runtime_health': health,
+        'runtime_warmup': warmup,
         'runtime_status': runtime_body,
         'release_47_product_verification': product_verification,
         'laboratory_access': {
@@ -10456,16 +10392,7 @@ def _compact_restored_continuity(value: Any) -> dict:
         'continuity_questions': state.get('continuity_questions') if isinstance(state.get('continuity_questions'), dict) else {},
         'active_engineering_cycle': {
             key: cycle.get(key)
-            for key in (
-                'cycle_id',
-                'title',
-                'status',
-                'focus_status',
-                'current_focus',
-                'next_recommended_step',
-                'last_completed_work',
-                'updated_at',
-            )
+            for key in ('cycle_id', 'title', 'status', 'current_focus', 'next_recommended_step', 'updated_at')
             if cycle.get(key) is not None
         },
         'recommended_next_action': continuity.get('recommended_next_action'),
@@ -11424,37 +11351,6 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
-        if operation_type == 'transition_active_work_context':
-            result = transition_vectra_active_work_context(
-                cycle_id=payload.get('cycle_id'),
-                completed_work_id=payload.get('completed_work_id'),
-                expected_current_focus=payload.get('expected_current_focus'),
-                completion_evidence_id=payload.get('completion_evidence_id'),
-                completion_verdict=payload.get('completion_verdict'),
-                next_focus=payload.get('next_focus'),
-                next_recommended_step=payload.get('next_recommended_step'),
-                product_owner_confirmed=approval,
-            )
-            return json_response(_facade_response(
-                operation_type,
-                'self_governance_runtime.transition_active_work_context',
-                '/vectra/laboratory/facade/memory',
-                result,
-                next_action=result.get('active_work_context', {}).get('next_recommended_step')
-                if isinstance(result, dict)
-                else 'Read the active work context.',
-            ))
-        if operation_type == 'get_active_work_context':
-            result = get_vectra_active_work_context_lifecycle()
-            return json_response(_facade_response(
-                operation_type,
-                'self_governance_runtime.get_active_work_context_lifecycle',
-                '/vectra/laboratory/facade/memory',
-                result,
-                next_action=result.get('active_work_context', {}).get('next_recommended_step')
-                if isinstance(result, dict)
-                else 'Continue from the confirmed active work context.',
-            ))
         if operation_type == 'execute_registered_action_sequence':
             result = execute_vectra_registered_action_sequence(payload)
             return json_response(_facade_response(operation_type, 'runtime_action_sequence.execute_registered_action_sequence', '/vectra/laboratory/facade/memory', result, next_action=result.get('next_action') if isinstance(result, dict) else 'Review sequence result.'))
