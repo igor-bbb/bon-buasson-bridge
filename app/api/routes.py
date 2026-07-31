@@ -443,6 +443,7 @@ from app.assistant_runtime.architecture_registry_runtime import (
 )
 from app.assistant_runtime.verification_runtime import (
     execute_verification_runtime_operation as execute_vectra_verification_runtime_operation,
+    record_product_verification as record_vectra_product_verification,
 )
 from app.assistant_runtime.execution_runtime import (
     execute_execution_runtime_operation as execute_vectra_execution_runtime_operation,
@@ -9887,6 +9888,23 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
     product_verification['action_manifest'] = action_manifest_verification
     product_verification['final_status'] = 'FAIL' if combined_failures else product_verification.get('status')
     product_verification['blocking_failures'] = combined_failures
+    evidence_persistence = record_vectra_product_verification({
+        'release_id': product_verification.get('release_id'),
+        'verdict': product_verification.get('final_status'),
+        'deployment_version': deployment_version,
+        'deployment_time': deployment_time,
+        'timestamp': product_verification.get('generated_at'),
+        'runtime_source': 'GET /vectra/runtime/status',
+        'evidence': product_verification,
+        'failure_reason': combined_failures or None,
+    })
+    product_verification['evidence_persistence'] = evidence_persistence
+    if evidence_persistence.get('status') != 'PASS':
+        product_verification['final_status'] = 'FAIL'
+        product_verification['blocking_failures'] = [
+            *combined_failures,
+            'product_verification_evidence_persistence',
+        ]
     if warmup.get('status') == 'STARTING':
         health = 'STARTING'
     elif warmup.get('status') == 'FAILED':

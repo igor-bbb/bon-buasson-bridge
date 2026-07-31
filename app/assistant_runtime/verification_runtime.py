@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import hashlib
 import os
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -16,6 +16,12 @@ from app.assistant_runtime.architecture_registry_runtime import (
     list_architecture_objects,
     verify_architecture_object,
 )
+from app.assistant_runtime.repository_persistence import (
+    configured_repository_root,
+    persistence_backend,
+    read_json_document,
+    write_json_document,
+)
 
 RELEASE_ID = "VECTRA-VERIFICATION-RUNTIME-001"
 RESULTS_PATH = Path("runtime/verification_runtime/verification_results.json")
@@ -30,29 +36,62 @@ class VerificationRepository:
         self.path = path
         self._lock = RLock()
         self._data: dict[str, Any] | None = None
+        self._last_persistence: dict[str, Any] | None = None
+
+    @staticmethod
+    def _empty() -> dict[str, Any]:
+        return {
+            "repository_id": "VECTRA-VERIFICATION-REPOSITORY-001",
+            "release_id": RELEASE_ID,
+            "schema_version": "2.0",
+            "results": [],
+            "updated_at": _now(),
+        }
 
     def load(self, *, force: bool = False) -> dict[str, Any]:
         with self._lock:
             if self._data is not None and not force:
                 return deepcopy(self._data)
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            if not self.path.exists():
-                self._data = {
-                    "repository_id": "VECTRA-VERIFICATION-REPOSITORY-001",
-                    "release_id": RELEASE_ID,
-                    "schema_version": "1.0",
-                    "results": [],
-                    "updated_at": _now(),
-                }
+            existed = self.path.exists()
+            self._data = read_json_document(
+                self.path,
+                self._empty(),
+                configured_repository_root(),
+            )
+            if not existed and not self._data.get("results"):
                 self._persist()
-            else:
-                self._data = json.loads(self.path.read_text(encoding="utf-8"))
-                self._validate(self._data)
+            self._validate(self._data)
             return deepcopy(self._data)
 
     def save_result(self, result: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             data = self._require_loaded()
+            data["results"].append(deepcopy(result))
+            data["updated_at"] = _now()
+            self._persist()
+            return deepcopy(result)
+
+    def save_product_verification(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Create one durable result per release and deployment.
+
+        Runtime status is read repeatedly by health checks and Laboratory.  The
+        deterministic key prevents those reads from creating duplicate Product
+        Verification history.  If the verdict changes inside the same deployment,
+        the canonical record is replaced and persisted again.
+        """
+        with self._lock:
+            data = self._require_loaded()
+            key = result["deduplication_key"]
+            for index, existing in enumerate(data["results"]):
+                if existing.get("deduplication_key") != key:
+                    continue
+                if existing.get("verification_status") == result.get("verification_status"):
+                    return deepcopy(existing)
+                data["results"][index] = deepcopy(result)
+                data["updated_at"] = _now()
+                self._persist()
+                return deepcopy(result)
             data["results"].append(deepcopy(result))
             data["updated_at"] = _now()
             self._persist()
@@ -79,7 +118,13 @@ class VerificationRepository:
             "results_count": len(results),
             "last_execution_id": results[-1]["execution_id"] if results else None,
             "loaded": True,
+            "source_of_truth": self.source_of_truth(),
+            "durable_across_deploys": self.source_of_truth() == "database",
         }
+
+    @staticmethod
+    def source_of_truth() -> str:
+        return "database" if persistence_backend() == "database" else "filesystem"
 
     def _require_loaded(self) -> dict[str, Any]:
         if self._data is None:
@@ -89,9 +134,11 @@ class VerificationRepository:
 
     def _persist(self) -> None:
         assert self._data is not None
-        temp = self.path.with_suffix(self.path.suffix + ".tmp")
-        temp.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(temp, self.path)
+        self._last_persistence = write_json_document(
+            self.path,
+            self._data,
+            configured_repository_root(),
+        )
 
     @staticmethod
     def _validate(data: dict[str, Any]) -> None:
@@ -115,8 +162,64 @@ def initialize_verification_runtime(*, force: bool = False) -> dict[str, Any]:
         "architecture_registry_id": registry.get("registry_id"),
         "verification_repository_id": repository["repository_id"],
         "results_count": len(repository["results"]),
+        "source_of_truth": _REPOSITORY.source_of_truth(),
+        "durable_across_deploys": _REPOSITORY.source_of_truth() == "database",
+        "failure_reason": None,
         "error": None,
     }
+
+
+def record_product_verification(payload: dict[str, Any]) -> dict[str, Any]:
+    release_id = str(payload.get("release_id") or "").strip()
+    verdict = str(payload.get("verdict") or payload.get("final_status") or "").strip().upper()
+    if not release_id:
+        return _fail("release_id_required", "release_id is required")
+    if verdict not in {"PASS", "FAIL", "BLOCKED"}:
+        return _fail("product_verification_verdict_invalid", "verdict must be PASS, FAIL or BLOCKED")
+
+    deployment_version = str(
+        payload.get("deployment_version")
+        or os.getenv("RENDER_GIT_COMMIT")
+        or os.getenv("VECTRA_DEPLOYMENT_VERSION")
+        or "unknown-deployment"
+    ).strip()
+    deduplication_key = f"{release_id}|{deployment_version}"
+    execution_id = "PV-" + hashlib.sha256(deduplication_key.encode("utf-8")).hexdigest()[:16].upper()
+    raw_evidence = deepcopy(payload.get("evidence") or {})
+    evidence = raw_evidence if isinstance(raw_evidence, list) else [
+        {"type": "product_verification_evidence", "value": raw_evidence}
+    ]
+    result = {
+        "execution_id": execution_id,
+        "execution_type": "PRODUCT_VERIFICATION",
+        "release_id": release_id,
+        "deployment_version": deployment_version,
+        "deployment_time": payload.get("deployment_time"),
+        "status": verdict,
+        "verification_status": verdict,
+        "verdict": verdict,
+        "timestamp": str(payload.get("timestamp") or _now()),
+        "runtime_source": str(payload.get("runtime_source") or "RuntimeStatus.embedded_product_verification"),
+        "verification_evidence": evidence,
+        "evidence_count": len(evidence),
+        "failure_reason": payload.get("failure_reason"),
+        "deduplication_key": deduplication_key,
+        "source_of_truth": _REPOSITORY.source_of_truth(),
+        "error": None,
+    }
+    saved = _REPOSITORY.save_product_verification(result)
+    return _pass(
+        execution_id=saved["execution_id"],
+        execution_type=saved["execution_type"],
+        release_id=saved["release_id"],
+        deployment_version=saved["deployment_version"],
+        verdict=saved["verdict"],
+        evidence_count=saved["evidence_count"],
+        source_of_truth=_REPOSITORY.source_of_truth(),
+        durable_across_deploys=_REPOSITORY.source_of_truth() == "database",
+        results_count=_REPOSITORY.state()["results_count"],
+        failure_reason=None,
+    )
 
 
 def verify_runtime_object(payload: dict[str, Any]) -> dict[str, Any]:
@@ -211,9 +314,14 @@ def get_verification_status(payload: dict[str, Any]) -> dict[str, Any]:
         execution_type=result["execution_type"],
         object_id=result.get("object_id"),
         registry_id=result.get("registry_id"),
+        release_id=result.get("release_id"),
+        deployment_version=result.get("deployment_version"),
         verification_status=result["verification_status"],
+        verdict=result.get("verdict") or result["verification_status"],
         timestamp=result["timestamp"],
         aggregation=deepcopy(result.get("aggregation")),
+        failure_reason=result.get("failure_reason"),
+        source_of_truth=_REPOSITORY.source_of_truth(),
     )
 
 
@@ -246,12 +354,17 @@ def get_verification_evidence(payload: dict[str, Any]) -> dict[str, Any]:
     return _pass(
         execution_id=execution_id,
         object_id=result.get("object_id"),
+        release_id=result.get("release_id"),
+        deployment_version=result.get("deployment_version"),
         verification_status=result.get("verification_status"),
+        verdict=result.get("verdict") or result.get("verification_status"),
         evidence_count=len(evidence),
         verification_mapping=deepcopy(result.get("verification_mapping")),
         verification_evidence=evidence,
         runtime_source=result.get("runtime_source"),
         timestamp=result.get("timestamp"),
+        failure_reason=result.get("failure_reason"),
+        source_of_truth=_REPOSITORY.source_of_truth(),
     )
 
 
@@ -333,9 +446,14 @@ def _summary(item: dict[str, Any]) -> dict[str, Any]:
         "execution_type": item.get("execution_type"),
         "object_id": item.get("object_id"),
         "registry_id": item.get("registry_id"),
+        "release_id": item.get("release_id"),
+        "deployment_version": item.get("deployment_version"),
         "verification_status": item.get("verification_status"),
+        "verdict": item.get("verdict") or item.get("verification_status"),
         "timestamp": item.get("timestamp"),
         "aggregation": deepcopy(item.get("aggregation")),
+        "evidence_count": len(item.get("verification_evidence") or []),
+        "source_of_truth": item.get("source_of_truth") or _REPOSITORY.source_of_truth(),
     }
 
 
