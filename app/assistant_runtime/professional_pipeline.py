@@ -49,6 +49,8 @@ _OPERATION_FAMILIES = {
     "read_professional_knowledge": "knowledge_capitalization",
     "read_business_knowledge": "knowledge_capitalization",
     "create_engineering_task": "engineering",
+    "transition_active_work_context": "self_governance",
+    "get_active_work_context": "self_governance",
 }
 
 _ENGINEERING_FOCUS_HINTS = {
@@ -150,8 +152,10 @@ def _compact_active_context(value: Dict[str, Any]) -> Dict[str, Any]:
             "cycle_id",
             "title",
             "status",
+            "focus_status",
             "current_focus",
             "next_recommended_step",
+            "last_completed_work",
             "updated_at",
         )
         if value.get(key) is not None

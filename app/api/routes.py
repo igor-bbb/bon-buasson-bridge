@@ -136,6 +136,10 @@ from app.assistant_runtime.vos import (
 )
 from app.assistant_runtime.professional_pipeline import process_professional_response
 from app.assistant_runtime.professional_runtime_state import restore_professional_continuity
+from app.assistant_runtime.self_governance_runtime import (
+    get_active_work_context_lifecycle as get_vectra_active_work_context_lifecycle,
+    transition_active_work_context as transition_vectra_active_work_context,
+)
 from app.assistant_runtime.organizational_memory_continuity import (
     get_organizational_memory_continuity_status,
 )
@@ -8198,10 +8202,7 @@ _FACADE_OPERATION_TO_ENDPOINT = {
     'createVectraKnowledgeCandidate': '/vectra/knowledge/candidates',
     'executeVectraBusinessDomainOperation': '/vectra/laboratory/facade/business-domain',
     'executeVectraBusinessDataOperation': '/vectra/laboratory/facade/business-data',
-    'executeVectraProductReviewOperation': '/vectra/laboratory/product-review/development-request',
-    'executeVectraProductReviewLifecycleOperation': '/vectra/laboratory/facade/product-review',
-    'executeVectraRegisteredActionSequence': '/vectra/laboratory/runtime/action-sequences/execute',
-    'getVectraRegisteredActionSequence': '/vectra/laboratory/runtime/action-sequences/get',
+    'executeVectraProductReviewOperation': '/vectra/laboratory/facade/product-review',
     'executeVectraRepositoryOperation': '/vectra/laboratory/facade/repository',
     'determineVectraLaboratoryNextAction': '/vectra/laboratory/behavior/next-action',
     'verifyVectraKnowledgeMemoryPersistence': '/vectra/laboratory/memory/verify',
@@ -8255,16 +8256,6 @@ _LABORATORY_NON_ACTION_DIAGNOSTICS = [
         'endpoint': '/vectra/laboratory/memory/verify',
         'reason': 'internal_diagnostic_available_via_knowledge_and_memory_runtime_operations',
     },
-    {
-        'operation_id': 'verify_business_research_execution',
-        'endpoint': '/vectra/laboratory/business-research/executions/verify',
-        'reason': 'internal_diagnostic_preserved_in_runtime_and_covered_by_research_execution_manifest',
-    },
-    {
-        'operation_id': 'verify_business_decision_framework_validation',
-        'endpoint': '/vectra/laboratory/business-decision-framework/verify',
-        'reason': 'internal_diagnostic_preserved_in_runtime_and_covered_by_validation_report',
-    },
 ]
 
 _FACADE_ACTIONS = [
@@ -8273,30 +8264,9 @@ _FACADE_ACTIONS = [
     (
         'executeVectraProductReviewOperation',
         'POST',
-        '/vectra/laboratory/product-review/development-request',
-        'Read one VECTRA Development Journal record',
-        'Dedicated read-only Action. Use for get_development_request. Pass record_id directly. This Action cannot inspect a workspace, select another operation, change data or create a record.',
-    ),
-    (
-        'executeVectraProductReviewLifecycleOperation',
-        'POST',
         '/vectra/laboratory/facade/product-review',
-        'Execute a VECTRA Product Review lifecycle operation',
-        'Use for Product Review lifecycle operations other than the dedicated read-only get_development_request Action.',
-    ),
-    (
-        'executeVectraRegisteredActionSequence',
-        'POST',
-        '/vectra/laboratory/runtime/action-sequences/execute',
-        'Execute one registered VECTRA Action sequence',
-        'Dedicated Product Verification Action. Executes the exact registered sequence payload without selecting an operation_type from the Memory facade.',
-    ),
-    (
-        'getVectraRegisteredActionSequence',
-        'POST',
-        '/vectra/laboratory/runtime/action-sequences/get',
-        'Read one registered VECTRA Action sequence',
-        'Dedicated read-only Product Verification Action. Reads the exact sequence_id without selecting an operation_type from the Memory facade.',
+        'Execute an explicit VECTRA Product Review operation',
+        'Use the exact requested operation_type. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
     ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
@@ -8318,8 +8288,10 @@ _FACADE_ACTIONS = [
     ('pause_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/pause', 'Pause Business Research Execution', 'Pauses the current guided research execution while preserving its professional context.'),
     ('resume_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/resume', 'Resume Business Research Execution', 'Restores a paused or held research execution from its Manifest.'),
     ('complete_business_research_execution', 'POST', '/vectra/laboratory/business-research/executions/complete', 'Complete Business Research Execution', 'Completes a guided research execution after all tasks and at least one evidence-backed Finding are present.'),
+    ('verify_business_research_execution', 'GET', '/vectra/laboratory/business-research/executions/verify', 'Verify Business Research Execution', 'Verifies Stage 2 guided research execution, persistence, Decision Lineage and read-only guarantees.'),
     ('run_business_decision_framework_validation', 'POST', '/vectra/laboratory/business-decision-framework/validate', 'Run Business Decision Framework Validation', 'Runs Stage 3 read-only validation of decision scenarios, Guided/Autonomous Decision readiness, Decision Traceability and Recommendation Quality.'),
     ('get_business_decision_framework_validation_report', 'POST', '/vectra/laboratory/business-decision-framework/report', 'Get Business Decision Framework Validation Report', 'Returns the latest or selected Stage 3 validation report.'),
+    ('verify_business_decision_framework_validation', 'GET', '/vectra/laboratory/business-decision-framework/verify', 'Verify Business Decision Framework Validation', 'Verifies Stage 3 validation capability, report contract, quality metrics and read-only guarantees.'),
     ('get_research_workspace_snapshot', 'POST', '/vectra/laboratory/business-workspace/research-snapshot', 'Get complete Business Workspace Research Snapshot', 'Accepts the canonical research_snapshot_request returned by Business Object Discovery without transformation and returns one complete read-only professional snapshot.'),
     ('discover_business_objects', 'POST', '/vectra/laboratory/business-objects/discover', 'Discover Business Framework research objects', 'Returns a scalable read-only catalogue with type filtering, pagination, search, sorting and summary-only mode.'),
 ]
@@ -8726,9 +8698,57 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'transition_active_work_context', 'get_active_work_context', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
         if operation_type not in operations:
             operations.append(operation_type)
+    payload_properties = schema['properties']['payload']['properties']
+    payload_properties.update({
+        'cycle_id': {
+            'type': 'string',
+            'description': 'Exact active parent cycle identifier expected in Runtime.',
+        },
+        'completed_work_id': {
+            'type': 'string',
+            'description': 'Exact completed increment or work item identifier.',
+        },
+        'expected_current_focus': {
+            'type': 'string',
+            'description': 'Exact current focus that must still be active before the transition.',
+        },
+        'completion_evidence_id': {
+            'type': 'string',
+            'description': 'Control Point or Product Verification evidence identifier.',
+        },
+        'completion_verdict': {
+            'type': 'string',
+            'enum': ['PASS'],
+            'description': 'Only a confirmed PASS may complete the current work increment.',
+        },
+        'next_focus': {
+            'type': 'string',
+            'description': 'Product Owner confirmed next focus inside the same parent cycle.',
+        },
+        'next_recommended_step': {
+            'type': 'string',
+            'description': 'Exact next operational step; it must not invent a new architectural priority.',
+        },
+    })
+    schema['examples'].extend([
+        {
+            'operation_type': 'transition_active_work_context',
+            'product_owner_approval': True,
+            'payload': {
+                'cycle_id': 'EP-001',
+                'completed_work_id': 'VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002',
+                'expected_current_focus': 'Professional Pipeline integration',
+                'completion_evidence_id': 'VECTRA-CONTROL-POINT-2026-07-31-001',
+                'completion_verdict': 'PASS',
+                'next_focus': 'VECTRA Laboratory restoration and architectural self-research',
+                'next_recommended_step': 'Restore VECTRA Laboratory from the confirmed control point and perform full architectural self-research before selecting the next priority.',
+            },
+        },
+        {'operation_type': 'get_active_work_context', 'payload': {}},
+    ])
     return schema
 
 
@@ -8960,62 +8980,6 @@ def _product_review_action_request_schema() -> dict:
             },
         ],
     }
-
-
-def _development_request_read_action_schema() -> dict:
-    """Unambiguous read-only GPT Action contract for one journal record."""
-    return {
-        'type': 'object',
-        'required': ['record_id'],
-        'properties': {
-            'record_id': {
-                'type': 'string',
-                'minLength': 1,
-                'description': 'Exact persistent Development Journal record id, for example DEV-0001.',
-            },
-        },
-        'additionalProperties': False,
-        'examples': [{'record_id': 'DEV-0001'}],
-    }
-
-
-def _registered_action_sequence_execute_schema() -> dict:
-    return {
-        'type': 'object',
-        'required': ['sequence_id', 'program_type', 'steps'],
-        'properties': {
-            'sequence_id': {'type': 'string', 'minLength': 1},
-            'program_type': {'type': 'string', 'minLength': 1},
-            'steps': {
-                'type': 'array',
-                'minItems': 1,
-                'items': {'type': 'string', 'minLength': 1},
-            },
-            'response_mode': {
-                'type': 'string',
-                'enum': ['compact', 'step_summary', 'diagnostic'],
-                'default': 'step_summary',
-            },
-        },
-        'additionalProperties': True,
-    }
-
-
-def _registered_action_sequence_read_schema() -> dict:
-    return {
-        'type': 'object',
-        'required': ['sequence_id'],
-        'properties': {
-            'sequence_id': {'type': 'string', 'minLength': 1},
-            'response_mode': {
-                'type': 'string',
-                'enum': ['compact', 'step_summary', 'diagnostic'],
-                'default': 'step_summary',
-            },
-        },
-        'additionalProperties': False,
-    }
-
 
 def _facade_response_schema() -> dict:
     return {
@@ -9489,13 +9453,7 @@ def _laboratory_facade_openapi_schema() -> dict:
             elif operation_id == 'executeVectraBusinessDomainOperation':
                 request_schema = _business_domain_action_request_schema()
             elif operation_id == 'executeVectraProductReviewOperation':
-                request_schema = _development_request_read_action_schema()
-            elif operation_id == 'executeVectraProductReviewLifecycleOperation':
                 request_schema = _product_review_action_request_schema()
-            elif operation_id == 'executeVectraRegisteredActionSequence':
-                request_schema = _registered_action_sequence_execute_schema()
-            elif operation_id == 'getVectraRegisteredActionSequence':
-                request_schema = _registered_action_sequence_read_schema()
             elif operation_id == 'executeVectraMemoryOperation':
                 request_schema = _memory_facade_operation_request_schema()
             else:
@@ -9514,8 +9472,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001',
-            'description': 'Official VECTRA Laboratory OpenAPI. Registered Action sequence execution and readback are published as dedicated unambiguous Actions for Product Verification. Reading one Development Journal record remains available through executeVectraProductReviewOperation. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
+        'version': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations and one-operation headroom below the internal 30-operation boundary. Use the exact requested operation_type for facade Actions. The Memory facade publishes Product Owner approved transition_active_work_context and read-only get_active_work_context operations with durable readback. Capitalized Professional Knowledge is restored through a bounded response, projected into the active professional role, applied through a registered deterministic evaluation and verified through a Knowledge Influence Trace. Organizational memory continuity is checked on every deployment. Use runVectraSelfAudit for self-audit. Attempt registered Actions before declaring them unavailable. Automatically activate the only active Business Domain.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9531,13 +9489,13 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001',
+        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
-            'safe_operation_count': 30,
+            'safe_operation_count': 29,
             'headroom': 30 - len(_FACADE_ACTIONS),
-            'status': 'PASS' if len(_FACADE_ACTIONS) <= 30 else 'HOLD',
+            'status': 'PASS' if len(_FACADE_ACTIONS) <= 29 else 'HOLD',
         },
         'x-vectra-non-action-diagnostics': _LABORATORY_NON_ACTION_DIAGNOSTICS,
         'x-vectra-internal-runtime-operations': len(_FACADE_INTERNAL_ENDPOINTS),
@@ -9850,7 +9808,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
     missing_facade = manifest.get('missing_facade_actions') if isinstance(manifest.get('missing_facade_actions'), list) else []
     unexpected_facade = manifest.get('unexpected_facade_actions') if isinstance(manifest.get('unexpected_facade_actions'), list) else []
     missing_services = manifest.get('missing_internal_services') if isinstance(manifest.get('missing_internal_services'), list) else []
-    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 30)
+    incomplete = bool(missing_facade or unexpected_facade or missing_services or manifest.get('operation_count', 999) > 29)
     return {
         'status': 'ok' if not incomplete else 'error',
         'render_mode': 'vectra_laboratory_action_completeness_verification',
@@ -9859,7 +9817,7 @@ def _verify_laboratory_facade_action_completeness() -> dict:
         'schema_url': '/vectra/laboratory/openapi.json',
         'operation_count': manifest.get('operation_count'),
         'operation_limit': 30,
-        'safe_operation_count': 30,
+        'safe_operation_count': 29,
         'operation_headroom': 30 - int(manifest.get('operation_count') or 0),
         'public_facade_actions_count': manifest.get('public_facade_actions_count'),
         'internal_runtime_operations_count': manifest.get('internal_runtime_operations_count'),
@@ -9956,9 +9914,9 @@ def vectra_runtime_status(x_vectra_laboratory_key: str | None = Header(default=N
     action_manifest = _build_laboratory_facade_action_manifest()
     manifest_missing = action_manifest.get('missing_facade_actions') if isinstance(action_manifest, dict) else None
     openapi_verification = {
-        'status': 'PASS' if public_operation_count == 30 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
+        'status': 'PASS' if public_operation_count == 29 and production_server == 'https://bon-buasson-api.onrender.com' else 'FAIL',
         'public_operation_count': public_operation_count,
-        'expected_public_operation_count': 30,
+        'expected_public_operation_count': 29,
         'operation_limit': 30,
         'operation_headroom': 30 - public_operation_count,
         'production_server': production_server,
@@ -10478,7 +10436,16 @@ def _compact_restored_continuity(value: Any) -> dict:
         'continuity_questions': state.get('continuity_questions') if isinstance(state.get('continuity_questions'), dict) else {},
         'active_engineering_cycle': {
             key: cycle.get(key)
-            for key in ('cycle_id', 'title', 'status', 'current_focus', 'next_recommended_step', 'updated_at')
+            for key in (
+                'cycle_id',
+                'title',
+                'status',
+                'focus_status',
+                'current_focus',
+                'next_recommended_step',
+                'last_completed_work',
+                'updated_at',
+            )
             if cycle.get(key) is not None
         },
         'recommended_next_action': continuity.get('recommended_next_action'),
@@ -11165,85 +11132,6 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
         return json_response(_facade_error(operation_type, str(exc), runtime_service='product_review_facade'))
 
 
-@router.post('/vectra/laboratory/product-review/development-request', summary='Read one VECTRA Development Journal record')
-def vectra_laboratory_get_development_request(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
-    """Dedicated read-only publication of get_development_request for GPT Actions."""
-    _verify_laboratory_api_key(x_vectra_laboratory_key)
-    record_id = str((request or {}).get('record_id') or '').strip()
-    try:
-        if not record_id:
-            return json_response(_facade_error(
-                'get_development_request',
-                'record_id is required.',
-                runtime_service='development_journal.get_development_bridge',
-            ))
-        result = get_development_bridge(record_id, only_new=False, limit=1)
-        return json_response(_facade_response(
-            'get_development_request',
-            'development_journal.get_development_bridge',
-            '/vectra/laboratory/product-review/development-request',
-            result,
-        ))
-    except Exception as exc:
-        logger.exception('dedicated_development_request_read_failed')
-        return json_response(_facade_error(
-            'get_development_request',
-            str(exc),
-            runtime_service='development_journal.get_development_bridge',
-        ))
-
-
-@router.post('/vectra/laboratory/runtime/action-sequences/execute', summary='Execute one registered VECTRA Action sequence')
-def vectra_execute_registered_action_sequence_action(
-    request: dict = None,
-    x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY'),
-):
-    """Dedicated publication of registered sequence execution for GPT Actions."""
-    _verify_laboratory_api_key(x_vectra_laboratory_key)
-    payload = dict(request or {})
-    try:
-        result = execute_vectra_registered_action_sequence(payload)
-        return json_response(_facade_response(
-            'execute_registered_action_sequence',
-            'runtime_action_sequence.execute_registered_action_sequence',
-            '/vectra/laboratory/runtime/action-sequences/execute',
-            result,
-            next_action=result.get('next_action') if isinstance(result, dict) else 'Read the same sequence_id.',
-        ))
-    except Exception as exc:
-        logger.exception('dedicated_registered_action_sequence_execute_failed')
-        return json_response(_facade_error(
-            'execute_registered_action_sequence',
-            str(exc),
-            runtime_service='runtime_action_sequence.execute_registered_action_sequence',
-        ))
-
-
-@router.post('/vectra/laboratory/runtime/action-sequences/get', summary='Read one registered VECTRA Action sequence')
-def vectra_get_registered_action_sequence_action(
-    request: dict = None,
-    x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY'),
-):
-    """Dedicated read-only publication of registered sequence readback."""
-    _verify_laboratory_api_key(x_vectra_laboratory_key)
-    payload = dict(request or {})
-    try:
-        result = get_vectra_registered_action_sequence(payload)
-        return json_response(_facade_response(
-            'get_registered_action_sequence',
-            'runtime_action_sequence.get_registered_action_sequence',
-            '/vectra/laboratory/runtime/action-sequences/get',
-            result,
-        ))
-    except Exception as exc:
-        logger.exception('dedicated_registered_action_sequence_read_failed')
-        return json_response(_facade_error(
-            'get_registered_action_sequence',
-            str(exc),
-            runtime_service='runtime_action_sequence.get_registered_action_sequence',
-        ))
-
-
 
 # BUSINESS-FRAMEWORK-RESEARCH-CAPABILITY-001:
 # Explicit GPT Actions for the first Laboratory Research Professional Activity.
@@ -11516,6 +11404,37 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type == 'transition_active_work_context':
+            result = transition_vectra_active_work_context(
+                cycle_id=payload.get('cycle_id'),
+                completed_work_id=payload.get('completed_work_id'),
+                expected_current_focus=payload.get('expected_current_focus'),
+                completion_evidence_id=payload.get('completion_evidence_id'),
+                completion_verdict=payload.get('completion_verdict'),
+                next_focus=payload.get('next_focus'),
+                next_recommended_step=payload.get('next_recommended_step'),
+                product_owner_confirmed=approval,
+            )
+            return json_response(_facade_response(
+                operation_type,
+                'self_governance_runtime.transition_active_work_context',
+                '/vectra/laboratory/facade/memory',
+                result,
+                next_action=result.get('active_work_context', {}).get('next_recommended_step')
+                if isinstance(result, dict)
+                else 'Read the active work context.',
+            ))
+        if operation_type == 'get_active_work_context':
+            result = get_vectra_active_work_context_lifecycle()
+            return json_response(_facade_response(
+                operation_type,
+                'self_governance_runtime.get_active_work_context_lifecycle',
+                '/vectra/laboratory/facade/memory',
+                result,
+                next_action=result.get('active_work_context', {}).get('next_recommended_step')
+                if isinstance(result, dict)
+                else 'Continue from the confirmed active work context.',
+            ))
         if operation_type == 'execute_registered_action_sequence':
             result = execute_vectra_registered_action_sequence(payload)
             return json_response(_facade_response(operation_type, 'runtime_action_sequence.execute_registered_action_sequence', '/vectra/laboratory/facade/memory', result, next_action=result.get('next_action') if isinstance(result, dict) else 'Review sequence result.'))

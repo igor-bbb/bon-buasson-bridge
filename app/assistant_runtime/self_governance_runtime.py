@@ -20,6 +20,7 @@ from app.assistant_runtime.durable_runtime_state import (
 )
 
 RELEASE_ID = "VECTRA-CORE-ONTOLOGY-001-INCREMENT-001"
+WORK_CONTEXT_LIFECYCLE_RELEASE_ID = "VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001"
 CONTRACT_VERSION = "2.2"
 STATE_FILE = Path("runtime") / "governance" / "self_governance_state.json"
 
@@ -179,6 +180,7 @@ def _seed() -> Dict[str, Any]:
             "next_recommended_step": "Complete Increment 002 Professional Pipeline verification",
             "open_branches": [],
         },
+        "work_context_history": [],
         "decisions": _canonical_decisions(),
         "observations": [],
         "evolution_backlog": [
@@ -218,7 +220,7 @@ def _merge_seed(current: Dict[str, Any]) -> Dict[str, Any]:
     state = dict(current or {})
     seed = _seed()
     for key in (
-        "governance_id", "version", "status", "active_work_context", "observations",
+        "governance_id", "version", "status", "active_work_context", "work_context_history", "observations",
         "evolution_backlog", "engineering_queue", "professional_continuity", "policy",
     ):
         state.setdefault(key, deepcopy(seed[key]))
@@ -329,6 +331,259 @@ def set_active_work_context(
         "focus_change_rejected": deepcopy(rejected),
         "readback_verified": bool(diagnostic.get("readback_verified")),
         "read_only": False,
+    }
+
+
+def transition_active_work_context(
+    *,
+    cycle_id: str,
+    completed_work_id: str,
+    expected_current_focus: str,
+    completion_evidence_id: str,
+    completion_verdict: str,
+    next_focus: str,
+    next_recommended_step: str,
+    product_owner_confirmed: bool = False,
+) -> Dict[str, Any]:
+    """Complete the current work increment and move focus inside the same cycle.
+
+    This command deliberately does not close the parent cycle and does not
+    select a new architectural priority.  It records the Product Owner approved
+    completion evidence, updates professional continuity atomically and returns
+    a verified readback of the durable Governance state.
+    """
+    values = {
+        "cycle_id": str(cycle_id or "").strip(),
+        "completed_work_id": str(completed_work_id or "").strip(),
+        "expected_current_focus": str(expected_current_focus or "").strip(),
+        "completion_evidence_id": str(completion_evidence_id or "").strip(),
+        "next_focus": str(next_focus or "").strip(),
+        "next_recommended_step": str(next_recommended_step or "").strip(),
+    }
+    missing = sorted(key for key, value in values.items() if not value)
+    if missing:
+        return {
+            "status": "HOLD",
+            "verification_status": "FAIL",
+            "readback_status": "NOT_RUN",
+            "failure_reason": "required_transition_fields_missing",
+            "missing_fields": missing,
+            "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+            "read_only": True,
+        }
+    if not product_owner_confirmed:
+        return {
+            "status": "HOLD",
+            "verification_status": "FAIL",
+            "readback_status": "NOT_RUN",
+            "failure_reason": "product_owner_confirmation_required",
+            "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+            "read_only": True,
+        }
+    if str(completion_verdict or "").strip().upper() != "PASS":
+        return {
+            "status": "HOLD",
+            "verification_status": "FAIL",
+            "readback_status": "NOT_RUN",
+            "failure_reason": "confirmed_pass_evidence_required",
+            "received_completion_verdict": str(completion_verdict or "").strip().upper() or None,
+            "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+            "read_only": True,
+        }
+    if values["next_focus"] == values["expected_current_focus"]:
+        return {
+            "status": "HOLD",
+            "verification_status": "FAIL",
+            "readback_status": "NOT_RUN",
+            "failure_reason": "next_focus_must_differ_from_completed_focus",
+            "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    transition_key = "|".join(
+        (
+            values["cycle_id"],
+            values["completed_work_id"],
+            values["completion_evidence_id"],
+        )
+    )
+    outcome: Dict[str, Any] = {}
+
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        state = _merge_seed(current)
+        active = deepcopy(state.get("active_work_context") or {})
+        history = [
+            deepcopy(item)
+            for item in state.get("work_context_history", [])
+            if isinstance(item, dict)
+        ]
+        existing = next(
+            (
+                item
+                for item in reversed(history)
+                if str(item.get("transition_key") or "") == transition_key
+            ),
+            None,
+        )
+        if existing is not None:
+            outcome.update(
+                {
+                    "mode": "idempotent_readback",
+                    "transition": deepcopy(existing),
+                }
+            )
+            return state
+
+        if str(active.get("cycle_id") or "") != values["cycle_id"]:
+            outcome.update(
+                {
+                    "mode": "rejected",
+                    "failure_reason": "active_cycle_mismatch",
+                    "actual_cycle_id": active.get("cycle_id"),
+                }
+            )
+            return state
+        if str(active.get("current_focus") or "") != values["expected_current_focus"]:
+            outcome.update(
+                {
+                    "mode": "rejected",
+                    "failure_reason": "active_focus_mismatch",
+                    "actual_current_focus": active.get("current_focus"),
+                }
+            )
+            return state
+
+        attention = _attention_summary(state)
+        if int(attention.get("open_blockers") or 0) > 0:
+            outcome.update(
+                {
+                    "mode": "rejected",
+                    "failure_reason": "open_engineering_blockers",
+                    "open_blockers": int(attention.get("open_blockers") or 0),
+                }
+            )
+            return state
+
+        transitioned_at = _now()
+        transition = {
+            "transition_id": _id("WCTX"),
+            "transition_key": transition_key,
+            "cycle_id": values["cycle_id"],
+            "completed_work_id": values["completed_work_id"],
+            "completed_focus": values["expected_current_focus"],
+            "completion_status": "COMPLETED",
+            "completion_verdict": "PASS",
+            "completion_evidence_id": values["completion_evidence_id"],
+            "product_owner_confirmed": True,
+            "next_focus": values["next_focus"],
+            "next_recommended_step": values["next_recommended_step"],
+            "new_architectural_priority_selected": False,
+            "transitioned_at": transitioned_at,
+        }
+        history.append(transition)
+        state["work_context_history"] = history[-100:]
+
+        active.update(
+            {
+                "status": str(active.get("status") or "ACTIVE"),
+                "focus_status": "ACTIVE",
+                "readiness_percent": 0,
+                "current_focus": values["next_focus"],
+                "updated_at": transitioned_at,
+                "next_recommended_step": values["next_recommended_step"],
+                "last_completed_work": {
+                    "work_id": values["completed_work_id"],
+                    "focus": values["expected_current_focus"],
+                    "status": "COMPLETED",
+                    "verification_status": "PASS",
+                    "evidence_id": values["completion_evidence_id"],
+                    "completed_at": transitioned_at,
+                },
+            }
+        )
+        state["active_work_context"] = active
+        state["professional_continuity"] = {
+            "last_cycle_id": values["cycle_id"],
+            "last_focus": values["next_focus"],
+            "resume_from": values["next_recommended_step"],
+            "last_completed_work_id": values["completed_work_id"],
+            "completion_evidence_id": values["completion_evidence_id"],
+            "last_updated_at": transitioned_at,
+        }
+        state["updated_at"] = transitioned_at
+        outcome.update({"mode": "executed", "transition": deepcopy(transition)})
+        return state
+
+    state, diagnostic = update_json_state(STATE_FILE, _seed, dict, updater)
+    _persist_root(state)
+    active_readback = deepcopy(state.get("active_work_context") or {})
+
+    if outcome.get("mode") == "rejected":
+        return {
+            "status": "HOLD",
+            "verification_status": "FAIL",
+            "readback_status": "PASS" if diagnostic.get("readback_verified") else "FAIL",
+            "failure_reason": outcome.get("failure_reason"),
+            "actual_cycle_id": outcome.get("actual_cycle_id"),
+            "actual_current_focus": outcome.get("actual_current_focus"),
+            "open_blockers": outcome.get("open_blockers"),
+            "active_work_context": active_readback,
+            "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    transition = outcome.get("transition") if isinstance(outcome.get("transition"), dict) else {}
+    readback_verified = bool(
+        diagnostic.get("readback_verified")
+        and active_readback.get("cycle_id") == values["cycle_id"]
+        and active_readback.get("current_focus") == values["next_focus"]
+        and (active_readback.get("last_completed_work") or {}).get("work_id")
+        == values["completed_work_id"]
+        and (active_readback.get("last_completed_work") or {}).get("evidence_id")
+        == values["completion_evidence_id"]
+    )
+    return {
+        "status": "PASS" if readback_verified else "HOLD",
+        "verification_status": "PASS" if readback_verified else "FAIL",
+        "readback_status": "PASS" if readback_verified else "FAIL",
+        "transition_status": "COMPLETED" if readback_verified else "READBACK_FAILED",
+        "transition_reused": outcome.get("mode") == "idempotent_readback",
+        "transition": deepcopy(transition),
+        "active_work_context": active_readback,
+        "parent_cycle_completed": str(active_readback.get("status") or "").upper() == "COMPLETED",
+        "new_architectural_priority_selected": False,
+        "failure_reason": None if readback_verified else "work_context_readback_mismatch",
+        "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+        "read_only": False,
+    }
+
+
+def get_active_work_context_lifecycle() -> Dict[str, Any]:
+    """Read the active work context and its latest confirmed transition."""
+    state_result = read_self_governance_state()
+    state = state_result.get("governance") if isinstance(state_result.get("governance"), dict) else {}
+    history = [
+        deepcopy(item)
+        for item in state.get("work_context_history", [])
+        if isinstance(item, dict)
+    ]
+    active = deepcopy(state.get("active_work_context") or {})
+    readback_verified = bool(
+        state_result.get("status") in {"PASS", "RECOVERED"}
+        and active.get("cycle_id")
+    )
+    return {
+        "status": "PASS" if readback_verified else "HOLD",
+        "verification_status": "PASS" if readback_verified else "FAIL",
+        "readback_status": "PASS" if readback_verified else "FAIL",
+        "active_work_context": active,
+        "last_transition": history[-1] if history else None,
+        "transition_count": len(history),
+        "parent_cycle_completed": str(active.get("status") or "").upper() == "COMPLETED",
+        "new_architectural_priority_selected": False,
+        "failure_reason": None if readback_verified else "active_work_context_unavailable",
+        "release": WORK_CONTEXT_LIFECYCLE_RELEASE_ID,
+        "read_only": True,
     }
 
 

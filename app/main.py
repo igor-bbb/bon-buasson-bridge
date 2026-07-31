@@ -34,8 +34,8 @@ def _vectra_action_openapi_schema() -> dict:
         "status": "GPT_ACTIONS_READY",
         "standard_url": "/openapi.json",
         "production_url": PUBLIC_RUNTIME_URL,
-        "release_fix": "VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001",
-        "previous_release_fix": "VECTRA-GPT-ACTION-AVAILABILITY-002",
+        "release_fix": "VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001",
+        "previous_release_fix": "VECTRA-GPT-ACTION-AVAILABILITY-001",
     }
     return schema
 

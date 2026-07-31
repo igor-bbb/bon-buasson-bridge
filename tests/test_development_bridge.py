@@ -1,6 +1,5 @@
 import importlib
 
-from app.api import routes
 from app.api.routes import _laboratory_facade_openapi_schema
 from app.main import app
 
@@ -106,21 +105,31 @@ def test_repeated_observation_does_not_reset_owner_decision(tmp_path, monkeypatc
     assert repeated['record']['owner_decision']['status'] == 'APPROVED'
 
 
-def test_product_review_action_publishes_dedicated_read_contract():
+def test_product_review_action_publishes_explicit_bridge_contract():
     schema = _laboratory_facade_openapi_schema()
-    action = schema['paths']['/vectra/laboratory/product-review/development-request']['post']
+    action = schema['paths']['/vectra/laboratory/facade/product-review']['post']
     request_schema = action['requestBody']['content']['application/json']['schema']
-    assert request_schema['required'] == ['record_id']
-    assert set(request_schema['properties']) == {'record_id'}
-    assert request_schema['additionalProperties'] is False
-    assert request_schema['examples'][0] == {'record_id': 'DEV-0001'}
-    assert action['operationId'] == 'executeVectraProductReviewOperation'
+    operation_schema = request_schema['properties']['operation_type']
 
-    lifecycle = schema['paths']['/vectra/laboratory/facade/product-review']['post']
-    lifecycle_schema = lifecycle['requestBody']['content']['application/json']['schema']
-    assert lifecycle['operationId'] == 'executeVectraProductReviewLifecycleOperation'
-    assert 'inspect_workspace' in lifecycle_schema['properties']['operation_type']['enum']
-    assert 'record_product_verification' in lifecycle_schema['properties']['operation_type']['enum']
+    required_operations = {
+        'inspect_workspace',
+        'create_product_observation',
+        'get_development_request',
+        'record_owner_decision',
+        'update_engineering_execution',
+        'record_product_verification',
+    }
+    assert required_operations <= set(operation_schema['enum'])
+    assert operation_schema['enum'][0] == 'get_development_request'
+    assert request_schema['examples'][0] == {
+        'operation_type': 'get_development_request',
+        'payload': {'record_id': 'DEV-0001'},
+    }
+    assert 'do not replace it with inspect_workspace' in operation_schema['description']
+
+    payload_properties = request_schema['properties']['payload']['properties']
+    assert {'record_id', 'confirmed_gap', 'decision', 'stage', 'release_id', 'commit_sha', 'verdict'} <= set(payload_properties)
+    assert payload_properties['verdict']['enum'] == ['PASS', 'FAIL']
 
 
 def test_product_review_contract_keeps_public_action_limit_and_production_server(monkeypatch):
@@ -128,44 +137,19 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
     schema = _laboratory_facade_openapi_schema()
     operation_count = sum(len(methods) for methods in schema['paths'].values())
 
-    assert operation_count == 30
+    assert operation_count == 29
     assert schema['servers'] == [{'url': 'https://bon-buasson-api.onrender.com'}]
     operation_ids = [operation['operationId'] for methods in schema['paths'].values() for operation in methods.values()]
     assert operation_ids.count('executeVectraProductReviewOperation') == 1
     assert operation_ids.index('executeVectraProductReviewOperation') == 2
-    assert operation_ids.count('executeVectraProductReviewLifecycleOperation') == 1
     assert 'getVectraCapabilities' not in operation_ids
     assert schema['x-vectra-gpt-actions-operation-limit'] == {
         'limit': 30,
-        'operation_count': 30,
-        'safe_operation_count': 30,
-        'headroom': 0,
+        'operation_count': 29,
+        'safe_operation_count': 29,
+        'headroom': 1,
         'status': 'PASS',
     }
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-GPT-ACTION-SEQUENCE-AVAILABILITY-001'
-
-
-def test_dedicated_development_request_action_is_read_only_and_deterministic(monkeypatch):
-    observed = {}
-
-    def fake_get_development_bridge(record_id, *, only_new, limit):
-        observed.update(record_id=record_id, only_new=only_new, limit=limit)
-        return {
-            'status': 'ok',
-            'record_id': record_id,
-            'record': {'id': record_id, 'status': 'Closed'},
-            'readback_status': 'PASS',
-            'failure_reason': None,
-        }
-
-    monkeypatch.setattr(routes, 'get_development_bridge', fake_get_development_bridge)
-    response = routes.vectra_laboratory_get_development_request({'record_id': 'DEV-0001'})
-    body = response.body.decode('utf-8')
-
-    assert observed == {'record_id': 'DEV-0001', 'only_new': False, 'limit': 1}
-    assert '"operation_type":"get_development_request"' in body
-    assert '"record_id":"DEV-0001"' in body
-    assert '"readback_status":"PASS"' in body
-    assert 'inspect_workspace' not in body
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001'
