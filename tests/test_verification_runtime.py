@@ -103,6 +103,93 @@ def test_list_and_search_verification_results(isolated_repository):
     assert searched["results"][0]["object_id"] == "AOMM-POLICY-001"
 
 
+def test_product_verification_is_persisted_with_release_verdict_and_evidence(isolated_repository):
+    recorded = vr.record_product_verification({
+        "release_id": "VECTRA-TEST-RELEASE-001",
+        "verdict": "PASS",
+        "deployment_version": "commit-test",
+        "verification_source": "test-suite",
+        "evidence": {"checks": {"runtime": "PASS", "repository": "PASS"}},
+    })
+    assert recorded["status"] == "PASS"
+    assert recorded["persisted"] is True
+    assert recorded["readback_status"] == "PASS"
+
+    listed = vr.list_verification_results({})
+    assert listed["results_count"] == 1
+    result = listed["results"][0]
+    assert result["release_id"] == "VECTRA-TEST-RELEASE-001"
+    assert result["verdict"] == "PASS"
+    assert result["evidence"]["checks"]["runtime"] == "PASS"
+
+    evidence = vr.get_verification_evidence({"execution_id": recorded["execution_id"]})
+    assert evidence["release_id"] == "VECTRA-TEST-RELEASE-001"
+    assert evidence["verdict"] == "PASS"
+    assert evidence["verification_evidence"]["checks"]["repository"] == "PASS"
+
+
+def test_product_verification_recording_is_idempotent(isolated_repository):
+    payload = {
+        "release_id": "VECTRA-TEST-RELEASE-002",
+        "verdict": "FAIL",
+        "deployment_version": "commit-test",
+        "verification_source": "test-suite",
+        "evidence": {"failed": ["runtime"]},
+    }
+    first = vr.record_product_verification(payload)
+    second = vr.record_product_verification(payload)
+    assert first["execution_id"] == second["execution_id"]
+    assert second["duplicate"] is True
+    assert isolated_repository.state()["results_count"] == 1
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "FAIL", "BLOCKED"])
+def test_product_verification_accepts_all_final_verdicts(isolated_repository, verdict):
+    result = vr.record_product_verification({
+        "release_id": f"VECTRA-{verdict}-001",
+        "verdict": verdict,
+        "verification_source": "verdict-contract-test",
+        "evidence": {},
+    })
+    assert result["status"] == "PASS"
+    assert result["verdict"] == verdict
+
+
+def test_product_verification_survives_a_new_deployment_via_database(tmp_path, monkeypatch):
+    from app.assistant_runtime import repository_persistence as persistence
+
+    database_path = tmp_path / "vectra.sqlite3"
+    first_root = tmp_path / "deploy-one"
+    second_root = tmp_path / "deploy-two"
+    monkeypatch.setenv("VECTRA_PERSISTENCE_BACKEND", "database")
+    monkeypatch.setenv("VECTRA_DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(first_root / "assistant_repository"))
+    monkeypatch.setenv("VECTRA_PROJECT_ROOT", str(first_root))
+    persistence.reset_persistence_runtime_cache()
+
+    first_repository = vr.VerificationRepository(first_root / "runtime/verification_runtime/verification_results.json")
+    monkeypatch.setattr(vr, "_REPOSITORY", first_repository)
+    recorded = vr.record_product_verification({
+        "release_id": "VECTRA-CROSS-DEPLOY-001",
+        "verdict": "PASS",
+        "deployment_version": "deploy-one",
+        "verification_source": "cross-deploy-test",
+        "evidence": {"durable": True},
+    })
+    assert recorded["persisted"] is True
+
+    monkeypatch.setenv("VECTRA_ASSISTANT_REPOSITORY_PATH", str(second_root / "assistant_repository"))
+    monkeypatch.setenv("VECTRA_PROJECT_ROOT", str(second_root))
+    persistence.reset_persistence_runtime_cache()
+    second_repository = vr.VerificationRepository(second_root / "runtime/verification_runtime/verification_results.json")
+    monkeypatch.setattr(vr, "_REPOSITORY", second_repository)
+
+    restored = vr.list_verification_results({})
+    assert restored["results_count"] == 1
+    assert restored["results"][0]["release_id"] == "VECTRA-CROSS-DEPLOY-001"
+    assert restored["results"][0]["evidence"] == {"durable": True}
+
+
 def test_registry_verification_aggregates_all_objects_and_compliance(isolated_repository):
     result = vr.verify_registry({"execution_id": "VER-REG-TEST"})
     assert result["status"] == "PASS"

@@ -48,6 +48,7 @@ from app.assistant_runtime.repository import (
     verify_life_model,
 )
 from app.assistant_runtime.repository_persistence import repository_write_batch
+from app.assistant_runtime.verification_runtime import record_product_verification
 from app.assistant_runtime.vos import get_vos, get_vos_status, verify_vos, restore_vos_state
 from app.assistant_runtime.business_data import get_business_data_status, verify_business_data_access
 from app.assistant_runtime.knowledge_capitalization import get_professional_knowledge_overview, get_domain_knowledge_overview
@@ -785,6 +786,24 @@ def run_snapshot_product_verification() -> Dict[str, Any]:
             "result": overall,
         },
     }
+    deployment = snapshot.get("deployment") if isinstance(snapshot.get("deployment"), dict) else {}
+    payload["evidence_persistence"] = record_product_verification({
+        "release_id": str(deployment.get("release_version") or os.getenv("VECTRA_RELEASE_VERSION") or OBSERVABILITY_VERSION),
+        "verdict": "PASS" if overall in {"PASS", "PASS_WITH_WARNINGS"} else "BLOCKED",
+        "deployment_version": deployment.get("deployment_version"),
+        "deployment_time": deployment.get("deployment_time"),
+        "verification_source": "Runtime Snapshot Product Verification",
+        "runtime_source": "/vectra/runtime/product-verification",
+        "idempotency_key": f"snapshot-product-verification|{snapshot.get('snapshot_id')}|{overall}",
+        "evidence": {
+            "snapshot_id": snapshot.get("snapshot_id"),
+            "snapshot_generated_at": snapshot.get("generated_at"),
+            "checks": checks,
+            "blocking_issues": blocking,
+            "warnings": warnings,
+        },
+        "failure_reason": "runtime_snapshot_blocking_issues" if blocking else None,
+    })
     return _with_workspace_markdown(payload, "Product Verification VECTRA по Runtime Snapshot", {"overall": overall, "snapshot_id": snapshot.get("snapshot_id"), "checks": checks, "blocking_issues": blocking})
 
 
@@ -1013,6 +1032,25 @@ def run_laboratory_verification_package(runtime_url: Optional[str] = None) -> Di
             "business_data_access": True,
         },
     }
+    deployment = snapshot.get("deployment") if isinstance(snapshot.get("deployment"), dict) else {}
+    payload["evidence_persistence"] = record_product_verification({
+        "release_id": str(deployment.get("release_version") or os.getenv("VECTRA_RELEASE_VERSION") or LABORATORY_VERIFICATION_RELEASE),
+        "verdict": verification_result,
+        "deployment_version": deployment.get("deployment_version"),
+        "deployment_time": deployment.get("deployment_time"),
+        "verification_source": "Laboratory Product Verification",
+        "runtime_source": "/vectra/laboratory/verification",
+        "idempotency_key": f"laboratory-product-verification|{snapshot.get('snapshot_id')}|{verification_result}",
+        "evidence": {
+            "snapshot_id": snapshot.get("snapshot_id"),
+            "runtime_health": payload.get("runtime_health"),
+            "readback_status": payload.get("readback_status"),
+            "acceptance_scenario": acceptance_scenario,
+            "blocking_issues": payload.get("blocking_issues"),
+            "verification_scope": payload.get("verification_scope"),
+        },
+        "failure_reason": "laboratory_product_verification_failed" if verification_result == "FAIL" else None,
+    })
     return _with_workspace_markdown(payload, "Laboratory Product Verification Evidence VECTRA", {
         "verification_result": verification_result,
         "runtime_url": payload.get("runtime_url"),
