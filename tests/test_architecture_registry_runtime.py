@@ -1,9 +1,11 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from app.assistant_runtime.architecture_object_registry import AOMM_VERSION, AOT_VERSION, OBJECT_TYPES, RELATIONSHIP_TYPES
 from app.assistant_runtime.architecture_registry_runtime import (
     ArchitectureRegistryRepository,
+    DEPLOYMENT_PROJECTION_PATH,
     REGISTRY_PATH,
     evaluate_object_compliance,
     evaluate_registry_compliance,
@@ -27,6 +29,67 @@ def test_registry_runtime_loads_permanent_repository():
     assert result["registry_id"] == "VECTRA-ARCHITECTURE-REGISTRY-001"
     assert result["objects_count"] == 24
     assert result["integrity_status"] == "PASS"
+
+
+def test_deployment_projection_repairs_stale_persistent_recovery_object(tmp_path):
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    recovery = next(
+        obj for obj in registry["objects"]
+        if obj["object_id"] == "VECTRA-SERVICE-RECOVERY-001"
+    )
+    recovery["implementation"]["paths"] = ["app/assistant_runtime/recovery.py"]
+    recovery["verification"]["tests"] = [
+        "tests/test_architecture_object_registry_pilot.py",
+        "tests/test_architecture_registry_runtime.py",
+    ]
+    recovery["evidence"] = [
+        item for item in recovery["evidence"]
+        if item.get("value") != "app/assistant_runtime/runtime_recovery.py"
+    ]
+    stale_path = tmp_path / "architecture_registry.json"
+    stale_path.write_text(json.dumps(registry, ensure_ascii=False), encoding="utf-8")
+    before = stale_path.read_text(encoding="utf-8")
+
+    repository = ArchitectureRegistryRepository(
+        stale_path,
+        deployment_projection_path=DEPLOYMENT_PROJECTION_PATH,
+    )
+    state = repository.load(force=True)
+    projected = repository.get("VECTRA-SERVICE-RECOVERY-001")
+
+    assert state.integrity_status == "PASS"
+    assert projected is not None
+    assert projected["implementation"]["paths"] == [
+        "app/assistant_runtime/recovery.py",
+        "app/assistant_runtime/runtime_recovery.py",
+    ]
+    assert "tests/test_runtime_recovery.py" in projected["verification"]["tests"]
+    assert any(
+        item.get("value") == "app/assistant_runtime/runtime_recovery.py"
+        for item in projected["evidence"]
+    )
+    assert stale_path.read_text(encoding="utf-8") == before
+
+
+def test_deployment_projection_changes_only_registered_object(tmp_path):
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    stale = deepcopy(registry)
+    recovery = next(
+        obj for obj in stale["objects"]
+        if obj["object_id"] == "VECTRA-SERVICE-RECOVERY-001"
+    )
+    recovery["implementation"]["paths"] = ["app/assistant_runtime/recovery.py"]
+    stale_path = tmp_path / "architecture_registry.json"
+    stale_path.write_text(json.dumps(stale, ensure_ascii=False), encoding="utf-8")
+
+    repository = ArchitectureRegistryRepository(stale_path)
+    repository.load(force=True)
+    loaded = {obj["object_id"]: obj for obj in repository.list_objects()}
+    original = {obj["object_id"]: obj for obj in stale["objects"]}
+
+    for object_id in original:
+        if object_id != "VECTRA-SERVICE-RECOVERY-001":
+            assert loaded[object_id] == original[object_id]
 
 
 def test_repository_uses_approved_aot_and_aomm_without_extension():

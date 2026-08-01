@@ -20,6 +20,7 @@ from app.assistant_runtime.architecture_object_registry import (
 
 RELEASE_ID = "VECTRA-ARCHITECTURE-REGISTRY-001"
 REGISTRY_PATH = Path("runtime/architecture_registry/architecture_registry.json")
+DEPLOYMENT_PROJECTION_PATH = Path(__file__).with_name("architecture_registry_deployment_projection.json")
 
 
 class ArchitectureRegistryError(RuntimeError):
@@ -42,8 +43,13 @@ class ArchitectureRegistryRepository:
     repository is only an executable projection of those registered decisions.
     """
 
-    def __init__(self, path: Path = REGISTRY_PATH) -> None:
+    def __init__(
+        self,
+        path: Path = REGISTRY_PATH,
+        deployment_projection_path: Path = DEPLOYMENT_PROJECTION_PATH,
+    ) -> None:
         self.path = path
+        self.deployment_projection_path = deployment_projection_path
         self._registry: dict[str, Any] | None = None
         self._by_id: dict[str, dict[str, Any]] = {}
         self._incoming: dict[str, list[dict[str, str]]] = {}
@@ -56,6 +62,7 @@ class ArchitectureRegistryRepository:
             if not self.path.exists():
                 raise ArchitectureRegistryError(f"architecture_registry_not_found:{self.path}")
             raw = json.loads(self.path.read_text(encoding="utf-8"))
+            raw = apply_deployment_projection(raw, self.deployment_projection_path)
             validation = validate_registry(raw)
             if validation["status"] != "PASS":
                 raise ArchitectureRegistryError(
@@ -111,6 +118,46 @@ class ArchitectureRegistryRepository:
 
 
 _REPOSITORY = ArchitectureRegistryRepository()
+
+
+def apply_deployment_projection(
+    registry: dict[str, Any],
+    projection_path: Path = DEPLOYMENT_PROJECTION_PATH,
+) -> dict[str, Any]:
+    """Overlay release-managed objects without mutating the persistent Registry.
+
+    The Runtime Registry can live on durable storage and therefore survive a code
+    deployment. Release-managed object corrections are shipped beside the code
+    and applied to the in-memory executable projection on every forced load.
+    Unlisted Registry objects remain byte-for-byte equivalent in the loaded data.
+    """
+    if not projection_path.exists():
+        raise ArchitectureRegistryError(
+            f"architecture_registry_deployment_projection_not_found:{projection_path}"
+        )
+    projection = json.loads(projection_path.read_text(encoding="utf-8"))
+    if projection.get("target_registry_id") != registry.get("registry_id"):
+        raise ArchitectureRegistryError("architecture_registry_deployment_projection_target_invalid")
+    projected_objects = projection.get("objects")
+    if not isinstance(projected_objects, list) or not projected_objects:
+        raise ArchitectureRegistryError("architecture_registry_deployment_projection_objects_required")
+
+    result = deepcopy(registry)
+    positions = {
+        obj.get("object_id"): index
+        for index, obj in enumerate(result.get("objects") or [])
+        if isinstance(obj, dict)
+    }
+    for projected_object in projected_objects:
+        if not isinstance(projected_object, dict):
+            raise ArchitectureRegistryError("architecture_registry_deployment_projection_object_invalid")
+        object_id = projected_object.get("object_id")
+        if object_id not in positions:
+            raise ArchitectureRegistryError(
+                f"architecture_registry_deployment_projection_unknown_object:{object_id}"
+            )
+        result["objects"][positions[object_id]] = deepcopy(projected_object)
+    return result
 
 
 def initialize_architecture_registry_runtime(*, force: bool = False) -> dict[str, Any]:
