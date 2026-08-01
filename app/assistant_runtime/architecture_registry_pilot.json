@@ -1031,12 +1031,14 @@
       "implementation": {
         "runtime_mapping": "Professional Runtime Recovery",
         "paths": [
-          "app/assistant_runtime/recovery.py"
+          "app/assistant_runtime/recovery.py",
+          "app/assistant_runtime/runtime_recovery.py"
         ]
       },
       "verification": {
         "tests": [
-          "tests/test_architecture_object_registry_pilot.py"
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_runtime_recovery.py"
         ],
         "status": "AUTOMATED"
       },
@@ -1045,6 +1047,10 @@
         {
           "type": "source_path",
           "value": "app/assistant_runtime/recovery.py"
+        },
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/runtime_recovery.py"
         },
         {
           "type": "normative_source",

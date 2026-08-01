@@ -127,12 +127,15 @@ def initialize_runtime_capability_registry(*, force: bool = False) -> dict[str, 
     if discovery.get("status") != "PASS":
         return discovery
     _REPOSITORY.replace(discovery["capabilities"])
+    recovery_loaded = any(item.get("publisher") == "Runtime Recovery" for item in discovery["capabilities"])
     return _pass(
         runtime_component="Runtime Capability Registry",
         release_id=RELEASE_ID,
         loaded=True,
         load_order=LOAD_ORDER,
         registry_status="READY",
+        connection_status="CONNECTED" if recovery_loaded else "DISCONNECTED",
+        runtime_recovery_loaded=recovery_loaded,
         publishers_count=len(_PUBLISHERS),
         capabilities_count=len(discovery["capabilities"]),
         manual_registration_supported=False,

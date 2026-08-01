@@ -1,20 +1,34 @@
 {
-  "registry_id": "VECTRA-ARCHITECTURE-REGISTRY-001",
-  "release_id": "VECTRA-ARCHITECTURE-REGISTRY-001",
-  "aot_version": "1.0",
   "aomm_version": "1.0",
+  "aot_version": "1.0",
   "objects": [
     {
-      "object_id": "AOMM-POLICY-001",
-      "object_type": "Policy",
-      "title": "Architecture Object Meta Model v1.0",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of Architecture Object Meta Model v1.0.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/architecture_object_registry.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA Architecture Compliance Standard / 1. Назначение"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/architecture_object_registry.py"
+        ],
+        "runtime_mapping": "Architecture Object Meta Model v1.0"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA Architecture Compliance Standard",
         "section": "1. Назначение"
       },
+      "object_id": "AOMM-POLICY-001",
+      "object_type": "Policy",
       "owner": "Architecture Laboratory",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "governed_by",
@@ -27,20 +41,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Architecture Object Meta Model v1.0",
-        "paths": [
-          "app/assistant_runtime/architecture_object_registry.py"
-        ]
-      },
+      "title": "Architecture Object Meta Model v1.0",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Architecture Object Taxonomy v1.0.",
       "evidence": [
         {
           "type": "source_path",
@@ -48,22 +61,23 @@
         },
         {
           "type": "normative_source",
-          "value": "VECTRA Architecture Compliance Standard / 1. Назначение"
+          "value": "VECTRA MASTER ARCHITECTURE / Глава 3. Universal Organization Model"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "AOT-REGISTRY-001",
-      "object_type": "Registry",
-      "title": "Architecture Object Taxonomy v1.0",
-      "description": "Pilot representation of Architecture Object Taxonomy v1.0.",
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/architecture_object_registry.py"
+        ],
+        "runtime_mapping": "Architecture Object Taxonomy v1.0"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
         "section": "Глава 3. Universal Organization Model"
       },
+      "object_id": "AOT-REGISTRY-001",
+      "object_type": "Registry",
       "owner": "Architecture Laboratory",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "maps_to",
@@ -76,64 +90,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Architecture Object Taxonomy v1.0",
-        "paths": [
-          "app/assistant_runtime/architecture_object_registry.py"
-        ]
-      },
+      "title": "Architecture Object Taxonomy v1.0",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/architecture_object_registry.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA MASTER ARCHITECTURE / Глава 3. Universal Organization Model"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-CORE-COMPONENT-001",
-      "object_type": "Component",
-      "title": "Professional Core",
-      "description": "Pilot representation of Professional Core.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "Глава 6. Professional Core"
-      },
-      "owner": "Platform Architecture",
-      "lifecycle_state": "ACTIVE",
-      "relationships": [],
-      "requirements": [
-        {
-          "requirement_id": "AOMM-TRACEABILITY",
-          "status": "CONFIRMED"
-        }
-      ],
-      "implementation": {
-        "runtime_mapping": "Professional Core",
-        "paths": [
-          "app/assistant_runtime/professional_orchestration.py"
-        ]
-      },
-      "verification": {
-        "tests": [
-          "tests/test_architecture_object_registry_pilot.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Core.",
       "evidence": [
         {
           "type": "source_path",
@@ -144,19 +113,64 @@
           "value": "VECTRA MASTER ARCHITECTURE / Глава 6. Professional Core"
         }
       ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/professional_orchestration.py"
+        ],
+        "runtime_mapping": "Professional Core"
+      },
+      "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "Глава 6. Professional Core"
+      },
+      "object_id": "VECTRA-CORE-COMPONENT-001",
+      "object_type": "Component",
+      "owner": "Platform Architecture",
+      "relationships": [],
+      "requirements": [
+        {
+          "requirement_id": "AOMM-TRACEABILITY",
+          "status": "CONFIRMED"
+        }
+      ],
+      "title": "Professional Core",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_architecture_registry_runtime.py"
+        ]
+      },
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-BUSINESS-RUNTIME-001",
-      "object_type": "Runtime",
-      "title": "Business Runtime",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of Business Runtime.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/business_understanding_runtime.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA MASTER ARCHITECTURE / Глава 10. Business Runtime"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/business_understanding_runtime.py"
+        ],
+        "runtime_mapping": "Business Runtime"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
         "section": "Глава 10. Business Runtime"
       },
+      "object_id": "VECTRA-BUSINESS-RUNTIME-001",
+      "object_type": "Runtime",
       "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "depends_on",
@@ -173,43 +187,43 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Business Runtime",
-        "paths": [
-          "app/assistant_runtime/business_understanding_runtime.py"
-        ]
-      },
+      "title": "Business Runtime",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Runtime.",
       "evidence": [
         {
           "type": "source_path",
-          "value": "app/assistant_runtime/business_understanding_runtime.py"
+          "value": "app/assistant_runtime/professional_runtime_state.py"
         },
         {
           "type": "normative_source",
           "value": "VECTRA MASTER ARCHITECTURE / Глава 10. Business Runtime"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-PROFESSIONAL-RUNTIME-001",
-      "object_type": "Runtime",
-      "title": "Professional Runtime",
-      "description": "Pilot representation of Professional Runtime.",
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/professional_runtime_state.py"
+        ],
+        "runtime_mapping": "Professional Runtime"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
         "section": "Глава 10. Business Runtime"
       },
+      "object_id": "VECTRA-PROFESSIONAL-RUNTIME-001",
+      "object_type": "Runtime",
       "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "implements",
@@ -226,43 +240,43 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Professional Runtime",
-        "paths": [
-          "app/assistant_runtime/professional_runtime_state.py"
-        ]
-      },
+      "title": "Professional Runtime",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/professional_runtime_state.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA MASTER ARCHITECTURE / Глава 10. Business Runtime"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-ROLE-LABORATORY-001",
-      "object_type": "Role",
-      "title": "VECTRA Laboratory",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of VECTRA Laboratory.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/laboratory_behavior.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA MASTER ARCHITECTURE / Глава 7. Professional Role Models"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/laboratory_behavior.py"
+        ],
+        "runtime_mapping": "VECTRA Laboratory"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
         "section": "Глава 7. Professional Role Models"
       },
+      "object_id": "VECTRA-ROLE-LABORATORY-001",
+      "object_type": "Role",
       "owner": "Professional Core",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "specializes",
@@ -279,64 +293,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "VECTRA Laboratory",
-        "paths": [
-          "app/assistant_runtime/laboratory_behavior.py"
-        ]
-      },
+      "title": "VECTRA Laboratory",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/laboratory_behavior.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA MASTER ARCHITECTURE / Глава 7. Professional Role Models"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-ROLE-MODEL-001",
-      "object_type": "Role",
-      "title": "Professional Role Model",
-      "description": "Pilot representation of Professional Role Model.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "Глава 7. Professional Role Models"
-      },
-      "owner": "Professional Core",
-      "lifecycle_state": "ACTIVE",
-      "relationships": [],
-      "requirements": [
-        {
-          "requirement_id": "AOMM-TRACEABILITY",
-          "status": "CONFIRMED"
-        }
-      ],
-      "implementation": {
-        "runtime_mapping": "Professional Role Model",
-        "paths": [
-          "app/assistant_runtime/self_model_runtime.py"
-        ]
-      },
-      "verification": {
-        "tests": [
-          "tests/test_architecture_object_registry_pilot.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Role Model.",
       "evidence": [
         {
           "type": "source_path",
@@ -347,19 +316,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / Глава 7. Professional Role Models"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-KNOWLEDGE-001",
-      "object_type": "Knowledge",
-      "title": "Professional Knowledge",
-      "description": "Pilot representation of Professional Knowledge.",
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/self_model_runtime.py"
+        ],
+        "runtime_mapping": "Professional Role Model"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "Глава 11. Professional Knowledge"
+        "section": "Глава 7. Professional Role Models"
       },
+      "object_id": "VECTRA-ROLE-MODEL-001",
+      "object_type": "Role",
       "owner": "Professional Core",
-      "lifecycle_state": "ACTIVE",
       "relationships": [],
       "requirements": [
         {
@@ -367,20 +337,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Professional Knowledge",
-        "paths": [
-          "app/assistant_runtime/knowledge_capitalization.py"
-        ]
-      },
+      "title": "Professional Role Model",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Knowledge.",
       "evidence": [
         {
           "type": "source_path",
@@ -391,19 +360,64 @@
           "value": "VECTRA MASTER ARCHITECTURE / Глава 11. Professional Knowledge"
         }
       ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/knowledge_capitalization.py"
+        ],
+        "runtime_mapping": "Professional Knowledge"
+      },
+      "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "Глава 11. Professional Knowledge"
+      },
+      "object_id": "VECTRA-KNOWLEDGE-001",
+      "object_type": "Knowledge",
+      "owner": "Professional Core",
+      "relationships": [],
+      "requirements": [
+        {
+          "requirement_id": "AOMM-TRACEABILITY",
+          "status": "CONFIRMED"
+        }
+      ],
+      "title": "Professional Knowledge",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_architecture_registry_runtime.py"
+        ]
+      },
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-CAPABILITY-CAPITALIZATION-001",
-      "object_type": "Capability",
-      "title": "Knowledge Capitalization",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of Knowledge Capitalization.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/knowledge_capitalization.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA MASTER ARCHITECTURE / 4.2. Цикл организационной эволюции"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/knowledge_capitalization.py"
+        ],
+        "runtime_mapping": "Knowledge Capitalization"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
         "section": "4.2. Цикл организационной эволюции"
       },
+      "object_id": "VECTRA-CAPABILITY-CAPITALIZATION-001",
+      "object_type": "Capability",
       "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "capitalizes",
@@ -420,64 +434,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Knowledge Capitalization",
-        "paths": [
-          "app/assistant_runtime/knowledge_capitalization.py"
-        ]
-      },
+      "title": "Knowledge Capitalization",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_runtime_action_sequence.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/knowledge_capitalization.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA MASTER ARCHITECTURE / 4.2. Цикл организационной эволюции"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-CAPABILITY-RESEARCH-001",
-      "object_type": "Capability",
-      "title": "Professional Research",
-      "description": "Pilot representation of Professional Research.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "4.2. Цикл организационной эволюции"
-      },
-      "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
-      "relationships": [],
-      "requirements": [
-        {
-          "requirement_id": "AOMM-TRACEABILITY",
-          "status": "CONFIRMED"
-        }
-      ],
-      "implementation": {
-        "runtime_mapping": "Professional Research",
-        "paths": [
-          "app/assistant_runtime/research_engine.py"
-        ]
-      },
-      "verification": {
-        "tests": [
-          "tests/test_architecture_object_registry_pilot.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Research.",
       "evidence": [
         {
           "type": "source_path",
@@ -488,19 +457,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / 4.2. Цикл организационной эволюции"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-REGISTRY-MEMORY-001",
-      "object_type": "Registry",
-      "title": "Memory Repository Registry",
-      "description": "Pilot representation of Memory Repository Registry.",
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/research_engine.py"
+        ],
+        "runtime_mapping": "Professional Research"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "10.3. Три уровня организационной памяти"
+        "section": "4.2. Цикл организационной эволюции"
       },
+      "object_id": "VECTRA-CAPABILITY-RESEARCH-001",
+      "object_type": "Capability",
       "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
       "relationships": [],
       "requirements": [
         {
@@ -508,20 +478,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Memory Repository Registry",
-        "paths": [
-          "app/assistant_runtime/memory_repository.py"
+      "title": "Professional Research",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_architecture_registry_runtime.py"
         ]
       },
-      "verification": {
-        "tests": [
-          "tests/test_memory_public_routing.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Memory Repository Registry.",
       "evidence": [
         {
           "type": "source_path",
@@ -532,19 +501,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / 10.3. Три уровня организационной памяти"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-REGISTRY-CAPABILITY-001",
-      "object_type": "Registry",
-      "title": "Capability Verification Registry",
-      "description": "Pilot representation of Capability Verification Registry.",
-      "normative_source": {
-        "document": "VECTRA Architecture Compliance Standard",
-        "section": "4. Архитектурные проверки"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/memory_repository.py"
+        ],
+        "runtime_mapping": "Memory Repository Registry"
       },
-      "owner": "Professional Runtime",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "10.3. Три уровня организационной памяти"
+      },
+      "object_id": "VECTRA-REGISTRY-MEMORY-001",
+      "object_type": "Registry",
+      "owner": "Professional Runtime",
       "relationships": [],
       "requirements": [
         {
@@ -552,20 +522,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Capability Verification Registry",
-        "paths": [
-          "app/assistant_runtime/capability_verification_registry.py"
+      "title": "Memory Repository Registry",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_memory_public_routing.py",
+          "tests/test_architecture_registry_runtime.py"
         ]
       },
-      "verification": {
-        "tests": [
-          "tests/test_architecture_object_registry_pilot.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Capability Verification Registry.",
       "evidence": [
         {
           "type": "source_path",
@@ -576,19 +545,20 @@
           "value": "VECTRA Architecture Compliance Standard / 4. Архитектурные проверки"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-CONTRACT-WORKSPACE-001",
-      "object_type": "Contract",
-      "title": "Workspace Research Contract",
-      "description": "Pilot representation of Workspace Research Contract.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "4.2. Цикл организационной эволюции"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/capability_verification_registry.py"
+        ],
+        "runtime_mapping": "Capability Verification Registry"
       },
-      "owner": "Professional Runtime",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA Architecture Compliance Standard",
+        "section": "4. Архитектурные проверки"
+      },
+      "object_id": "VECTRA-REGISTRY-CAPABILITY-001",
+      "object_type": "Registry",
+      "owner": "Professional Runtime",
       "relationships": [],
       "requirements": [
         {
@@ -596,20 +566,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Workspace Research Contract",
-        "paths": [
-          "app/assistant_runtime/workspace_research_contract.py"
-        ]
-      },
+      "title": "Capability Verification Registry",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Workspace Research Contract.",
       "evidence": [
         {
           "type": "source_path",
@@ -620,19 +589,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / 4.2. Цикл организационной эволюции"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-INTERFACE-MEMORY-001",
-      "object_type": "Interface",
-      "title": "Memory Facade",
-      "description": "Pilot representation of Memory Facade.",
-      "normative_source": {
-        "document": "VECTRA Architectural Constitution",
-        "section": "Статья 12. Управляемость"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/workspace_research_contract.py"
+        ],
+        "runtime_mapping": "Workspace Research Contract"
       },
-      "owner": "Platform API",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "4.2. Цикл организационной эволюции"
+      },
+      "object_id": "VECTRA-CONTRACT-WORKSPACE-001",
+      "object_type": "Contract",
+      "owner": "Professional Runtime",
       "relationships": [],
       "requirements": [
         {
@@ -640,20 +610,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Memory Facade",
-        "paths": [
-          "app/api/routes.py"
+      "title": "Workspace Research Contract",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_architecture_registry_runtime.py"
         ]
       },
-      "verification": {
-        "tests": [
-          "tests/test_memory_public_routing.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Memory Facade.",
       "evidence": [
         {
           "type": "source_path",
@@ -664,19 +633,64 @@
           "value": "VECTRA Architectural Constitution / Статья 12. Управляемость"
         }
       ],
+      "implementation": {
+        "paths": [
+          "app/api/routes.py"
+        ],
+        "runtime_mapping": "Memory Facade"
+      },
+      "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA Architectural Constitution",
+        "section": "Статья 12. Управляемость"
+      },
+      "object_id": "VECTRA-INTERFACE-MEMORY-001",
+      "object_type": "Interface",
+      "owner": "Platform API",
+      "relationships": [],
+      "requirements": [
+        {
+          "requirement_id": "AOMM-TRACEABILITY",
+          "status": "CONFIRMED"
+        }
+      ],
+      "title": "Memory Facade",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_memory_public_routing.py",
+          "tests/test_architecture_registry_runtime.py"
+        ]
+      },
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-ACTION-MEMORY-001",
-      "object_type": "Action",
-      "title": "executeVectraMemoryOperation",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of executeVectraMemoryOperation.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/api/routes.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA Architectural Constitution / Статья 11. Архитектурные контракты"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/api/routes.py"
+        ],
+        "runtime_mapping": "executeVectraMemoryOperation"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA Architectural Constitution",
         "section": "Статья 11. Архитектурные контракты"
       },
+      "object_id": "VECTRA-ACTION-MEMORY-001",
+      "object_type": "Action",
       "owner": "Platform API",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "implements",
@@ -693,64 +707,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "executeVectraMemoryOperation",
-        "paths": [
-          "app/api/routes.py"
-        ]
-      },
+      "title": "executeVectraMemoryOperation",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_memory_public_routing.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/api/routes.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA Architectural Constitution / Статья 11. Архитектурные контракты"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-SERVICE-SEQUENCE-001",
-      "object_type": "Service",
-      "title": "Runtime Action Sequence Service",
-      "description": "Pilot representation of Runtime Action Sequence Service.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "10.6. Профессиональные жизненные циклы"
-      },
-      "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
-      "relationships": [],
-      "requirements": [
-        {
-          "requirement_id": "AOMM-TRACEABILITY",
-          "status": "CONFIRMED"
-        }
-      ],
-      "implementation": {
-        "runtime_mapping": "Runtime Action Sequence Service",
-        "paths": [
-          "app/assistant_runtime/runtime_action_sequence.py"
-        ]
-      },
-      "verification": {
-        "tests": [
-          "tests/test_runtime_action_sequence.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Runtime Action Sequence Service.",
       "evidence": [
         {
           "type": "source_path",
@@ -761,19 +730,64 @@
           "value": "VECTRA MASTER ARCHITECTURE / 10.6. Профессиональные жизненные циклы"
         }
       ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/runtime_action_sequence.py"
+        ],
+        "runtime_mapping": "Runtime Action Sequence Service"
+      },
+      "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "10.6. Профессиональные жизненные циклы"
+      },
+      "object_id": "VECTRA-SERVICE-SEQUENCE-001",
+      "object_type": "Service",
+      "owner": "Professional Runtime",
+      "relationships": [],
+      "requirements": [
+        {
+          "requirement_id": "AOMM-TRACEABILITY",
+          "status": "CONFIRMED"
+        }
+      ],
+      "title": "Runtime Action Sequence Service",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_runtime_action_sequence.py",
+          "tests/test_architecture_registry_runtime.py"
+        ]
+      },
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-VERIFICATION-PRODUCT-001",
-      "object_type": "Verification",
-      "title": "Product Verification",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of Product Verification.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/product_verification_diagnostics.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA Architecture Compliance Standard / 4. Архитектурные проверки"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/product_verification_diagnostics.py"
+        ],
+        "runtime_mapping": "Product Verification"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA Architecture Compliance Standard",
         "section": "4. Архитектурные проверки"
       },
+      "object_id": "VECTRA-VERIFICATION-PRODUCT-001",
+      "object_type": "Verification",
       "owner": "Architecture Laboratory",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "verifies",
@@ -786,64 +800,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Product Verification",
-        "paths": [
-          "app/assistant_runtime/product_verification_diagnostics.py"
-        ]
-      },
+      "title": "Product Verification",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/product_verification_diagnostics.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA Architecture Compliance Standard / 4. Архитектурные проверки"
-        }
-      ],
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-REQUIREMENT-TRACEABILITY-001",
-      "object_type": "Requirement",
-      "title": "End-to-End Traceability",
-      "description": "Pilot representation of End-to-End Traceability.",
-      "normative_source": {
-        "document": "VECTRA Architectural Constitution",
-        "section": "Статья 7. Прослеживаемость"
-      },
-      "owner": "Architecture Governance",
-      "lifecycle_state": "ACTIVE",
-      "relationships": [],
-      "requirements": [
-        {
-          "requirement_id": "AOMM-TRACEABILITY",
-          "status": "CONFIRMED"
-        }
-      ],
-      "implementation": {
-        "runtime_mapping": "End-to-End Traceability",
-        "paths": [
-          "app/assistant_runtime/architecture_object_registry.py"
-        ]
-      },
-      "verification": {
-        "tests": [
-          "tests/test_architecture_object_registry_pilot.py",
-          "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
-      },
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of End-to-End Traceability.",
       "evidence": [
         {
           "type": "source_path",
@@ -854,19 +823,20 @@
           "value": "VECTRA Architectural Constitution / Статья 7. Прослеживаемость"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-INVARIANT-ARCHITECTURE-001",
-      "object_type": "Invariant",
-      "title": "Architecture Priority",
-      "description": "Pilot representation of Architecture Priority.",
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/architecture_object_registry.py"
+        ],
+        "runtime_mapping": "End-to-End Traceability"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA Architectural Constitution",
-        "section": "Статья 14. Приоритет архитектуры"
+        "section": "Статья 7. Прослеживаемость"
       },
+      "object_id": "VECTRA-REQUIREMENT-TRACEABILITY-001",
+      "object_type": "Requirement",
       "owner": "Architecture Governance",
-      "lifecycle_state": "ACTIVE",
       "relationships": [],
       "requirements": [
         {
@@ -874,20 +844,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Architecture Priority",
-        "paths": [
-          "app/assistant_runtime/self_governance_runtime.py"
-        ]
-      },
+      "title": "End-to-End Traceability",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Architecture Priority.",
       "evidence": [
         {
           "type": "source_path",
@@ -898,19 +867,20 @@
           "value": "VECTRA Architectural Constitution / Статья 14. Приоритет архитектуры"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-POLICY-KNOWLEDGE-001",
-      "object_type": "Policy",
-      "title": "Confirmed Knowledge Only",
-      "description": "Pilot representation of Confirmed Knowledge Only.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "2.7. Четвёртый закон VECTRA"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/self_governance_runtime.py"
+        ],
+        "runtime_mapping": "Architecture Priority"
       },
-      "owner": "Architecture Governance",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA Architectural Constitution",
+        "section": "Статья 14. Приоритет архитектуры"
+      },
+      "object_id": "VECTRA-INVARIANT-ARCHITECTURE-001",
+      "object_type": "Invariant",
+      "owner": "Architecture Governance",
       "relationships": [],
       "requirements": [
         {
@@ -918,20 +888,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Confirmed Knowledge Only",
-        "paths": [
-          "app/assistant_runtime/knowledge_capitalization.py"
-        ]
-      },
+      "title": "Architecture Priority",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Confirmed Knowledge Only.",
       "evidence": [
         {
           "type": "source_path",
@@ -942,19 +911,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / 2.7. Четвёртый закон VECTRA"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-DECISION-EVOLUTION-001",
-      "object_type": "Decision",
-      "title": "Evolution Instead of Changes",
-      "description": "Pilot representation of Evolution Instead of Changes.",
-      "normative_source": {
-        "document": "VECTRA Architectural Constitution",
-        "section": "Статья 10. Эволюция вместо изменений"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/knowledge_capitalization.py"
+        ],
+        "runtime_mapping": "Confirmed Knowledge Only"
       },
-      "owner": "Architecture Governance",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "2.7. Четвёртый закон VECTRA"
+      },
+      "object_id": "VECTRA-POLICY-KNOWLEDGE-001",
+      "object_type": "Policy",
+      "owner": "Architecture Governance",
       "relationships": [],
       "requirements": [
         {
@@ -962,20 +932,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Evolution Instead of Changes",
-        "paths": [
-          "app/assistant_runtime/release_history_runtime.py"
-        ]
-      },
+      "title": "Confirmed Knowledge Only",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Evolution Instead of Changes.",
       "evidence": [
         {
           "type": "source_path",
@@ -986,19 +955,20 @@
           "value": "VECTRA Architectural Constitution / Статья 10. Эволюция вместо изменений"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-DOMAIN-BONBOASON-001",
-      "object_type": "Business Domain",
-      "title": "Бон Буассон",
-      "description": "Pilot representation of Бон Буассон.",
-      "normative_source": {
-        "document": "VECTRA MASTER ARCHITECTURE",
-        "section": "5.4. Предметная область внутри Genome"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/release_history_runtime.py"
+        ],
+        "runtime_mapping": "Evolution Instead of Changes"
       },
-      "owner": "Business Runtime",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA Architectural Constitution",
+        "section": "Статья 10. Эволюция вместо изменений"
+      },
+      "object_id": "VECTRA-DECISION-EVOLUTION-001",
+      "object_type": "Decision",
+      "owner": "Architecture Governance",
       "relationships": [],
       "requirements": [
         {
@@ -1006,20 +976,19 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Бон Буассон",
-        "paths": [
-          "app/assistant_runtime/canonical_business_model.py"
-        ]
-      },
+      "title": "Evolution Instead of Changes",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Бон Буассон.",
       "evidence": [
         {
           "type": "source_path",
@@ -1030,19 +999,20 @@
           "value": "VECTRA MASTER ARCHITECTURE / 5.4. Предметная область внутри Genome"
         }
       ],
-      "version": "1.0"
-    },
-    {
-      "object_id": "VECTRA-SERVICE-RECOVERY-001",
-      "object_type": "Service",
-      "title": "Professional Runtime Recovery",
-      "description": "Pilot representation of Professional Runtime Recovery.",
-      "normative_source": {
-        "document": "VECTRA Architectural Constitution",
-        "section": "Статья 13. Архитектурная преемственность"
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/canonical_business_model.py"
+        ],
+        "runtime_mapping": "Бон Буассон"
       },
-      "owner": "Professional Runtime",
       "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA MASTER ARCHITECTURE",
+        "section": "5.4. Предметная область внутри Genome"
+      },
+      "object_id": "VECTRA-DOMAIN-BONBOASON-001",
+      "object_type": "Business Domain",
+      "owner": "Business Runtime",
       "relationships": [],
       "requirements": [
         {
@@ -1050,43 +1020,93 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Professional Runtime Recovery",
-        "paths": [
-          "app/assistant_runtime/recovery.py"
-        ]
-      },
+      "title": "Бон Буассон",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
+      "version": "1.0"
+    },
+    {
       "compliance_status": "COMPUTED",
+      "description": "Pilot representation of Professional Runtime Recovery.",
       "evidence": [
         {
           "type": "source_path",
           "value": "app/assistant_runtime/recovery.py"
         },
         {
+          "type": "source_path",
+          "value": "app/assistant_runtime/runtime_recovery.py"
+        },
+        {
           "type": "normative_source",
           "value": "VECTRA Architectural Constitution / Статья 13. Архитектурная преемственность"
         }
       ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/recovery.py",
+          "app/assistant_runtime/runtime_recovery.py"
+        ],
+        "runtime_mapping": "Professional Runtime Recovery"
+      },
+      "lifecycle_state": "ACTIVE",
+      "normative_source": {
+        "document": "VECTRA Architectural Constitution",
+        "section": "Статья 13. Архитектурная преемственность"
+      },
+      "object_id": "VECTRA-SERVICE-RECOVERY-001",
+      "object_type": "Service",
+      "owner": "Professional Runtime",
+      "relationships": [],
+      "requirements": [
+        {
+          "requirement_id": "AOMM-TRACEABILITY",
+          "status": "CONFIRMED"
+        }
+      ],
+      "title": "Professional Runtime Recovery",
+      "verification": {
+        "status": "AUTOMATED",
+        "tests": [
+          "tests/test_architecture_object_registry_pilot.py",
+          "tests/test_architecture_registry_runtime.py",
+          "tests/test_runtime_recovery.py"
+        ]
+      },
       "version": "1.0"
     },
     {
-      "object_id": "VECTRA-CAPABILITY-SELF-GOVERNANCE-001",
-      "object_type": "Capability",
-      "title": "Self Governance Engine EP-001",
+      "compliance_status": "COMPUTED",
       "description": "Pilot representation of Self Governance Engine EP-001.",
+      "evidence": [
+        {
+          "type": "source_path",
+          "value": "app/assistant_runtime/self_governance_runtime.py"
+        },
+        {
+          "type": "normative_source",
+          "value": "VECTRA Architectural Constitution / Статья 12. Управляемость"
+        }
+      ],
+      "implementation": {
+        "paths": [
+          "app/assistant_runtime/self_governance_runtime.py"
+        ],
+        "runtime_mapping": "Self Governance Engine EP-001"
+      },
+      "lifecycle_state": "ACTIVE",
       "normative_source": {
         "document": "VECTRA Architectural Constitution",
         "section": "Статья 12. Управляемость"
       },
+      "object_id": "VECTRA-CAPABILITY-SELF-GOVERNANCE-001",
+      "object_type": "Capability",
       "owner": "Professional Runtime",
-      "lifecycle_state": "ACTIVE",
       "relationships": [
         {
           "relationship_type": "governed_by",
@@ -1099,31 +1119,17 @@
           "status": "CONFIRMED"
         }
       ],
-      "implementation": {
-        "runtime_mapping": "Self Governance Engine EP-001",
-        "paths": [
-          "app/assistant_runtime/self_governance_runtime.py"
-        ]
-      },
+      "title": "Self Governance Engine EP-001",
       "verification": {
+        "status": "AUTOMATED",
         "tests": [
           "tests/test_architecture_object_registry_pilot.py",
           "tests/test_architecture_registry_runtime.py"
-        ],
-        "status": "AUTOMATED"
+        ]
       },
-      "compliance_status": "COMPUTED",
-      "evidence": [
-        {
-          "type": "source_path",
-          "value": "app/assistant_runtime/self_governance_runtime.py"
-        },
-        {
-          "type": "normative_source",
-          "value": "VECTRA Architectural Constitution / Статья 12. Управляемость"
-        }
-      ],
       "version": "1.0"
     }
-  ]
+  ],
+  "registry_id": "VECTRA-ARCHITECTURE-REGISTRY-001",
+  "release_id": "VECTRA-ARCHITECTURE-REGISTRY-001"
 }

@@ -52,7 +52,10 @@ def registered_service(payload):
         "status": "PASS",
         "object": {
             "object_id": "VECTRA-SERVICE-RECOVERY-001",
-            "implementation": {"paths": ["app/assistant_runtime/recovery.py"]},
+            "implementation": {"paths": [
+                "app/assistant_runtime/recovery.py",
+                "app/assistant_runtime/runtime_recovery.py",
+            ]},
         },
     }
 
@@ -63,6 +66,16 @@ def after_evaluation():
         "runtime_readiness": "READY",
         "runtime_health": "HEALTHY",
         "supervisor_evaluation_id": "SUP-AFTER",
+        "evaluated_at": "2026-07-25T12:00:00Z",
+    }
+
+
+def blocked_after_evaluation():
+    return {
+        "status": "PASS",
+        "runtime_readiness": "BLOCKED",
+        "runtime_health": "UNHEALTHY",
+        "supervisor_evaluation_id": "SUP-AFTER-BLOCKED",
         "evaluated_at": "2026-07-25T12:00:00Z",
     }
 
@@ -79,6 +92,8 @@ def test_runtime_recovery_loads_after_supervisor(isolated_recovery, monkeypatch)
     assert result["loaded"] is True
     assert result["load_order"] == "AFTER_RUNTIME_SUPERVISOR"
     assert result["supervisor_available"] is True
+    assert result["history_repository"]["schema_version"] == "2.0"
+    assert result["history_repository"]["contract"] == "runtime_root_recovery.v1"
 
 
 def test_registered_recovery_procedure_is_resolved(isolated_recovery, monkeypatch):
@@ -208,3 +223,87 @@ def test_protected_runtime_components_are_not_release_files():
         Path("runtime/architecture_registry/architecture_registry.json"),
     }
     assert release_paths.isdisjoint(protected)
+
+
+def test_recovery_contract_covers_all_twelve_runtime_roots():
+    assert rr.CONTRACT_VERSION == "runtime_root_recovery.v1"
+    assert len(rr.ROOT_COMPONENTS) == 12
+    for component in rr.ROOT_COMPONENTS:
+        contract = rr.get_component_recovery_contract(component)
+        assert contract["status"] == "AVAILABLE"
+        assert contract["target_component"] == component
+        assert contract["execution_required_for_confirmation"] is True
+
+
+def test_architecture_registry_publishes_checkpoint_and_root_recovery_implementations(isolated_recovery):
+    from app.assistant_runtime.architecture_registry_runtime import initialize_architecture_registry_runtime
+
+    assert initialize_architecture_registry_runtime(force=True)["status"] == "PASS"
+    result = rr.get_architecture_object({"object_id": rr.REGISTERED_RECOVERY_OBJECT_ID})
+    assert result["status"] == "PASS"
+    paths = set(result["object"]["implementation"]["paths"])
+    assert {
+        "app/assistant_runtime/recovery.py",
+        "app/assistant_runtime/runtime_recovery.py",
+    }.issubset(paths)
+
+
+def test_recovery_plan_rejects_unknown_target(isolated_recovery, monkeypatch):
+    configure_registered_sources(monkeypatch)
+    result = rr.resolve_recovery_plan({"target_component": "Imaginary Runtime"})
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "runtime_recovery_target_not_supported"
+
+
+def test_recovery_plan_rebuilds_target_and_downstream_in_startup_order(isolated_recovery, monkeypatch):
+    configure_registered_sources(monkeypatch)
+    result = rr.resolve_recovery_plan({"target_component": "Runtime Capability Registry"})
+    assert result["status"] == "PASS"
+    assert result["recovery_plan"]["recovery_sequence"] == [
+        "Runtime Capability Registry",
+        "Runtime Dependency Graph",
+        "Runtime Observability",
+        "Runtime Health",
+        "Runtime Snapshot",
+    ]
+
+
+def test_checkpoint_alone_cannot_complete_failed_target_recovery(isolated_recovery, monkeypatch):
+    configure_registered_sources(monkeypatch)
+    monkeypatch.setattr(rr, "get_runtime_readiness", lambda payload: blocked_readiness())
+    monkeypatch.setattr(rr, "get_runtime_health", lambda payload: blocked_readiness())
+    monkeypatch.setattr(rr, "run_recovery_evolution", lambda payload: {"status": "ok", "checkpoint": {"checkpoint_id": "CP-1"}})
+    monkeypatch.setattr(rr, "_recover_component", lambda component: {
+        "runtime_component": component,
+        "status": "FAIL",
+        "failure_reason": "simulated_component_failure",
+    })
+    monkeypatch.setattr(rr, "evaluate_runtime_supervisor", after_evaluation)
+
+    result = rr.start_runtime_recovery({"target_component": "Execution Runtime"})
+
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "target_component_not_recovered"
+    assert result["recovery_execution"]["result"] == "FAILED"
+    assert result["recovery_execution"]["target_recovered"] is False
+
+
+def test_completed_is_forbidden_while_runtime_remains_blocked(isolated_recovery, monkeypatch):
+    configure_registered_sources(monkeypatch)
+    monkeypatch.setattr(rr, "get_runtime_readiness", lambda payload: blocked_readiness())
+    monkeypatch.setattr(rr, "get_runtime_health", lambda payload: blocked_readiness())
+    monkeypatch.setattr(rr, "run_recovery_evolution", lambda payload: {"status": "ok"})
+    monkeypatch.setattr(rr, "_recover_component", lambda component: {
+        "runtime_component": component,
+        "status": "PASS",
+        "failure_reason": None,
+    })
+    monkeypatch.setattr(rr, "evaluate_runtime_supervisor", blocked_after_evaluation)
+
+    result = rr.start_runtime_recovery({"target_component": "Runtime Health"})
+
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "runtime_remains_blocked_after_recovery"
+    assert result["supervisor_reevaluation_executed"] is True
+    assert result["supervisor_recovery_confirmed"] is False
+    assert result["recovery_execution"]["result"] == "FAILED"

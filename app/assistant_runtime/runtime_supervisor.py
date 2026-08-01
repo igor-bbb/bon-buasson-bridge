@@ -140,12 +140,16 @@ def collect_component_states() -> list[dict[str, Any]]:
 def initialize_runtime_supervisor(*, force: bool = False) -> dict[str, Any]:
     _REPOSITORY.load(force=force)
     evaluation = evaluate_runtime_supervisor()
+    session_state = next((item for item in evaluation["component_states"] if item.get("component") == "Session Runtime"), {})
+    connected = session_state.get("loaded") is True and session_state.get("dependencies_available") is True
     return _pass(
         runtime_component="Runtime Supervisor",
         release_id=RELEASE_ID,
         loaded=True,
         load_order="AFTER_SESSION_RUNTIME",
         supervisor_status="READY" if evaluation["status"] == "PASS" else "BLOCKED",
+        connection_status="CONNECTED" if connected else "DISCONNECTED",
+        session_runtime_loaded=session_state.get("loaded") is True,
         runtime_health=evaluation["runtime_health"],
         runtime_readiness=evaluation["runtime_readiness"],
         required_components=list(REQUIRED_COMPONENTS),

@@ -15,7 +15,10 @@ from app.assistant_runtime.execution_runtime import initialize_execution_runtime
 from app.assistant_runtime.execution_orchestrator_runtime import initialize_execution_orchestrator
 from app.assistant_runtime.session_runtime import initialize_session_runtime
 from app.assistant_runtime.runtime_supervisor import initialize_runtime_supervisor
-from app.assistant_runtime.runtime_recovery import initialize_runtime_recovery
+from app.assistant_runtime.runtime_recovery import (
+    get_component_recovery_contract,
+    initialize_runtime_recovery,
+)
 from app.assistant_runtime.runtime_capability_registry import initialize_runtime_capability_registry
 from app.assistant_runtime.runtime_dependency_graph import initialize_runtime_dependency_graph
 from app.assistant_runtime.runtime_observability import initialize_runtime_observability
@@ -69,6 +72,9 @@ def _connection_status(
     *,
     no_dependencies: bool = False,
 ) -> tuple[str, dict[str, Any]]:
+    explicit = publication.get("connection_status")
+    if explicit is not None:
+        return str(explicit).upper(), {"component_owned_connection_status": explicit}
     if no_dependencies:
         connected = publication.get("loaded") is True
         return ("CONNECTED" if connected else "DISCONNECTED"), {}
@@ -96,8 +102,9 @@ def _root_record(spec: dict[str, Any]) -> dict[str, Any]:
         missing.append("loaded")
     if connection_status == "NOT_EXPLICITLY_REPORTED":
         missing.append("connection")
-    recovery_status = "REGISTERED" if spec["name"] == "Runtime Recovery" and status == "PASS" else "NOT_EXPLICITLY_REPORTED"
-    if recovery_status == "NOT_EXPLICITLY_REPORTED":
+    recovery_contract = get_component_recovery_contract(spec["name"])
+    recovery_status = str(recovery_contract.get("status") or "NOT_EXPLICITLY_REPORTED").upper()
+    if recovery_status != "AVAILABLE":
         missing.append("recovery")
 
     return {
@@ -116,6 +123,7 @@ def _root_record(spec: dict[str, Any]) -> dict[str, Any]:
         "status_readback_executed": True,
         "capability_execution_confirmed": False,
         "recovery_status": recovery_status,
+        "recovery_contract": recovery_contract,
         "evidence_source": spec["evidence_source"],
         "failure_reason": publication.get("failure_reason"),
         "error": publication.get("error"),
@@ -257,6 +265,7 @@ def build_runtime_roots_readback(
 
     roots = {spec["name"]: _root_record(spec) for spec in specs}
     health = roots["Runtime Health"]
+    snapshot_recovery_contract = get_component_recovery_contract("Runtime Snapshot")
     roots["Runtime Snapshot"] = {
         "runtime_component": "Runtime Snapshot",
         "status": "PASS",
@@ -272,13 +281,14 @@ def build_runtime_roots_readback(
         "activation_evidence": "current_snapshot_build",
         "status_readback_executed": True,
         "capability_execution_confirmed": True,
-        "recovery_status": "NOT_EXPLICITLY_REPORTED",
+        "recovery_status": snapshot_recovery_contract["status"],
+        "recovery_contract": snapshot_recovery_contract,
         "evidence_source": "observability._build_runtime_snapshot",
         "snapshot_id": snapshot_id,
         "generated_at": generated_at,
         "failure_reason": None,
         "error": None,
-        "missing_lifecycle_evidence": ["recovery"],
+        "missing_lifecycle_evidence": [],
         "published_status": {
             "status": "PASS",
             "runtime_component": "Runtime Snapshot",
@@ -313,7 +323,7 @@ def build_runtime_roots_readback(
         "missing_lifecycle_evidence": missing_lifecycle,
         "limitations": [
             "Component presence and status readback do not prove execution of every published capability.",
-            "Recovery is reported only where a component-owned status contract publishes it explicitly.",
+            "Recovery availability is published by runtime_root_recovery.v1; execution evidence exists only after start_runtime_recovery.",
             "NOT_EXPLICITLY_REPORTED values are evidence gaps and must not be interpreted as failures.",
         ],
         "root_components": roots,

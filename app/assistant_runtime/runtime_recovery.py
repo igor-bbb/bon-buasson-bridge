@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from app.assistant_runtime.architecture_registry_runtime import get_architecture_object
@@ -19,11 +20,42 @@ from app.assistant_runtime.runtime_supervisor import (
     get_runtime_readiness,
 )
 
-RELEASE_ID = "VECTRA-RUNTIME-RECOVERY-001"
+RELEASE_ID = "VECTRA-RUNTIME-ROOT-RECOVERY-001"
+CONTRACT_VERSION = "runtime_root_recovery.v1"
 RESULTS_PATH = Path("runtime/runtime_recovery/recovery_history.json")
 REGISTERED_RECOVERY_OBJECT_ID = "VECTRA-SERVICE-RECOVERY-001"
 REGISTERED_RECOVERY_PROCEDURE_ID = "handle_confirmed_blocker"
 ALLOWED_START_STATES = {"BLOCKED", "UNHEALTHY"}
+
+ROOT_COMPONENTS = (
+    "Architecture Registry Runtime",
+    "Verification Runtime",
+    "Execution Runtime",
+    "Execution Orchestrator Runtime",
+    "Session Runtime",
+    "Runtime Supervisor",
+    "Runtime Recovery",
+    "Runtime Capability Registry",
+    "Runtime Dependency Graph",
+    "Runtime Observability",
+    "Runtime Health",
+    "Runtime Snapshot",
+)
+
+_COMPONENT_INITIALIZERS: dict[str, tuple[str, str, str]] = {
+    "Architecture Registry Runtime": ("app.assistant_runtime.architecture_registry_runtime", "initialize_architecture_registry_runtime", "RELOAD_FROM_ARCHITECTURE_REGISTRY"),
+    "Verification Runtime": ("app.assistant_runtime.verification_runtime", "initialize_verification_runtime", "RELOAD_FROM_VERIFICATION_REPOSITORY"),
+    "Execution Runtime": ("app.assistant_runtime.execution_runtime", "initialize_execution_runtime", "RELOAD_FROM_EXECUTION_REPOSITORY"),
+    "Execution Orchestrator Runtime": ("app.assistant_runtime.execution_orchestrator_runtime", "initialize_execution_orchestrator", "RELOAD_FROM_ORCHESTRATION_REPOSITORY"),
+    "Session Runtime": ("app.assistant_runtime.session_runtime", "initialize_session_runtime", "RELOAD_FROM_SESSION_REPOSITORY"),
+    "Runtime Supervisor": ("app.assistant_runtime.runtime_supervisor", "initialize_runtime_supervisor", "REEVALUATE_PUBLISHED_RUNTIME_STATE"),
+    "Runtime Recovery": (__name__, "initialize_runtime_recovery", "RELOAD_RECOVERY_HISTORY"),
+    "Runtime Capability Registry": ("app.assistant_runtime.runtime_capability_registry", "initialize_runtime_capability_registry", "REBUILD_FROM_PUBLISHED_CAPABILITIES"),
+    "Runtime Dependency Graph": ("app.assistant_runtime.runtime_dependency_graph", "initialize_runtime_dependency_graph", "REBUILD_FROM_PUBLISHED_DEPENDENCIES"),
+    "Runtime Observability": ("app.assistant_runtime.runtime_observability", "initialize_runtime_observability", "REBUILD_FROM_PUBLISHED_RUNTIME_DATA"),
+    "Runtime Health": ("app.assistant_runtime.runtime_health", "initialize_runtime_health", "REBUILD_FROM_APPROVED_HEALTH_FACTORS"),
+    "Runtime Snapshot": ("app.assistant_runtime.observability", "create_startup_runtime_snapshot", "REBUILD_OFFICIAL_RUNTIME_SNAPSHOT"),
+}
 
 
 class RuntimeRecoveryError(RuntimeError):
@@ -45,7 +77,8 @@ class RecoveryHistoryRepository:
                 self._data = {
                     "repository_id": "VECTRA-RUNTIME-RECOVERY-HISTORY-001",
                     "release_id": RELEASE_ID,
-                    "schema_version": "1.0",
+                    "contract": CONTRACT_VERSION,
+                    "schema_version": "2.0",
                     "executions": [],
                     "updated_at": _now(),
                 }
@@ -54,6 +87,17 @@ class RecoveryHistoryRepository:
                 self._data = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(self._data.get("executions"), list):
                     raise RuntimeRecoveryError("recovery_history_repository_invalid")
+                migrated = (
+                    self._data.get("release_id") != RELEASE_ID
+                    or self._data.get("contract") != CONTRACT_VERSION
+                    or self._data.get("schema_version") != "2.0"
+                )
+                self._data["release_id"] = RELEASE_ID
+                self._data["contract"] = CONTRACT_VERSION
+                self._data["schema_version"] = "2.0"
+                if migrated:
+                    self._data["updated_at"] = _now()
+                    self._persist()
             return deepcopy(self._data)
 
     def append(self, execution: dict[str, Any]) -> None:
@@ -70,6 +114,9 @@ class RecoveryHistoryRepository:
         data = self._require_loaded()
         return {
             "repository_id": data["repository_id"],
+            "release_id": data.get("release_id"),
+            "contract": data.get("contract"),
+            "schema_version": data.get("schema_version"),
             "loaded": True,
             "executions_count": len(data["executions"]),
         }
@@ -96,15 +143,39 @@ def initialize_runtime_recovery(*, force: bool = False) -> dict[str, Any]:
     return _pass(
         runtime_component="Runtime Recovery",
         release_id=RELEASE_ID,
+        contract=CONTRACT_VERSION,
         loaded=True,
         load_order="AFTER_RUNTIME_SUPERVISOR",
         recovery_status="READY",
+        connection_status="CONNECTED" if supervisor.get("status") == "PASS" else "DISCONNECTED",
         supervisor_available=supervisor.get("status") == "PASS",
         registered_procedure_source="Professional Procedures Runtime",
         registered_recovery_object_id=REGISTERED_RECOVERY_OBJECT_ID,
         history_repository=_REPOSITORY.state(),
+        supported_root_components=list(ROOT_COMPONENTS),
+        component_recovery_contracts={name: get_component_recovery_contract(name) for name in ROOT_COMPONENTS},
         evaluated_at=_now(),
     )
+
+
+def get_component_recovery_contract(component: str) -> dict[str, Any]:
+    """Publish availability without claiming that a recovery was executed."""
+    normalized = _normalize_target_component(component)
+    if normalized is None or normalized == "Runtime":
+        return {
+            "status": "UNSUPPORTED",
+            "contract": CONTRACT_VERSION,
+            "target_component": component,
+        }
+    _, _, strategy = _COMPONENT_INITIALIZERS[normalized]
+    return {
+        "status": "AVAILABLE",
+        "contract": CONTRACT_VERSION,
+        "release_id": RELEASE_ID,
+        "target_component": normalized,
+        "strategy": strategy,
+        "execution_required_for_confirmation": True,
+    }
 
 
 def resolve_recovery_plan(payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -125,10 +196,22 @@ def resolve_recovery_plan(payload: dict[str, Any] | None = None) -> dict[str, An
         return _fail("registered_recovery_service_unavailable", "Registered Recovery service is not available through Architecture Registry", evidence=architecture_result)
     architecture_object = architecture_result.get("object") or {}
     implementation_paths = sorted((architecture_object.get("implementation") or {}).get("paths") or [])
-    if "app/assistant_runtime/recovery.py" not in implementation_paths:
+    required_paths = {
+        "app/assistant_runtime/recovery.py",
+        "app/assistant_runtime/runtime_recovery.py",
+    }
+    if not required_paths.issubset(implementation_paths):
         return _fail("registered_recovery_runtime_mapping_invalid", "Registered Recovery service does not publish the approved Runtime implementation")
 
-    target_component = str(payload.get("target_component") or "Runtime").strip() or "Runtime"
+    requested_target = str(payload.get("target_component") or "Runtime").strip() or "Runtime"
+    target_component = _normalize_target_component(requested_target)
+    if target_component is None:
+        return _fail(
+            "runtime_recovery_target_not_supported",
+            f"Runtime root {requested_target} is not supported",
+            supported_root_components=list(ROOT_COMPONENTS),
+        )
+    recovery_sequence = _recovery_sequence(target_component)
     allowed_steps = [str(step) for step in procedure.get("steps") or []]
     canonical = {
         "procedure_set_id": procedure_result.get("procedure_set_id"),
@@ -139,7 +222,8 @@ def resolve_recovery_plan(payload: dict[str, Any] | None = None) -> dict[str, An
         "implementation_paths": implementation_paths,
         "target_component": target_component,
         "allowed_steps": allowed_steps,
-        "expected_result": "SUPERVISOR_REEVALUATED",
+        "expected_result": "TARGET_RECOVERED_AND_SUPERVISOR_READY",
+        "recovery_sequence": recovery_sequence,
     }
     digest = hashlib.sha256(json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:16].upper()
     return _pass(
@@ -155,7 +239,9 @@ def resolve_recovery_plan(payload: dict[str, Any] | None = None) -> dict[str, An
             },
             "allowed_steps": allowed_steps,
             "target_component": target_component,
-            "expected_result": "SUPERVISOR_REEVALUATED",
+            "expected_result": "TARGET_RECOVERED_AND_SUPERVISOR_READY",
+            "recovery_sequence": recovery_sequence,
+            "technical_execution_contract": CONTRACT_VERSION,
             "execution_status": "READY",
             "evidence": {
                 "professional_procedure_resolution": "PASS",
@@ -186,27 +272,74 @@ def start_runtime_recovery(payload: dict[str, Any] | None = None) -> dict[str, A
     plan = plan_result["recovery_plan"]
     started_at = _now()
     execution_id = f"RECOVERY-{uuid4().hex[:12].upper()}"
+    target_status_before = _read_target_status(plan["target_component"], before_readiness, before_health)
 
-    recovery_result = run_recovery_evolution({
+    checkpoint_result = run_recovery_evolution({
         "reason": str(payload.get("reason") or "runtime_recovery_from_confirmed_blocking_state"),
         "source": RELEASE_ID,
         "target_component": plan["target_component"],
         "recovery_plan_id": plan["recovery_plan_id"],
     })
-    operation_passed = str(recovery_result.get("status") or "").lower() in {"ok", "pass"}
+    checkpoint_passed = str(checkpoint_result.get("status") or "").lower() in {"ok", "pass"}
+
+    component_executions: list[dict[str, Any]] = []
+    if checkpoint_passed:
+        for component in plan["recovery_sequence"]:
+            step = _recover_component(component)
+            component_executions.append(step)
+            if step["status"] != "PASS":
+                break
 
     after = evaluate_runtime_supervisor()
+    target_step = next((item for item in component_executions if item["runtime_component"] == plan["target_component"]), None)
+    if plan["target_component"] == "Runtime":
+        target_recovered = bool(component_executions) and len(component_executions) == len(plan["recovery_sequence"]) and all(item["status"] == "PASS" for item in component_executions)
+    else:
+        target_recovered = bool(target_step and target_step["status"] == "PASS")
+    after_readiness = str(after.get("runtime_readiness") or "").upper()
+    after_health = str(after.get("runtime_health") or "").upper()
+    reevaluation_executed = bool(
+        after.get("supervisor_evaluation_id")
+        and after.get("evaluated_at")
+        and after.get("supervisor_evaluation_id") != before_readiness.get("supervisor_evaluation_id")
+    )
+    supervisor_recovery_confirmed = after_readiness == "READY" and after_health == "HEALTHY"
+    completed = checkpoint_passed and target_recovered and reevaluation_executed and supervisor_recovery_confirmed
+    if not checkpoint_passed:
+        failure_reason = "recovery_checkpoint_failed"
+    elif not target_recovered:
+        failure_reason = "target_component_not_recovered"
+    elif not reevaluation_executed:
+        failure_reason = "supervisor_reevaluation_not_confirmed"
+    elif not supervisor_recovery_confirmed:
+        failure_reason = "runtime_remains_blocked_after_recovery"
+    else:
+        failure_reason = None
     execution = {
         "recovery_execution_id": execution_id,
         "recovery_plan_id": plan["recovery_plan_id"],
         "started_at": started_at,
         "completed_at": _now(),
         "target_component": plan["target_component"],
-        "result": "COMPLETED" if operation_passed else "FAILED",
+        "contract": CONTRACT_VERSION,
+        "result": "COMPLETED" if completed else "FAILED",
+        "failure_reason": failure_reason,
+        "target_recovered": target_recovered,
+        "target_status_before": target_status_before,
+        "target_status_after": (
+            target_step.get("published_status")
+            if target_step
+            else {
+                "status": "PASS" if target_recovered else "FAIL",
+                "runtime_readiness": after_readiness,
+                "runtime_health": after_health,
+            }
+        ),
         "evidence": {
             "registered_procedure": plan["procedure_source"],
             "allowed_steps": plan["allowed_steps"],
-            "runtime_recovery_result": recovery_result,
+            "recovery_checkpoint_result": checkpoint_result,
+            "component_recovery_executions": component_executions,
             "supervisor_reevaluation_status": after.get("status"),
         },
         "supervisor_evaluation_before": {
@@ -222,10 +355,19 @@ def start_runtime_recovery(payload: dict[str, Any] | None = None) -> dict[str, A
         },
     }
     _REPOSITORY.append(execution)
-    return _pass(
-        recovery_execution=execution,
-        recovery_plan=plan,
-        supervisor_reevaluated=after.get("status") == "PASS",
+    response = {
+        "recovery_execution": execution,
+        "recovery_plan": plan,
+        "supervisor_reevaluated": reevaluation_executed,
+        "supervisor_reevaluation_executed": reevaluation_executed,
+        "supervisor_recovery_confirmed": supervisor_recovery_confirmed,
+    }
+    if completed:
+        return _pass(**response)
+    return _fail(
+        failure_reason or "runtime_recovery_failed",
+        "Runtime root recovery did not restore the target and Runtime to READY / HEALTHY",
+        **response,
     )
 
 
@@ -265,6 +407,120 @@ def execute_runtime_recovery_operation(operation_type: str, payload: dict[str, A
     if handler is None:
         return _fail("unsupported_runtime_recovery_operation", f"Unsupported operation_type: {operation_type}")
     return handler(payload or {})
+
+
+def _normalize_target_component(value: str) -> str | None:
+    requested = str(value or "").strip()
+    if not requested or requested.lower() == "runtime":
+        return "Runtime"
+    by_lower = {name.lower(): name for name in ROOT_COMPONENTS}
+    return by_lower.get(requested.lower())
+
+
+def _recovery_sequence(target_component: str) -> list[str]:
+    if target_component == "Runtime":
+        return list(ROOT_COMPONENTS)
+    start = ROOT_COMPONENTS.index(target_component)
+    return list(ROOT_COMPONENTS[start:])
+
+
+def _resolve_initializer(component: str) -> Callable[..., dict[str, Any]]:
+    module_name, function_name, _ = _COMPONENT_INITIALIZERS[component]
+    module = importlib.import_module(module_name)
+    initializer = getattr(module, function_name)
+    if not callable(initializer):
+        raise RuntimeRecoveryError(f"recovery_initializer_not_callable:{component}")
+    return initializer
+
+
+def _recover_component(component: str) -> dict[str, Any]:
+    _, _, strategy = _COMPONENT_INITIALIZERS[component]
+    started_at = _now()
+    try:
+        initializer = _resolve_initializer(component)
+        if component == "Runtime Snapshot":
+            result = initializer()
+            status = str(result.get("status") or "").upper()
+            recovered = status in {"PASS", "OK", "DEGRADED"} and bool(result.get("snapshot_id") or result.get("result") or result.get("snapshot"))
+        else:
+            result = initializer(force=True)
+            status = str(result.get("status") or "").upper()
+            recovered = status == "PASS" and result.get("loaded") is True
+        return {
+            "runtime_component": component,
+            "strategy": strategy,
+            "status": "PASS" if recovered else "FAIL",
+            "failure_reason": None if recovered else str(result.get("failure_reason") or "component_recovery_readback_failed"),
+            "started_at": started_at,
+            "completed_at": _now(),
+            "published_status": _published_status_evidence(result),
+        }
+    except Exception as exc:
+        return {
+            "runtime_component": component,
+            "strategy": strategy,
+            "status": "FAIL",
+            "failure_reason": "component_recovery_execution_failed",
+            "started_at": started_at,
+            "completed_at": _now(),
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _read_target_status(
+    component: str,
+    before_readiness: dict[str, Any],
+    before_health: dict[str, Any],
+) -> dict[str, Any]:
+    if component == "Runtime":
+        return {
+            "status": before_readiness.get("status"),
+            "runtime_readiness": before_readiness.get("runtime_readiness"),
+            "runtime_health": before_health.get("runtime_health"),
+            "supervisor_evaluation_id": before_readiness.get("supervisor_evaluation_id"),
+        }
+    try:
+        if component == "Runtime Snapshot":
+            module = importlib.import_module("app.assistant_runtime.observability")
+            result = module.get_runtime_snapshot(refresh=False)
+        else:
+            result = _resolve_initializer(component)(force=False)
+        return _published_status_evidence(result)
+    except Exception as exc:
+        return {
+            "status": "FAIL",
+            "failure_reason": "target_status_readback_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _published_status_evidence(result: dict[str, Any]) -> dict[str, Any]:
+    fields = (
+        "status",
+        "runtime_component",
+        "release_id",
+        "contract",
+        "loaded",
+        "verification_status",
+        "execution_status",
+        "orchestrator_status",
+        "session_runtime_status",
+        "supervisor_status",
+        "recovery_status",
+        "registry_status",
+        "graph_status",
+        "observability_status",
+        "health_status",
+        "connection_status",
+        "runtime_readiness",
+        "runtime_health",
+        "snapshot_id",
+        "generated_at",
+        "overall_status",
+        "failure_reason",
+        "error",
+    )
+    return {field: deepcopy(result.get(field)) for field in fields if field in result}
 
 
 def _safe_limit(value: Any, default: int) -> int:
