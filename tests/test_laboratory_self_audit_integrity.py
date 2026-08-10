@@ -68,9 +68,12 @@ def test_dedicated_action_returns_full_audit_without_runtime_mutation():
     assert response.status_code == 200
     body = response.json()
     assert body["operation_type"] == "self_audit"
+    assert body["runtime_service_called"] == "personality_runtime.run_self_audit"
+    assert body["internal_endpoint_called"] == "/vectra/laboratory/self-audit"
     assert body["status"] == "PASS"
     assert body["response_mode"] == "full"
     assert body["read_only"] is True
+    assert "reason" not in body
     assert before == after
 
 

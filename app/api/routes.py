@@ -287,6 +287,7 @@ from app.assistant_runtime.framework_validation import (
     verify_business_workspace_framework_validation as verify_vectra_business_workspace_framework_validation,
 )
 from app.assistant_runtime.business_framework_services import execute_framework_service as execute_vectra_framework_service
+from app.assistant_runtime.personality_runtime import run_self_audit as run_vectra_self_audit
 from app.assistant_runtime.business_framework_research import (
     get_business_framework_research_manifest as get_vectra_business_framework_research_manifest,
     create_research_program as create_vectra_research_program,
@@ -11171,10 +11172,9 @@ def vectra_verify_business_runtime_access_action(request: BusinessRuntimeAccessV
 @router.get('/vectra/laboratory/self-audit', summary='Run VECTRA Self Audit')
 def vectra_run_self_audit_action(current_workspace: str = 'laboratory', x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
-    result = execute_vectra_framework_service({
-        'operation_type': 'self_audit',
+    result = run_vectra_self_audit({
         'current_workspace': current_workspace or 'laboratory',
-        'response_mode': 'compact',
+        'response_mode': 'diagnostic',
     })
     return json_response(_facade_response(
         'self_audit',
