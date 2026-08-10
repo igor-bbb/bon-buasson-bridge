@@ -42,3 +42,45 @@ def test_repeated_success_is_idempotent(tmp_path, monkeypatch):
     assert first_pass["blocker_reconciliation"]["verified_blockers_count"] == 1
     assert second_pass["blocker_reconciliation"]["verified_blockers_count"] == 0
     assert second_pass["self_governance"]["attention"]["open_blockers"] == 0
+
+
+def test_expected_negative_normative_trace_does_not_create_blocker(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = process_professional_response(
+        operation_type="trace_normative_usage",
+        runtime_service="architecture_registry_runtime.trace_normative_usage",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={
+            "status": "FAIL",
+            "failure_reason": "normative_section_not_found",
+            "section_found_in_canonical_content": False,
+            "usage_confirmed": False,
+            "read_only": True,
+        },
+    )
+
+    assert result["status"] == "PASS"
+    assert result["professional_context"]["result_status"] == "FAIL"
+    assert result["professional_context"]["outcome_classification"] == "EXPECTED_NEGATIVE"
+    assert result["self_governance"]["expected_negative_outcome"] is True
+    assert result["self_governance"]["confirmed_blocker"] is False
+    assert result["self_governance"]["decision"] == "CONTINUE_AFTER_EXPECTED_NEGATIVE_OUTCOME"
+    assert result["engineering_observation"] is None
+    assert result["self_governance"]["attention"]["open_blockers"] == 0
+
+
+def test_unregistered_fail_reason_remains_blocking(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = process_professional_response(
+        operation_type="trace_normative_usage",
+        runtime_service="architecture_registry_runtime.trace_normative_usage",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={"status": "FAIL", "failure_reason": "normative_source_integrity_failed"},
+    )
+
+    assert result["status"] == "HOLD"
+    assert result["self_governance"]["expected_negative_outcome"] is False
+    assert result["self_governance"]["confirmed_blocker"] is True
+    assert result["engineering_observation"]["observation"]["type"] == "BLOCKER"

@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-SELF-GOVERNANCE-EP-001-INCREMENT-002"
-CONTRACT_VERSION = "1.0"
+RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-EXPECTED-NEGATIVE-OUTCOME-001"
+CONTRACT_VERSION = "1.1"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -61,6 +61,13 @@ _ENGINEERING_FOCUS_HINTS = {
 _TERMINAL_SUCCESS = {"PASS", "OK", "READY", "COMPLETED", "VERIFIED", "SUCCESS"}
 _NON_TERMINAL_HOLD = {"HOLD", "NOT_READY", "BLOCKED", "INCOMPATIBLE", "PARTIAL"}
 _FAILURE = {"FAIL", "FAILED", "ERROR", "INTERNAL_ERROR"}
+
+# A Runtime operation may intentionally reject an invalid assertion as part of
+# a verification flow.  Only explicitly registered operation/reason pairs are
+# non-blocking; an arbitrary FAIL response cannot opt itself out of governance.
+_EXPECTED_NEGATIVE_OUTCOMES = {
+    "trace_normative_usage": {"normative_section_not_found"},
+}
 
 
 def _now() -> str:
@@ -138,6 +145,15 @@ def _confirmed_blocker(result: Any, normalized_status: str) -> bool:
         return True
     attention = result.get("attention") if isinstance(result.get("attention"), dict) else {}
     return bool(attention.get("stop_recommended"))
+
+
+def _expected_negative_outcome(operation_type: str, result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    operation = str(operation_type or "").strip().lower()
+    allowed_reasons = _EXPECTED_NEGATIVE_OUTCOMES.get(operation, set())
+    reason = str(result.get("failure_reason") or "").strip().lower()
+    return bool(reason and reason in allowed_reasons)
 
 
 def _event_hash(parts: Iterable[Any]) -> str:
@@ -255,6 +271,7 @@ def process_professional_response(
     """Evaluate one Runtime result before it is returned to the GPT layer."""
     family = _operation_family(operation_type, runtime_service)
     normalized_status = _normalize_status(result)
+    expected_negative = _expected_negative_outcome(operation_type, result)
     blocker_reconciliation = verify_runtime_operation_blockers(
         operation_type=operation_type,
         runtime_service=runtime_service,
@@ -267,7 +284,7 @@ def process_professional_response(
     attention = snapshot.get("attention") if isinstance(snapshot.get("attention"), dict) else {}
 
     focus_family = _focus_family(active_context)
-    blocker = _confirmed_blocker(result, normalized_status)
+    blocker = False if expected_negative else _confirmed_blocker(result, normalized_status)
     accumulated_blocker = bool(attention.get("stop_recommended"))
     unrelated = focus_family not in {"general_professional_activity", family} and family not in {
         "professional_identity", "professional_runtime", "professional_continuity", "self_governance"
@@ -281,6 +298,10 @@ def process_professional_response(
         governance_decision = "STOP_FOR_OPEN_ENGINEERING_BLOCKERS"
         governance_status = "HOLD"
         response_requirement = "Report the successful Runtime result, but do not continue past the remaining open engineering blockers."
+    elif expected_negative:
+        governance_decision = "CONTINUE_AFTER_EXPECTED_NEGATIVE_OUTCOME"
+        governance_status = "PASS"
+        response_requirement = "Report the expected negative verification result and continue the approved verification sequence."
     elif unrelated and str(active_context.get("status") or "").upper() == "ACTIVE":
         governance_decision = "PRESERVE_ACTIVE_FOCUS_AND_OPEN_EXPLICIT_BRANCH"
         governance_status = "NOTICE"
@@ -294,7 +315,8 @@ def process_professional_response(
         governance_status = "PASS"
         response_requirement = "Continue according to the active professional context."
 
-    event_hash = _event_hash((operation_type, runtime_service, endpoint, normalized_status, family, active_context.get("cycle_id")))
+    outcome_classification = "EXPECTED_NEGATIVE" if expected_negative else "STANDARD"
+    event_hash = _event_hash((operation_type, runtime_service, endpoint, normalized_status, outcome_classification, family, active_context.get("cycle_id")))
     previous_state = _persist_pipeline_event({
         "event_hash": event_hash,
         "operation_type": operation_type,
@@ -302,6 +324,7 @@ def process_professional_response(
         "endpoint": endpoint,
         "operation_family": family,
         "result_status": normalized_status,
+        "outcome_classification": outcome_classification,
         "governance_decision": governance_decision,
         "governance_status": governance_status,
         "active_cycle_id": active_context.get("cycle_id"),
@@ -309,7 +332,7 @@ def process_professional_response(
     })
     observation = None
     # Only the first occurrence of a deterministic event creates an observation.
-    if previous_state.get("was_new") is True:
+    if previous_state.get("was_new") is True and not expected_negative:
         observation = _record_confirmed_observation_once(
             event_hash=event_hash,
             operation_type=operation_type,
@@ -338,11 +361,13 @@ def process_professional_response(
             "operation_family": family,
             "active_focus_family": focus_family,
             "result_status": normalized_status,
+            "outcome_classification": outcome_classification,
         },
         "self_governance": {
             "decision": governance_decision,
             "response_requirement": response_requirement,
             "confirmed_blocker": blocker,
+            "expected_negative_outcome": expected_negative,
             "new_branch_detected": unrelated,
             "attention": deepcopy(attention),
         },

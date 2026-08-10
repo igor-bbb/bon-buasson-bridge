@@ -212,6 +212,7 @@ def trace_normative_usage(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "status": "PASS" if section_found else "FAIL",
         "failure_reason": None if section_found else "normative_section_not_found",
+        "outcome_classification": "POSITIVE_VERIFICATION" if section_found else "EXPECTED_NEGATIVE_VERIFICATION",
         "reasoning_operation": reasoning_operation,
         "source_id": source_id,
         "source_sha256": source["sha256"],
