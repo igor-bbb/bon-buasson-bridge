@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
+from app.assistant_runtime.normative_source_runtime import verify_normative_sources
+
 
 RELEASE_ID = "VECTRA-LABORATORY-SELF-AUDIT-INTEGRITY-001"
 CONTRACT_VERSION = "1.0"
@@ -80,14 +82,29 @@ def _normative_documents(objects: list[Dict[str, Any]]) -> Dict[str, Any]:
         seen.add((document, section))
         references.append({"document": document, "section": section or None})
     documents = sorted({item["document"] for item in references})
+    canonical = verify_normative_sources()
+    canonical_verified = canonical.get("status") == "PASS"
+    registered_titles = {item["document"].casefold() for item in references}
+    canonical_items = canonical.get("sources") or []
+    registry_links = []
+    for item in canonical_items:
+        title = str(item.get("title") or "")
+        matched = any(title.casefold() in registered or registered in title.casefold() for registered in registered_titles)
+        registry_links.append({"source_id": item.get("source_id"), "title": title, "registered_reference_found": matched})
+    registry_linked = all(item["registered_reference_found"] for item in registry_links)
     return {
-        "evidence_status": "REGISTERED_REFERENCE" if references else "NOT_CONFIRMED",
+        "evidence_status": "CANONICAL_CONTENT_VERIFIED" if canonical_verified and registry_linked else "PARTIAL" if references else "NOT_CONFIRMED",
         "source_of_fact": ARCHITECTURE_REGISTRY_PATH.as_posix(),
         "documents": documents,
         "references_count": len(references),
         "references": sorted(references, key=lambda item: (item["document"], item.get("section") or "")),
-        "content_verified_by_this_action": False,
-        "boundary": "Runtime confirms registered normative references; it does not replace or re-interpret source documents.",
+        "content_verified_by_this_action": canonical_verified,
+        "canonical_content_verified": canonical_verified,
+        "canonical_sources_count": canonical.get("sources_count"),
+        "canonical_sources": canonical_items,
+        "architecture_registry_linked": registry_linked,
+        "architecture_registry_links": registry_links,
+        "boundary": "Runtime verifies exact canonical bytes and Registry links; semantic application requires an explicit normative usage trace.",
     }
 
 
@@ -235,7 +252,8 @@ def _assistant_response(result: Dict[str, Any]) -> str:
         "Нормативные документы:",
         f"- статус доказательства: {normative.get('evidence_status')};",
         f"- зарегистрировано документов: {len(normative.get('documents') or [])};",
-        "- полный текст документов этой операцией не подменялся и не подтверждался.",
+        f"- каноническое содержание подтверждено: {normative.get('canonical_content_verified')};",
+        f"- связь с Architecture Registry подтверждена: {normative.get('architecture_registry_linked')}.",
         "",
         "Реализация в коде:",
         f"- статус доказательства: {implementation.get('evidence_status')};",

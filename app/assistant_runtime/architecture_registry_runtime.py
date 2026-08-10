@@ -17,6 +17,12 @@ from app.assistant_runtime.architecture_object_registry import (
     evaluate_object_compliance as _evaluate_object_compliance,
     evaluate_registry_compliance as _evaluate_registry_compliance,
 )
+from app.assistant_runtime.normative_source_runtime import (
+    get_normative_source,
+    list_normative_sources,
+    trace_normative_usage,
+    verify_normative_sources,
+)
 
 RELEASE_ID = "VECTRA-ARCHITECTURE-REGISTRY-001"
 REGISTRY_PATH = Path("runtime/architecture_registry/architecture_registry.json")
@@ -434,6 +440,10 @@ def execute_architecture_registry_operation(operation_type: str, payload: dict[s
         "verify_architecture_object": verify_architecture_object,
         "evaluate_object_compliance": evaluate_object_compliance,
         "evaluate_registry_compliance": evaluate_registry_compliance,
+        "list_normative_sources": list_normative_sources,
+        "get_normative_source": get_normative_source,
+        "verify_normative_sources": verify_normative_sources,
+        "trace_normative_usage": trace_normative_usage,
     }
     handler = operations.get(operation_type)
     if handler is None:
