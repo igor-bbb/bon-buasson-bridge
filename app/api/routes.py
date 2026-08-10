@@ -11400,7 +11400,7 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
                 'evaluate_object_compliance': 'Evaluate the complete Registry when object status is PASS.',
                 'evaluate_registry_compliance': 'Issue Product Verification PASS only when Registry status is PASS.',
                 'list_normative_sources': 'Select a source_id for exact canonical content readback.',
-                'get_normative_source': 'Compare declared metadata and SHA-256 with the expected canonical source.',
+                'get_normative_source': 'For has_more=true, repeat with payload.offset=next_offset until the complete canonical source has been read.',
                 'verify_normative_sources': 'Use canonical_content_verified for SELF-AUDIT-NORMATIVE-CONTENT-001.',
                 'trace_normative_usage': 'Accept usage only when the cited section exists in canonical content.',
             }

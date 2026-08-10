@@ -30,6 +30,50 @@ def test_full_content_and_declared_metadata_are_readable():
     assert result["filename_version"] == "v29"
     assert result["metadata_conflict"]
     assert result["content"].startswith("# VECTRA MASTER ARCHITECTURE")
+    assert result["returned_content_length"] == 12000
+    assert result["next_offset"] == 12000
+    assert result["has_more"] is True
+    assert result["complete_content_returned"] is False
+
+
+def test_large_source_can_be_read_to_completion_in_bounded_chunks():
+    offset = 0
+    chunks = []
+    expected_sha256 = None
+
+    while True:
+        result = get_normative_source({
+            "source_id": "VECTRA-MASTER-ARCHITECTURE",
+            "offset": offset,
+            "max_chars": 16000,
+        })
+        assert result["status"] == "PASS"
+        assert result["content_offset"] == offset
+        assert result["returned_content_length"] <= 16000
+        assert result["content_integrity_verified"] is True
+        expected_sha256 = expected_sha256 or result["sha256"]
+        assert result["sha256"] == expected_sha256
+        chunks.append(result["content"])
+        if not result["has_more"]:
+            assert result["next_offset"] is None
+            break
+        offset = result["next_offset"]
+
+    content = "".join(chunks)
+    import hashlib
+    assert len(content) == result["content_length"]
+    assert hashlib.sha256(content.encode("utf-8")).hexdigest() == expected_sha256
+
+
+def test_normative_source_chunk_range_is_validated():
+    invalid = get_normative_source({
+        "source_id": "VECTRA-MASTER-ARCHITECTURE",
+        "offset": 0,
+        "max_chars": 16001,
+    })
+
+    assert invalid["status"] == "FAIL"
+    assert invalid["failure_reason"] == "normative_source_read_range_invalid"
 
 
 def test_usage_trace_requires_an_actual_section_in_canonical_content():

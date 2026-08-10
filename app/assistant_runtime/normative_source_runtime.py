@@ -12,9 +12,11 @@ from app.assistant_runtime.repository_persistence import (
 )
 
 
-RELEASE_ID = "VECTRA-NORMATIVE-SOURCE-RUNTIME-001"
-CONTRACT_VERSION = "normative_source_runtime.v1"
+RELEASE_ID = "VECTRA-NORMATIVE-SOURCE-RUNTIME-PAGINATION-001"
+CONTRACT_VERSION = "normative_source_runtime.v1.1"
 SOURCE_DIRECTORY = "normative_sources"
+DEFAULT_CONTENT_CHUNK_SIZE = 12000
+MAX_CONTENT_CHUNK_SIZE = 16000
 
 _SOURCES: Dict[str, Dict[str, Any]] = {
     "VECTRA-ARCHITECTURAL-CONSTITUTION": {
@@ -103,7 +105,76 @@ def list_normative_sources(_: Dict[str, Any] | None = None) -> Dict[str, Any]:
 
 
 def get_normative_source(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return _read_source(str(payload.get("source_id") or "").strip())
+    """Read canonical content without exceeding the GPT Action response limit.
+
+    Small sources remain backward compatible and are returned in one response.
+    Larger sources are returned in deterministic character chunks.  The SHA-256
+    and integrity flag always describe the complete canonical source, while the
+    pagination fields describe the content included in this response.
+    """
+    result = _read_source(str(payload.get("source_id") or "").strip())
+    if result.get("status") != "PASS" or "content" not in result:
+        return result
+
+    content = result["content"]
+    try:
+        offset = int(payload.get("offset", 0))
+        max_chars = int(payload.get("max_chars", DEFAULT_CONTENT_CHUNK_SIZE))
+    except (TypeError, ValueError):
+        offset = -1
+        max_chars = -1
+    if offset < 0 or max_chars < 1 or max_chars > MAX_CONTENT_CHUNK_SIZE:
+        return {
+            "status": "FAIL",
+            "failure_reason": "normative_source_read_range_invalid",
+            "source_id": result["source_id"],
+            "allowed_range": {
+                "offset_minimum": 0,
+                "max_chars_minimum": 1,
+                "max_chars_maximum": MAX_CONTENT_CHUNK_SIZE,
+            },
+            "release_id": RELEASE_ID,
+            "contract_version": CONTRACT_VERSION,
+            "error": {
+                "code": "normative_source_read_range_invalid",
+                "message": "offset must be non-negative and max_chars must be between 1 and 16000.",
+            },
+        }
+    if offset > len(content):
+        return {
+            "status": "FAIL",
+            "failure_reason": "normative_source_offset_out_of_range",
+            "source_id": result["source_id"],
+            "offset": offset,
+            "content_length": len(content),
+            "release_id": RELEASE_ID,
+            "contract_version": CONTRACT_VERSION,
+            "error": {
+                "code": "normative_source_offset_out_of_range",
+                "message": "offset exceeds canonical content length.",
+            },
+        }
+
+    end_offset = min(offset + max_chars, len(content))
+    segment = content[offset:end_offset]
+    has_more = end_offset < len(content)
+    result["content"] = segment
+    result.update({
+        "content_offset": offset,
+        "returned_content_length": len(segment),
+        "end_offset_exclusive": end_offset,
+        "next_offset": end_offset if has_more else None,
+        "has_more": has_more,
+        "complete_content_returned": offset == 0 and not has_more,
+        "requested_max_chars": max_chars,
+        "content_chunk_sha256": hashlib.sha256(segment.encode("utf-8")).hexdigest(),
+        "read_instruction": (
+            "Repeat get_normative_source with the same source_id and "
+            "offset=next_offset until has_more=false."
+            if has_more else None
+        ),
+    })
+    return result
 
 
 def verify_normative_sources(_: Dict[str, Any] | None = None) -> Dict[str, Any]:
