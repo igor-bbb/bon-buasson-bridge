@@ -12,8 +12,8 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-001"
-CONTRACT_VERSION = "2.1"
+RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-002"
+CONTRACT_VERSION = "2.2"
 SUPPORTED_WORKSPACE_TYPES = ("business", "top_manager", "manager", "network", "contract")
 _WORKSPACE_TYPE_ALIASES = {
     "business": "business",
@@ -32,6 +32,11 @@ _NESTED_TABLE_SECTIONS = {
     "Категории": "Категории",
     "Форматы бизнеса": "Форматы бизнеса",
     "SKU-лидеры бизнеса": "SKU-лидеры бизнеса",
+}
+_CONTRACT_NESTED_SECTIONS = {
+    "📐 Форматы контракта": "📐 Форматы контракта",
+    "🤝 Переговорный пакет КАМ": "🤝 Переговорный пакет КАМ",
+    "✅ Что делаем дальше?": "✅ Что делаем дальше?",
 }
 
 
@@ -123,6 +128,8 @@ def normalize_markdown_headings(markdown: str) -> str:
         if stripped and not stripped.startswith("#"):
             if index == first_content and not stripped.startswith(("Период:", "Комментарий")):
                 promoted = f"# {stripped}"
+            elif stripped in _CONTRACT_NESTED_SECTIONS:
+                promoted = f"### {_CONTRACT_NESTED_SECTIONS[stripped]}"
             elif stripped.startswith(tuple(_SECTION_ICONS)) or stripped.rstrip(":") in _FINAL_SECTION_LABELS:
                 promoted = f"## {stripped.rstrip(':')}"
 

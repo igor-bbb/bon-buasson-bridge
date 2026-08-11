@@ -205,3 +205,46 @@ def test_orphan_separators_are_removed_and_do_not_create_mega_table():
     assert markdown.count("| --- | --- |") == 2
     assert "## 🎯 Самостоятельный раздел" in markdown
     assert "| Оборот | 100 |\n\n## 🎯" in markdown
+
+
+def test_contract_nested_blocks_are_headings_and_actions_stay_a_numbered_list():
+    payload = _payload()
+    payload["context"] = {
+        "level": "network",
+        "object_name": "АТБ",
+        "period": "2026-02",
+    }
+    payload["workspace_markdown"] = "\n".join([
+        "🏢 Контракт — АТБ | 2026-02",
+        "📦 Категории в контракте",
+        "Категория | Оборот | Финрез",
+        "Напитки | 100 | 20",
+        "📐 Форматы контракта",
+        "Формат | Оборот | Доля контракта | Финрез | SKU | Что делать",
+        "2 л | 80 | 80% | 16 | 10 | защитить/масштабировать",
+        "🚀 План развития контракта",
+        "1. Разобрать категорию с максимальным вкладом.",
+        "2. Собрать пакет отсутствующих SKU-лидеров.",
+        "3. Проверить экономику условий.",
+        "🤝 Переговорный пакет КАМ",
+        "Цель: перейти от общего разговора к пакету развития.",
+        "✅ Что делаем дальше?",
+        "1. Подготовить переговоры по контракту.",
+        "2. Собрать пакет SKU для ввода.",
+        "3. Разобрать категорию с наибольшим эффектом.",
+    ])
+
+    result = attach_canonical_workspace_contract(payload)
+    markdown = result["workspace_markdown"]
+
+    assert "## 📦 Категории в контракте" in markdown
+    assert "### 📐 Форматы контракта" in markdown
+    assert "## 🚀 План развития контракта" in markdown
+    assert "### 🤝 Переговорный пакет КАМ" in markdown
+    assert "### ✅ Что делаем дальше?" in markdown
+    assert "### ✅ Что делаем дальше?\n\n1. Подготовить переговоры по контракту." in markdown
+    assert result["canonical_workspace"]["presentation"]["tables_count"] == 2
+
+    repeated = attach_canonical_workspace_contract(result)
+    assert repeated["workspace_markdown"] == markdown
+    assert repeated["canonical_workspace"]["presentation_hash"] == result["canonical_workspace"]["presentation_hash"]
