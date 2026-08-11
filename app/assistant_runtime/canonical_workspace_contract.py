@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 
 RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-RUNTIME-STABILITY-001"
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 SUPPORTED_WORKSPACE_TYPES = ("Business", "Top Manager", "Manager", "Network / Contract")
 
 
@@ -22,28 +22,89 @@ def _table_separator(line: str) -> str:
     return "| " + " | ".join("---" for _ in cells) + " |"
 
 
+def _is_separator(line: str) -> bool:
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return len(cells) >= 2 and all(re.fullmatch(r":?-{3,}:?", cell or "") for cell in cells)
+
+
+def _is_table_row(line: str) -> bool:
+    if "|" not in line or line.lstrip().startswith(("#", "- ", "* ")):
+        return False
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    if len(cells) < 2:
+        return False
+    # Runtime uses this as object context, not as a two-column table row.
+    if cells[0].lower().startswith("период:"):
+        return False
+    return True
+
+
 def normalize_markdown_tables(markdown: str) -> str:
-    """Promote pipe-delimited rows to valid Markdown tables without changing values."""
+    """Build bounded Markdown tables and remove orphan separators.
+
+    Only presentation punctuation is added or removed. Cell values and their
+    order remain untouched.
+    """
     lines = str(markdown or "").splitlines()
     out: List[str] = []
-    for index, line in enumerate(lines):
-        out.append(line)
-        if "|" not in line:
+    index = 0
+    while index < len(lines):
+        if not _is_table_row(lines[index]):
+            # A separator outside a table is invalid presentation noise.
+            if not _is_separator(lines[index]):
+                out.append(lines[index])
+            index += 1
             continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or all(re.fullmatch(r":?-{3,}:?", cell or "") for cell in cells):
+
+        table: List[str] = []
+        while index < len(lines) and _is_table_row(lines[index]):
+            table.append(lines[index])
+            index += 1
+        table = [line for pos, line in enumerate(table) if not _is_separator(line) or pos == 1]
+        if not table or _is_separator(table[0]):
             continue
-        next_line = lines[index + 1] if index + 1 < len(lines) else ""
-        next_cells = [cell.strip() for cell in next_line.strip().strip("|").split("|")]
-        has_separator = (
-            "|" in next_line
-            and len(next_cells) == len(cells)
-            and all(re.fullmatch(r":?-{3,}:?", cell or "") for cell in next_cells)
-        )
-        previous_is_table_row = index > 0 and "|" in lines[index - 1]
-        if not has_separator and not previous_is_table_row:
-            out.append(_table_separator(line))
+        if len(table) == 1 or not _is_separator(table[1]):
+            table.insert(1, _table_separator(table[0]))
+        if out and out[-1].strip():
+            out.append("")
+        out.extend(table)
+        if index < len(lines) and lines[index].strip():
+            out.append("")
     return "\n".join(out).strip()
+
+
+def normalize_markdown_headings(markdown: str) -> str:
+    """Promote Runtime section labels to visual headings without rewriting text."""
+    section_icons = "📊📈📉🧭🎯💡⚠️🚨🏢👤👥🌐📦🧾🧬⭐➕🗣🚀➡️🔎💰🧩"
+    lines = markdown.splitlines()
+    first_content = next((i for i, line in enumerate(lines) if line.strip()), None)
+    out: List[str] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        promoted = line
+        if stripped and not stripped.startswith("#") and "|" not in stripped:
+            if index == first_content and not stripped.startswith(("Период:", "Комментарий")):
+                promoted = f"# {stripped}"
+            elif stripped.startswith(tuple(section_icons)) or stripped.rstrip(":") in {
+                "Что делаем дальше?", "Что делаем дальше", "Что я бы сделал первым"
+            }:
+                promoted = f"## {stripped.rstrip(':')}"
+        if promoted.lstrip().startswith("#") and out and out[-1].strip():
+            out.append("")
+        out.append(promoted)
+        if promoted.lstrip().startswith("#"):
+            out.append("")
+    # Collapse presentation-only repeated blank lines.
+    compact: List[str] = []
+    for line in out:
+        if not line.strip() and compact and not compact[-1].strip():
+            continue
+        compact.append(line)
+    return "\n".join(compact).strip()
+
+
+def normalize_workspace_markdown(markdown: str) -> str:
+    return normalize_markdown_headings(normalize_markdown_tables(markdown))
 
 
 def _sections(markdown: str) -> List[Dict[str, Any]]:
@@ -98,7 +159,7 @@ def attach_canonical_workspace_contract(payload: Dict[str, Any]) -> Dict[str, An
     if not isinstance(markdown, str) or not markdown.strip():
         return payload
     result = deepcopy(payload)
-    normalized = normalize_markdown_tables(markdown)
+    normalized = normalize_workspace_markdown(markdown)
     result["workspace_markdown"] = normalized
     context = result.get("context") if isinstance(result.get("context"), dict) else {}
     semantic_model = {

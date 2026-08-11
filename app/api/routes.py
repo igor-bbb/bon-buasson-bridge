@@ -3907,7 +3907,9 @@ def _w4_set_primary_workspace(payload: dict, block_key: str) -> dict:
     if not block:
         return payload
     payload['workspace_primary_block'] = block
-    payload['workspace_markdown'] = '\n'.join(str(x) for x in block if str(x or '').strip())
+    # Preserve Runtime-authored block boundaries. Removing empty lines merges
+    # independent sections and tables into one visual structure downstream.
+    payload['workspace_markdown'] = '\n'.join(str(x or '') for x in block)
     payload['summary_block'] = 'Основной рабочий стол находится в workspace_primary_block. Выводить его полностью, не сокращая доказательные таблицы.'
     order = payload.get('screen_order') if isinstance(payload.get('screen_order'), list) else []
     payload['screen_order'] = ['workspace_primary_block', block_key, 'navigation_block'] + [

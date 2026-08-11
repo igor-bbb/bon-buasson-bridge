@@ -1,3 +1,5 @@
+import pytest
+
 from app.assistant_runtime.canonical_workspace_contract import attach_canonical_workspace_contract
 
 
@@ -28,3 +30,59 @@ def test_canonical_contract_is_deterministic_for_same_workspace():
     assert left["semantic_hash"] == right["semantic_hash"]
     assert left["presentation_hash"] == right["presentation_hash"]
 
+
+@pytest.mark.parametrize("level,title", [
+    ("business", "📊 Бизнес — Бон Буассон"),
+    ("manager_top", "👤 Топ-менеджер — Ситников Микола"),
+    ("manager", "👤 Менеджер — Иваненко"),
+    ("network", "🏢 Контракт — Варус"),
+])
+def test_all_management_levels_share_bounded_visual_structure(level, title):
+    payload = _payload()
+    payload["context"]["level"] = level
+    payload["workspace_markdown"] = "\n".join([
+        title,
+        "Период: 2026-02",
+        "",
+        "📊 Ключевые показатели",
+        "Показатель | Факт",
+        "Оборот | 100",
+        "",
+        "Комментарий ассистента: данные сформированы Runtime.",
+        "",
+        "🎯 Приоритеты",
+        "Приоритет | Основание",
+        "Первый | Факт Runtime",
+        "",
+        "➡️ Что делаем дальше?",
+        "1. Открыть следующий уровень",
+    ])
+    result = attach_canonical_workspace_contract(payload)
+    markdown = result["workspace_markdown"]
+
+    assert markdown.startswith(f"# {title}")
+    assert "## 📊 Ключевые показатели" in markdown
+    assert "## 🎯 Приоритеты" in markdown
+    assert "## ➡️ Что делаем дальше?" in markdown
+    assert markdown.count("| --- | --- |") == 2
+    assert "\n\nКомментарий ассистента:" in markdown
+    assert result["canonical_workspace"]["presentation"]["tables_count"] == 2
+
+
+def test_orphan_separators_are_removed_and_do_not_create_mega_table():
+    payload = _payload()
+    payload["workspace_markdown"] = "\n".join([
+        "👤 Топ-менеджер — Ситников Микола",
+        "Показатель | Значение",
+        "| --- | --- |",
+        "Оборот | 100",
+        "| --- | --- |",
+        "🎯 Самостоятельный раздел",
+        "Риск | Значение",
+        "Маржа | 5%",
+    ])
+    markdown = attach_canonical_workspace_contract(payload)["workspace_markdown"]
+
+    assert markdown.count("| --- | --- |") == 2
+    assert "## 🎯 Самостоятельный раздел" in markdown
+    assert "Оборот | 100\n\n## 🎯" in markdown
