@@ -8180,7 +8180,7 @@ def _laboratory_business_data_openapi_schema() -> dict:
     return _laboratory_split_openapi_schema(
         _LABORATORY_BUSINESS_DATA_PATHS,
         title='VECTRA Laboratory Business Data Actions',
-        version='VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
+        version='VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-001',
         description='Business Data read-only Actions for VECTRA Laboratory, including get_canonical_workspace for the same final Professional Workspace used by Business Chat. This schema is intentionally below the GPT Actions 30-operation limit.',
         scope='laboratory_business_data_actions',
     )
@@ -9469,7 +9469,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
+        'version': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-001',
         'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
@@ -9486,7 +9486,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
+        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),

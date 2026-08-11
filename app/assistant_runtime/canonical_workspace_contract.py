@@ -12,8 +12,8 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001"
-CONTRACT_VERSION = "2.0"
+RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-001"
+CONTRACT_VERSION = "2.1"
 SUPPORTED_WORKSPACE_TYPES = ("business", "top_manager", "manager", "network", "contract")
 _WORKSPACE_TYPE_ALIASES = {
     "business": "business",
@@ -62,6 +62,12 @@ def _is_table_row(line: str) -> bool:
     return True
 
 
+def _canonical_table_row(line: str) -> str:
+    """Return one unambiguous, fully bounded Markdown table row."""
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return "| " + " | ".join(cells) + " |"
+
+
 def normalize_markdown_tables(markdown: str) -> str:
     """Build bounded Markdown tables and remove orphan separators.
 
@@ -90,7 +96,10 @@ def normalize_markdown_tables(markdown: str) -> str:
             table.insert(1, _table_separator(table[0]))
         if out and out[-1].strip():
             out.append("")
-        out.extend(table)
+        # Fully bound every row.  Mixed rows (header without edge pipes plus a
+        # separator with edge pipes) are interpreted inconsistently by Custom
+        # GPT rendering and can collapse all header labels into the first cell.
+        out.extend(_canonical_table_row(line) for line in table)
         if index < len(lines) and lines[index].strip():
             out.append("")
     return "\n".join(out).strip()
@@ -107,6 +116,7 @@ def normalize_markdown_headings(markdown: str) -> str:
     lines = markdown.splitlines()
     first_content = next((i for i, line in enumerate(lines) if line.strip()), None)
     out: List[str] = []
+    current_section = ""
     for index, line in enumerate(lines):
         stripped = line.strip()
         promoted = line
@@ -116,10 +126,14 @@ def normalize_markdown_headings(markdown: str) -> str:
             elif stripped.startswith(tuple(_SECTION_ICONS)) or stripped.rstrip(":") in _FINAL_SECTION_LABELS:
                 promoted = f"## {stripped.rstrip(':')}"
 
+        heading_match = re.match(r"^##\s+(.+?)\s*$", promoted.strip())
+        if heading_match:
+            current_section = heading_match.group(1)
+
         # A subsection label is currently embedded in the first header cell.
         # Add a real visual boundary but preserve the complete original header
         # row and every value exactly as Runtime produced them.
-        if _is_table_row(stripped):
+        if _is_table_row(stripped) and "business context" in current_section.lower():
             first_cell = stripped.strip("|").split("|", 1)[0].strip()
             subsection = _NESTED_TABLE_SECTIONS.get(first_cell)
             if subsection:

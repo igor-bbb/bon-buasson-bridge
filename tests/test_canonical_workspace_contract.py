@@ -20,6 +20,7 @@ def _payload():
 
 def test_canonical_renderer_promotes_plain_pipe_rows_to_markdown_table():
     result = attach_canonical_workspace_contract(_payload())
+    assert "| Показатель | Факт | Изменение |" in result["workspace_markdown"]
     assert "| --- | --- | --- |" in result["workspace_markdown"]
     contract = result["canonical_workspace"]
     assert contract["presentation"]["tables_count"] == 1
@@ -126,7 +127,7 @@ def test_business_context_has_three_independent_subsections_and_tables():
     assert "### Форматы бизнеса" in markdown
     assert "### SKU-лидеры бизнеса" in markdown
     assert result["canonical_workspace"]["presentation"]["tables_count"] == 3
-    assert "Лимонад | 40 | 8\n\nКомментарий ассистента:" in markdown
+    assert "| Лимонад | 40 | 8 |\n\nКомментарий ассистента:" in markdown
 
     repeated = attach_canonical_workspace_contract(result)
     assert repeated["workspace_markdown"] == markdown
@@ -147,14 +148,44 @@ def test_normalization_preserves_runtime_content_and_numbers():
     payload = _payload()
     payload["workspace_markdown"] = "\n".join(source_lines)
 
-    normalized_lines = attach_canonical_workspace_contract(payload)["workspace_markdown"].splitlines()
-    restored_lines = []
-    for line in normalized_lines:
-        if not line.strip() or line.strip().startswith("| ---"):
-            continue
-        restored_lines.append(line.lstrip("#").strip())
+    normalized = attach_canonical_workspace_contract(payload)["workspace_markdown"]
+    for source in source_lines:
+        if " | " in source and not source.startswith("🧭"):
+            assert f"| {source} |" in normalized
+        else:
+            assert source in normalized
 
-    assert restored_lines == source_lines
+
+def test_actual_business_shape_keeps_headers_and_structural_category_row():
+    payload = _payload()
+    payload["workspace_markdown"] = "\n".join([
+        "📍 Рабочий стол бизнеса — 2026-02",
+        "📊 Ключевые показатели бизнеса",
+        "Показатель | Текущий период | Прошлый год | Изменение | Что означает",
+        "Оборот | 33 740 715 | 43 892 201 | −10 151 486 | масштаб бизнеса",
+        "🏗 Структурный анализ бизнеса",
+        "Структура | Сейчас | Прошлый год | Δ | Что означает",
+        "Топ-менеджеры | 8 | 8 | +0 | без изменений",
+        "Категории | 3 | 4 | −1 | сокращение: состав бизнеса уменьшился",
+        "Группы ТМС | 31 | 25 | +6 | расширение",
+        "🌐 Business Context: что отличается внутри бизнеса",
+        "Категории | Оборот | Доля бизнеса | Финрез ДО | Δ прибыли | Что означает",
+        "Напитки | 21 239 143 | 62.95% | +6 413 690 | +2 696 315 | ключевой контур",
+        "Форматы бизнеса | Оборот | Доля бизнеса | SKU | Финрез | Управленческий смысл",
+        "2 л | 18 352 637 | 54.39% | 32 | +5 724 342 | формат масштаба",
+        "SKU-лидеры бизнеса | Оборот | Финрез ДО | Сетей | Зачем смотреть",
+        "Лимонад 2л | 3 155 825 | +1 144 215 | 77 | доказательная база",
+    ])
+
+    markdown = attach_canonical_workspace_contract(payload)["workspace_markdown"]
+
+    assert "| Показатель | Текущий период | Прошлый год | Изменение | Что означает |" in markdown
+    assert "| Структура | Сейчас | Прошлый год | Δ | Что означает |" in markdown
+    assert "| Категории | 3 | 4 | −1 | сокращение: состав бизнеса уменьшился |" in markdown
+    assert "### Категории\n\n| Категории | Оборот | Доля бизнеса" in markdown
+    assert markdown.count("### Категории") == 1
+    assert markdown.count("### Форматы бизнеса") == 1
+    assert markdown.count("### SKU-лидеры бизнеса") == 1
 
 
 def test_orphan_separators_are_removed_and_do_not_create_mega_table():
@@ -173,4 +204,4 @@ def test_orphan_separators_are_removed_and_do_not_create_mega_table():
 
     assert markdown.count("| --- | --- |") == 2
     assert "## 🎯 Самостоятельный раздел" in markdown
-    assert "Оборот | 100\n\n## 🎯" in markdown
+    assert "| Оборот | 100 |\n\n## 🎯" in markdown
