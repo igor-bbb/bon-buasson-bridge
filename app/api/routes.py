@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timezone
 
 import hashlib
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
@@ -33,6 +34,11 @@ from app.domain.metrics import aggregate_metrics
 from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query, save_last_payload, update_session, get_session
 from app.workspace_runtime import apply_runtime_contract
+from app.assistant_runtime.canonical_workspace_contract import (
+    SUPPORTED_WORKSPACE_TYPES,
+    attach_canonical_workspace_contract,
+)
+from app.assistant_runtime.action_execution_diagnostics import execution_evidence
 from app.development_journal import (
     add_runtime_event as add_development_journal_runtime_event,
     add_global_record as add_development_journal_global_record,
@@ -9355,6 +9361,42 @@ def _business_decision_framework_report_request_schema() -> dict:
         'additionalProperties': False,
     }
 
+
+def _business_data_facade_request_schema() -> dict:
+    return {
+        'type': 'object',
+        'required': ['operation_type'],
+        'properties': {
+            'operation_type': {
+                'type': 'string',
+                'enum': [
+                    'manifest', 'status', 'entities', 'discovery', 'summary',
+                    'manager_top_summary', 'manager_summary', 'contract_summary',
+                    'category_summary', 'sku_summary', 'query', 'first_impression',
+                    'get_canonical_workspace', 'verify',
+                ],
+            },
+            'payload': {
+                'type': 'object',
+                'properties': {
+                    'business_domain': {'type': 'string', 'default': 'bonboason'},
+                    'period': {'type': 'string', 'description': 'Business period in YYYY-MM format.'},
+                    'workspace_type': {'type': 'string', 'enum': list(SUPPORTED_WORKSPACE_TYPES)},
+                    'object_id': {'type': 'string'},
+                    'manager_top': {'type': 'string'},
+                    'manager': {'type': 'string'},
+                    'network': {'type': 'string'},
+                    'message': {'type': 'string'},
+                    'session_id': {'type': 'string'},
+                },
+                'additionalProperties': True,
+            },
+            'session_id': {'type': 'string'},
+            'request_id': {'type': 'string'},
+        },
+        'additionalProperties': True,
+    }
+
 def _laboratory_facade_openapi_schema() -> dict:
     server_url = os.getenv('VECTRA_PUBLIC_RUNTIME_URL') or os.getenv('VECTRA_RUNTIME_URL') or os.getenv('RENDER_EXTERNAL_URL') or 'https://bon-buasson-api.onrender.com'
     api_key_required = bool(os.getenv('VECTRA_LABORATORY_API_KEY'))
@@ -9402,6 +9444,8 @@ def _laboratory_facade_openapi_schema() -> dict:
                 request_schema = _knowledge_candidate_action_request_schema()
             elif operation_id == 'executeVectraBusinessDomainOperation':
                 request_schema = _business_domain_action_request_schema()
+            elif operation_id == 'executeVectraBusinessDataOperation':
+                request_schema = _business_data_facade_request_schema()
             elif operation_id == 'executeVectraProductReviewOperation':
                 request_schema = _product_review_action_request_schema()
             elif operation_id == 'executeVectraMemoryOperation':
@@ -9488,7 +9532,7 @@ def _facade_response(operation_type: str, runtime_service: str, endpoint: str, r
         next_action=next_action,
     )
     resolved_next_action = professional_pipeline.get('recommended_next_action') or next_action
-    return {
+    response = {
         'status': status,
         'render_mode': 'vectra_laboratory_facade_operation',
         'operation_type': operation_type,
@@ -9504,6 +9548,13 @@ def _facade_response(operation_type: str, runtime_service: str, endpoint: str, r
         'error': None if status == 'ok' else (result if isinstance(result, dict) else {'message': str(result)}),
         'next_recommended_action': resolved_next_action,
     }
+    response['action_execution'] = execution_evidence(
+        operation_type=operation_type,
+        status=status,
+        runtime_service=runtime_service,
+        error=response.get('error'),
+    )
+    return response
 
 
 
@@ -9579,7 +9630,7 @@ def _compact_capitalization_facade_result(result: Any, operation_type: str = 'ca
     return compact
 
 def _facade_error(operation_type: str, message: str, *, runtime_service: str = '', endpoint: str = '', next_action: str = '') -> dict:
-    return {
+    response = {
         'status': 'error',
         'render_mode': 'vectra_laboratory_facade_operation',
         'operation_type': operation_type,
@@ -9592,6 +9643,14 @@ def _facade_error(operation_type: str, message: str, *, runtime_service: str = '
         'error': {'message': message},
         'next_recommended_action': next_action,
     }
+    response['action_execution'] = execution_evidence(
+        operation_type=operation_type,
+        status='error',
+        runtime_service=runtime_service,
+        error=message,
+    )
+    response['error']['error_class'] = response['action_execution']['error_class']
+    return response
 
 
 def _normalize_facade_request(request: dict | None) -> tuple[str, dict, bool, str, str, str]:
@@ -11038,7 +11097,57 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
             return json_response(_facade_response(operation_type, 'business_data.query', '/vectra/laboratory/business-data/query', run_vectra_business_data_query(message=str(payload.get('message') or payload.get('query') or ''), session_id=session_id or 'laboratory-facade')))
         if operation_type in {'first_impression', 'explore', 'initial_exploration', 'business_first_impression'}:
             return json_response(_facade_response(operation_type, 'business_data.first_impression', '/vectra/laboratory/facade/business-data', get_vectra_business_data_first_impression(period=period or None, message=str(payload.get('message') or payload.get('query') or ''))))
+        if operation_type in {'get_canonical_workspace', 'canonical_workspace'}:
+            workspace_type = str(payload.get('workspace_type') or '').strip()
+            object_id = str(payload.get('object_id') or '').strip()
+            business_domain = str(payload.get('business_domain') or domain or 'bonboason').strip()
+            if workspace_type not in SUPPORTED_WORKSPACE_TYPES:
+                return json_response(_facade_error(
+                    operation_type,
+                    f'workspace_type must be one of: {", ".join(SUPPORTED_WORKSPACE_TYPES)}',
+                    runtime_service='canonical_workspace.get',
+                    endpoint='/vectra/laboratory/facade/business-data',
+                ))
+            if not period:
+                return json_response(_facade_error(operation_type, 'period is required', runtime_service='canonical_workspace.get'))
+            if workspace_type != 'Business' and not object_id:
+                return json_response(_facade_error(operation_type, 'object_id is required for this workspace_type', runtime_service='canonical_workspace.get'))
+            if business_domain.lower().replace('_', '').replace('-', '') not in {'bonboason', 'бонбуассон'}:
+                return json_response(_facade_error(operation_type, 'Unknown business_domain', runtime_service='canonical_workspace.get'))
+            command = f'Бизнес {period}' if workspace_type == 'Business' else f'{object_id} {period}'
+            canonical_session = session_id or f'laboratory-canonical-{uuid.uuid4().hex}'
+            response = vectra_query(VectraQueryRequest(message=command, session_id=canonical_session))
+            rendered = json.loads(response.body.decode('utf-8'))
+            rendered = attach_canonical_workspace_contract(rendered)
+            canonical = rendered.get('canonical_workspace') if isinstance(rendered, dict) else None
+            if not isinstance(canonical, dict):
+                return json_response(_facade_error(
+                    operation_type,
+                    'Canonical Workspace was not produced by Runtime',
+                    runtime_service='canonical_workspace.get',
+                    endpoint='/vectra/query',
+                ))
+            result = {
+                'status': 'PASS',
+                'read_only': True,
+                'source_runtime': '/vectra/query',
+                'business_domain': business_domain,
+                'period': period,
+                'workspace_type': workspace_type,
+                'object_id': object_id or 'Бон Буассон',
+                'canonical_workspace': canonical,
+                'workspace_markdown': rendered.get('workspace_markdown'),
+                'workspace_render_instruction': rendered.get('workspace_render_instruction'),
+            }
+            return json_response(_facade_response(
+                operation_type,
+                'canonical_workspace.get',
+                '/vectra/query',
+                result,
+                next_action='Render workspace_markdown verbatim or compare canonical hashes with the Business response.',
+            ))
         level_map = {
+            'manager_top_summary': ('manager-top', 'manager_top', '/vectra/laboratory/business-data/summary/manager-top'),
             'manager_summary': ('manager', 'manager', '/vectra/laboratory/business-data/summary/manager'),
             'contract_summary': ('network', 'network', '/vectra/laboratory/business-data/summary/network'),
             'category_summary': ('category', 'category', '/vectra/laboratory/business-data/summary/category'),
@@ -11046,7 +11155,7 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
         }
         if operation_type in level_map:
             level, key, endpoint = level_map[operation_type]
-            kwargs = {'period': period, key: str(payload.get(key) or payload.get('object_name') or '')}
+            kwargs = {'period': period, key: str(payload.get(key) or payload.get('object_id') or payload.get('object_name') or '')}
             return json_response(_facade_response(operation_type, f'business_data.summary.{level}', endpoint, public_summary(get_vectra_business_data_summary(level, **kwargs))))
         return json_response(_facade_error(operation_type, f'Unsupported business data operation_type: {operation_type}', runtime_service='business_data_facade'))
     except Exception as exc:
@@ -13023,6 +13132,9 @@ def vectra_query(request: VectraQueryRequest):
         'result_block' in render_only_payload,
     )
     _log_vectra_query_payload(session_id, render_only_payload)
+    # DEV-0007/DEV-0008: both Business Chat and Laboratory receive the same
+    # semantic/presentation object from this single Runtime boundary.
+    render_only_payload = attach_canonical_workspace_contract(render_only_payload)
     render_only_payload = _enforce_public_response_budget(render_only_payload)
     return json_response(render_only_payload)
 

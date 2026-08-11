@@ -137,6 +137,17 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "read_only": True,
     },
     {
+        "operation_type": "get_canonical_workspace",
+        "description": "Read the same canonical Professional Workspace used by Business Chat.",
+        "required_parameters": ["business_domain", "period", "workspace_type", "object_id"],
+        "optional_parameters": ["session_id"],
+        "supports_pagination": False,
+        "max_response_size": "large",
+        "read_only": True,
+        "supported_workspace_types": ["Business", "Top Manager", "Manager", "Network / Contract"],
+        "object_id_optional_for": ["Business"],
+    },
+    {
         "operation_type": "discovery",
         "aliases": ["business_discovery", "discover", "inspect_source"],
         "description": "Compact structural discovery of Business Data before business analysis.",
