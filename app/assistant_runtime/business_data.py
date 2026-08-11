@@ -144,8 +144,7 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "supports_pagination": False,
         "max_response_size": "large",
         "read_only": True,
-        "supported_workspace_types": ["Business", "Top Manager", "Manager", "Network / Contract"],
-        "object_id_optional_for": ["Business"],
+        "supported_workspace_types": ["business", "top_manager", "manager", "network", "contract"],
     },
     {
         "operation_type": "discovery",
@@ -583,7 +582,7 @@ def get_business_data_status() -> Dict[str, Any]:
                 "business_data": "/vectra/laboratory/openapi/business-data.json",
                 "knowledge_self_evolution": "/vectra/laboratory/openapi/knowledge.json",
             },
-            "actions_schema_version": "FOUNDATION-0008-PV",
+            "actions_schema_version": "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001",
             "actions_schema_contains_business_data_endpoints": True,
             "business_data_scope": "read_only_existing_runtime_business_data",
             "product_owner_manual_copy_required": False,
@@ -738,7 +737,7 @@ def verify_business_data_access() -> Dict[str, Any]:
         "sample_size": len(sample.get("rows") or []),
         "read_only": True,
         "mutation_endpoints_exposed": False,
-        "actions_schema_version": "FOUNDATION-0008-PV",
+        "actions_schema_version": "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001",
         "required_action_endpoints": required_action_endpoints,
         "available_read_only_endpoints": exposed_endpoints,
     }

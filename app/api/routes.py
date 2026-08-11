@@ -37,6 +37,7 @@ from app.workspace_runtime import apply_runtime_contract
 from app.assistant_runtime.canonical_workspace_contract import (
     SUPPORTED_WORKSPACE_TYPES,
     attach_canonical_workspace_contract,
+    normalize_workspace_type,
 )
 from app.assistant_runtime.action_execution_diagnostics import execution_evidence
 from app.development_journal import (
@@ -8179,8 +8180,8 @@ def _laboratory_business_data_openapi_schema() -> dict:
     return _laboratory_split_openapi_schema(
         _LABORATORY_BUSINESS_DATA_PATHS,
         title='VECTRA Laboratory Business Data Actions',
-        version='FOUNDATION-0011-BUSINESS-DATA',
-        description='Business Data read-only Actions for VECTRA Laboratory: status, entities, samples, summaries, query and verification. This schema is intentionally below the GPT Actions 30-operation limit.',
+        version='VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
+        description='Business Data read-only Actions for VECTRA Laboratory, including get_canonical_workspace for the same final Professional Workspace used by Business Chat. This schema is intentionally below the GPT Actions 30-operation limit.',
         scope='laboratory_business_data_actions',
     )
 
@@ -8280,7 +8281,7 @@ _FACADE_ACTIONS = [
     ('executeVectraKnowledgeOperation', 'POST', '/vectra/laboratory/facade/knowledge', 'Execute VECTRA Knowledge operation', 'Facade for Professional and Business Knowledge operations.'),
     ('createVectraKnowledgeCandidate', 'POST', '/vectra/knowledge/candidates', 'Create VECTRA Knowledge Candidate', 'Dedicated Product Owner approval-gated Action for creating one Professional or Business Knowledge Candidate. This operation does not create a capitalization package and does not write confirmed knowledge.'),
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
-    ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Facade for read-only Business Data manifest, discovery, status, entities, summaries and query.'),
+    ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Read-only facade for Business Data and the canonical Professional Workspace. Use operation_type=get_canonical_workspace to receive the same final workspace as Business Chat.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
     ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for memory, architecture, Runtime component status and read-only Runtime Snapshot operations. Use operation_type=get_runtime_snapshot for the official 12-root readback.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
@@ -9468,8 +9469,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-        'version': 'VECTRA-RUNTIME-ROOTS-READBACK-001',
-        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use exact facade operation types and runVectraSelfAudit for self-audit.',
+        'version': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
+        'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9485,7 +9486,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-RUNTIME-ROOTS-READBACK-001',
+        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11100,7 +11101,8 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
         if operation_type in {'first_impression', 'explore', 'initial_exploration', 'business_first_impression'}:
             return json_response(_facade_response(operation_type, 'business_data.first_impression', '/vectra/laboratory/facade/business-data', get_vectra_business_data_first_impression(period=period or None, message=str(payload.get('message') or payload.get('query') or ''))))
         if operation_type in {'get_canonical_workspace', 'canonical_workspace'}:
-            workspace_type = str(payload.get('workspace_type') or '').strip()
+            requested_workspace_type = str(payload.get('workspace_type') or '').strip()
+            workspace_type = normalize_workspace_type(requested_workspace_type)
             object_id = str(payload.get('object_id') or '').strip()
             business_domain = str(payload.get('business_domain') or domain or 'bonboason').strip()
             if workspace_type not in SUPPORTED_WORKSPACE_TYPES:
@@ -11112,11 +11114,11 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
                 ))
             if not period:
                 return json_response(_facade_error(operation_type, 'period is required', runtime_service='canonical_workspace.get'))
-            if workspace_type != 'Business' and not object_id:
-                return json_response(_facade_error(operation_type, 'object_id is required for this workspace_type', runtime_service='canonical_workspace.get'))
+            if not object_id:
+                return json_response(_facade_error(operation_type, 'object_id is required', runtime_service='canonical_workspace.get'))
             if business_domain.lower().replace('_', '').replace('-', '') not in {'bonboason', 'бонбуассон'}:
                 return json_response(_facade_error(operation_type, 'Unknown business_domain', runtime_service='canonical_workspace.get'))
-            command = f'Бизнес {period}' if workspace_type == 'Business' else f'{object_id} {period}'
+            command = f'Бизнес {period}' if workspace_type == 'business' else f'{object_id} {period}'
             canonical_session = session_id or f'laboratory-canonical-{uuid.uuid4().hex}'
             response = vectra_query(VectraQueryRequest(message=command, session_id=canonical_session))
             rendered = json.loads(response.body.decode('utf-8'))

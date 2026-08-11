@@ -1,6 +1,9 @@
 import pytest
 
-from app.assistant_runtime.canonical_workspace_contract import attach_canonical_workspace_contract
+from app.assistant_runtime.canonical_workspace_contract import (
+    attach_canonical_workspace_contract,
+    normalize_workspace_type,
+)
 
 
 def _payload():
@@ -29,6 +32,18 @@ def test_canonical_contract_is_deterministic_for_same_workspace():
     right = attach_canonical_workspace_contract(_payload())["canonical_workspace"]
     assert left["semantic_hash"] == right["semantic_hash"]
     assert left["presentation_hash"] == right["presentation_hash"]
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("business", "business"),
+    ("Business", "business"),
+    ("top_manager", "top_manager"),
+    ("Top Manager", "top_manager"),
+    ("network / contract", "network"),
+    ("contract", "contract"),
+])
+def test_workspace_type_contract_accepts_canonical_and_legacy_values(value, expected):
+    assert normalize_workspace_type(value) == expected
 
 
 @pytest.mark.parametrize("level,title", [
@@ -67,6 +82,79 @@ def test_all_management_levels_share_bounded_visual_structure(level, title):
     assert markdown.count("| --- | --- |") == 2
     assert "\n\nКомментарий ассистента:" in markdown
     assert result["canonical_workspace"]["presentation"]["tables_count"] == 2
+    assert result["workspace_primary_block"] == markdown.splitlines()
+    assert result["screen_order"] == ["workspace_markdown"]
+
+
+def test_management_title_with_period_pipe_is_heading_not_table():
+    payload = _payload()
+    payload["context"]["level"] = "manager_top"
+    payload["workspace_markdown"] = "\n".join([
+        "🧭 Рабочий стол управления — Ситников Микола | 2026-02",
+        "👤 Рабочий стол: Руководитель направления",
+        "📊 Ключевые показатели",
+        "Показатель | Факт",
+        "Оборот | 100",
+    ])
+
+    markdown = attach_canonical_workspace_contract(payload)["workspace_markdown"]
+
+    assert markdown.startswith("# 🧭 Рабочий стол управления — Ситников Микола | 2026-02")
+    assert "# 🧭 Рабочий стол управления — Ситников Микола | 2026-02\n| --- | --- |" not in markdown
+    assert markdown.count("| --- | --- |") == 1
+
+
+def test_business_context_has_three_independent_subsections_and_tables():
+    payload = _payload()
+    payload["workspace_markdown"] = "\n".join([
+        "📍 Рабочий стол бизнеса — 2026-02",
+        "🌐 Business Context: что отличается внутри бизнеса",
+        "Категории | Оборот | Доля бизнеса",
+        "Газированные напитки | 100 | 50%",
+        "Форматы бизнеса | Оборот | SKU",
+        "2 л | 80 | 10",
+        "SKU-лидеры бизнеса | Оборот | Финрез ДО",
+        "Лимонад | 40 | 8",
+        "Комментарий ассистента: карта возможностей бизнеса.",
+    ])
+
+    result = attach_canonical_workspace_contract(payload)
+    markdown = result["workspace_markdown"]
+
+    assert "## 🌐 Business Context: что отличается внутри бизнеса" in markdown
+    assert "### Категории" in markdown
+    assert "### Форматы бизнеса" in markdown
+    assert "### SKU-лидеры бизнеса" in markdown
+    assert result["canonical_workspace"]["presentation"]["tables_count"] == 3
+    assert "Лимонад | 40 | 8\n\nКомментарий ассистента:" in markdown
+
+    repeated = attach_canonical_workspace_contract(result)
+    assert repeated["workspace_markdown"] == markdown
+    assert repeated["canonical_workspace"]["presentation_hash"] == result["canonical_workspace"]["presentation_hash"]
+
+
+def test_normalization_preserves_runtime_content_and_numbers():
+    source_lines = [
+        "🧭 Рабочий стол управления — Ситников Микола | 2026-02",
+        "📊 Ключевые показатели",
+        "Показатель | Текущий период | Прошлый год | Изменение",
+        "Оборот | 12 345 678 | 13 000 000 | −654 322",
+        "Маржа | 14,2% | 11,8% | +2,4 п.п.",
+        "Комментарий ассистента: значения сформированы Runtime.",
+        "➡️ Что делаем дальше?",
+        "1. Открыть менеджера",
+    ]
+    payload = _payload()
+    payload["workspace_markdown"] = "\n".join(source_lines)
+
+    normalized_lines = attach_canonical_workspace_contract(payload)["workspace_markdown"].splitlines()
+    restored_lines = []
+    for line in normalized_lines:
+        if not line.strip() or line.strip().startswith("| ---"):
+            continue
+        restored_lines.append(line.lstrip("#").strip())
+
+    assert restored_lines == source_lines
 
 
 def test_orphan_separators_are_removed_and_do_not_create_mega_table():

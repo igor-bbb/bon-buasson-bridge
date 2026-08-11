@@ -12,9 +12,32 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-RUNTIME-STABILITY-001"
-CONTRACT_VERSION = "1.1"
-SUPPORTED_WORKSPACE_TYPES = ("Business", "Top Manager", "Manager", "Network / Contract")
+RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001"
+CONTRACT_VERSION = "2.0"
+SUPPORTED_WORKSPACE_TYPES = ("business", "top_manager", "manager", "network", "contract")
+_WORKSPACE_TYPE_ALIASES = {
+    "business": "business",
+    "top_manager": "top_manager",
+    "top manager": "top_manager",
+    "manager": "manager",
+    "network": "network",
+    "contract": "contract",
+    "network / contract": "network",
+    "network_contract": "network",
+}
+
+_SECTION_ICONS = "📊📈📉🧭🎯💡⚠️🚨🏢👤👥🌐📦🧾🧬⭐➕🗣🚀➡️🔎💰🧩🧠🏗💵🧲📍🤖"
+_FINAL_SECTION_LABELS = {"Что делаем дальше?", "Что делаем дальше", "Что я бы сделал первым"}
+_NESTED_TABLE_SECTIONS = {
+    "Категории": "Категории",
+    "Форматы бизнеса": "Форматы бизнеса",
+    "SKU-лидеры бизнеса": "SKU-лидеры бизнеса",
+}
+
+
+def normalize_workspace_type(value: str) -> str:
+    """Return the public workspace type while accepting legacy aliases."""
+    return _WORKSPACE_TYPE_ALIASES.get(str(value or "").strip().lower(), "")
 
 
 def _table_separator(line: str) -> str:
@@ -74,21 +97,38 @@ def normalize_markdown_tables(markdown: str) -> str:
 
 
 def normalize_markdown_headings(markdown: str) -> str:
-    """Promote Runtime section labels to visual headings without rewriting text."""
-    section_icons = "📊📈📉🧭🎯💡⚠️🚨🏢👤👥🌐📦🧾🧬⭐➕🗣🚀➡️🔎💰🧩"
+    """Promote Runtime labels before table detection.
+
+    The order matters: some workspace titles contain ``| period``.  If table
+    parsing runs first, that title is incorrectly converted into a two-column
+    table.  Business Context table headers also carry the subsection name in
+    their first cell, so an H3 boundary is inserted without changing the row.
+    """
     lines = markdown.splitlines()
     first_content = next((i for i, line in enumerate(lines) if line.strip()), None)
     out: List[str] = []
     for index, line in enumerate(lines):
         stripped = line.strip()
         promoted = line
-        if stripped and not stripped.startswith("#") and "|" not in stripped:
+        if stripped and not stripped.startswith("#"):
             if index == first_content and not stripped.startswith(("Период:", "Комментарий")):
                 promoted = f"# {stripped}"
-            elif stripped.startswith(tuple(section_icons)) or stripped.rstrip(":") in {
-                "Что делаем дальше?", "Что делаем дальше", "Что я бы сделал первым"
-            }:
+            elif stripped.startswith(tuple(_SECTION_ICONS)) or stripped.rstrip(":") in _FINAL_SECTION_LABELS:
                 promoted = f"## {stripped.rstrip(':')}"
+
+        # A subsection label is currently embedded in the first header cell.
+        # Add a real visual boundary but preserve the complete original header
+        # row and every value exactly as Runtime produced them.
+        if _is_table_row(stripped):
+            first_cell = stripped.strip("|").split("|", 1)[0].strip()
+            subsection = _NESTED_TABLE_SECTIONS.get(first_cell)
+            if subsection:
+                subsection_heading = f"### {subsection}"
+                last_content = next((item.strip() for item in reversed(out) if item.strip()), "")
+                if last_content != subsection_heading:
+                    if out and out[-1].strip():
+                        out.append("")
+                    out.extend([subsection_heading, ""])
         if promoted.lstrip().startswith("#") and out and out[-1].strip():
             out.append("")
         out.append(promoted)
@@ -104,7 +144,9 @@ def normalize_markdown_headings(markdown: str) -> str:
 
 
 def normalize_workspace_markdown(markdown: str) -> str:
-    return normalize_markdown_headings(normalize_markdown_tables(markdown))
+    # Headings must be established first so that titles containing a pipe and
+    # nested Business Context sections become hard table boundaries.
+    return normalize_markdown_tables(normalize_markdown_headings(markdown))
 
 
 def _sections(markdown: str) -> List[Dict[str, Any]]:
@@ -161,6 +203,11 @@ def attach_canonical_workspace_contract(payload: Dict[str, Any]) -> Dict[str, An
     result = deepcopy(payload)
     normalized = normalize_workspace_markdown(markdown)
     result["workspace_markdown"] = normalized
+    # Publish the same normalized surface through both legacy and canonical
+    # presentation fields.  Older Business clients read workspace_primary_block
+    # while Laboratory and newer clients read workspace_markdown.
+    result["workspace_primary_block"] = normalized.splitlines()
+    result["screen_order"] = ["workspace_markdown"]
     context = result.get("context") if isinstance(result.get("context"), dict) else {}
     semantic_model = {
         "context": deepcopy(context),
@@ -187,7 +234,7 @@ def attach_canonical_workspace_contract(payload: Dict[str, Any]) -> Dict[str, An
         "read_only": True,
     }
     result["workspace_render_instruction"] = (
-        "Показать workspace_markdown полностью как Markdown: заголовки — заголовками, "
-        "таблицы — таблицами, разделы — в порядке canonical_workspace.presentation.sections."
+        "Вывести только workspace_markdown полностью и без пересборки: заголовки — заголовками, "
+        "каждую таблицу — отдельно, комментарии — вне таблиц, действия — нумерованным списком."
     )
     return result
