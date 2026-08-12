@@ -8964,6 +8964,49 @@ def _facade_response_schema() -> dict:
     }
 
 
+def _business_workspace_response_schema() -> dict:
+    """Strict user-facing response contract for executeVectraQuery.
+
+    The Custom GPT must treat workspace_markdown as an already rendered screen,
+    not as source data from which it may reconstruct headings or tables.
+    """
+    return {
+        'type': 'object',
+        'required': ['status', 'workspace_markdown', 'workspace_render_instruction', 'screen_order'],
+        'properties': {
+            'status': {'type': 'string', 'description': 'Runtime execution status.'},
+            'reason': {'type': ['string', 'null']},
+            'workspace_markdown': {
+                'type': 'string',
+                'description': (
+                    'The complete, ready-to-display VECTRA Business Workspace. '
+                    'Render this value verbatim as Markdown. Do not summarize, reconstruct, '
+                    'reformat or repair it. Preserve every newline and every pipe character (|), '
+                    'especially all Markdown table header cell separators.'
+                ),
+            },
+            'workspace_render_instruction': {
+                'type': 'string',
+                'description': 'Mandatory rendering instruction for the assistant.',
+            },
+            'screen_order': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': 'The only user-visible screen source is workspace_markdown.',
+            },
+            'context': {'type': 'object', 'additionalProperties': True},
+            'path': {'type': 'array', 'items': {}},
+            'render_mode': {'type': ['string', 'null']},
+            'active_workspace_state': {'type': 'object', 'additionalProperties': True},
+            'workspace_action_map': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': True}},
+            'workspace_runtime_contract': {'type': 'object', 'additionalProperties': True},
+            'canonical_workspace': {'type': 'object', 'additionalProperties': True},
+            'response_budget_guard': {'type': 'object', 'additionalProperties': True},
+        },
+        'additionalProperties': False,
+    }
+
+
 # WORKING-GPT-ACTIONS-RESTORE-001: Compact Business GPT Actions
 _BUSINESS_GPT_FACADE_ACTIONS = [
     (
@@ -9064,6 +9107,15 @@ def _business_gpt_openapi_schema() -> dict:
             'content': {'application/json': {'schema': _facade_response_schema()}},
         }
     }
+    workspace_response = {
+        '200': {
+            'description': (
+                'Complete ready-to-display Business Workspace. The assistant must output only '
+                'workspace_markdown verbatim and must preserve all Markdown table separators.'
+            ),
+            'content': {'application/json': {'schema': _business_workspace_response_schema()}},
+        }
+    }
     paths: dict[str, dict] = {}
     for operation_id, method, endpoint, summary, description in _BUSINESS_GPT_FACADE_ACTIONS:
         op: dict[str, Any] = {
@@ -9071,7 +9123,7 @@ def _business_gpt_openapi_schema() -> dict:
             'summary': summary,
             'description': description,
             'security': security,
-            'responses': generic_response,
+            'responses': workspace_response if operation_id == 'executeVectraQuery' else generic_response,
         }
         if method == 'POST':
             if operation_id == 'executeVectraQuery':
@@ -9088,7 +9140,7 @@ def _business_gpt_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Business GPT Actions',
-            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002',
+            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-003',
             'description': (
                 'Compact OpenAPI schema for the working VECTRA Business GPT. '
                 'It exposes only Runtime status, Business Data, Business Domain and user-facing business query actions. '
@@ -9109,7 +9161,7 @@ def _business_gpt_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'working_business_gpt_actions',
-        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002',
+        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-003',
         'x-vectra-business-domain': 'bonboason',
         'x-vectra-excluded-scopes': [
             'professional_memory',

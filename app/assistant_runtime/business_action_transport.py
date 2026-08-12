@@ -11,7 +11,7 @@ import re
 from typing import Any, Dict
 
 
-RELEASE_ID = "VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002"
+RELEASE_ID = "VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-003"
 EXPLICIT_BUSINESS_DATA_FIELDS = (
     "business_domain",
     "period",
@@ -139,7 +139,11 @@ def project_workspace_action_response(payload: Dict[str, Any], *, budget_chars: 
         "path": payload.get("path") if isinstance(payload.get("path"), list) else [],
         "render_mode": payload.get("render_mode"),
         "workspace_markdown": markdown,
-        "workspace_render_instruction": payload.get("workspace_render_instruction"),
+        "workspace_render_instruction": (
+            "Выведи значение workspace_markdown дословно как готовый Markdown-экран. "
+            "Не пересобирай, не переписывай и не исправляй таблицы; сохрани каждый "
+            "символ | и каждую строку без изменений. Не выводи остальные поля ответа."
+        ),
         "screen_order": ["workspace_markdown"],
         "active_workspace_state": payload.get("active_workspace_state") if isinstance(payload.get("active_workspace_state"), dict) else {},
         "workspace_action_map": payload.get("workspace_action_map") if isinstance(payload.get("workspace_action_map"), list) else [],

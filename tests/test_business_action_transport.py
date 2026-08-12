@@ -139,6 +139,18 @@ def test_business_openapi_uses_dedicated_query_edge_and_laboratory_facade_keeps_
     assert business_schema["paths"]["/vectra/business/query"]["post"]["operationId"] == "executeVectraQuery"
     assert "/vectra/query" not in business_schema["paths"]
 
+    query_operation = business_schema["paths"]["/vectra/business/query"]["post"]
+    response_schema = query_operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert "workspace_markdown" in response_schema["required"]
+    assert response_schema["additionalProperties"] is False
+    markdown_description = response_schema["properties"]["workspace_markdown"]["description"]
+    assert "verbatim" in markdown_description
+    assert "pipe character" in markdown_description
+
+    status_operation = business_schema["paths"]["/vectra/runtime/status"]["get"]
+    status_schema = status_operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert "result" in status_schema["properties"]
+
     laboratory_facade_source = inspect.getsource(vectra_laboratory_facade_business_data)
     assert "response = vectra_query(" in laboratory_facade_source
     assert "response = vectra_business_query(" not in laboratory_facade_source
@@ -170,3 +182,4 @@ def test_business_query_edge_always_projects_workspace_without_changing_markdown
     assert "workspace_primary_block" not in result
     assert "metrics" not in result
     assert result["response_budget_guard"]["release_id"] == RELEASE_ID
+    assert "сохрани каждый символ |" in result["workspace_render_instruction"]
