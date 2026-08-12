@@ -7,10 +7,11 @@ duplicates while preserving the complete rendered ``workspace_markdown``.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict
 
 
-RELEASE_ID = "VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-001"
+RELEASE_ID = "VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002"
 EXPLICIT_BUSINESS_DATA_FIELDS = (
     "business_domain",
     "period",
@@ -21,6 +22,41 @@ EXPLICIT_BUSINESS_DATA_FIELDS = (
     "network",
     "message",
 )
+
+
+def _table_cells(line: str) -> list[str]:
+    return [cell.strip() for cell in str(line or "").strip().strip("|").split("|")]
+
+
+def _is_table_separator(line: str) -> bool:
+    cells = _table_cells(line)
+    return len(cells) >= 2 and all(re.fullmatch(r":?-{2,}:?", cell or "") for cell in cells)
+
+
+def stabilize_business_table_headers(markdown: str) -> str:
+    """Protect header cell boundaries on the Business GPT transport edge.
+
+    GPT Actions may re-serialize a plain-text Markdown header while retaining
+    the separator and data rows.  Explicit inline emphasis gives every header
+    cell an independent Markdown token, so labels cannot be folded into the
+    first cell.  Data rows, values, order and table count remain unchanged.
+    """
+    lines = str(markdown or "").splitlines()
+    for index in range(len(lines) - 1):
+        if not _is_table_separator(lines[index + 1]):
+            continue
+        cells = _table_cells(lines[index])
+        separator_cells = _table_cells(lines[index + 1])
+        if len(cells) != len(separator_cells) or len(cells) < 2:
+            continue
+        protected = []
+        for cell in cells:
+            if cell.startswith("**") and cell.endswith("**"):
+                protected.append(cell)
+            else:
+                protected.append(f"**{cell}**")
+        lines[index] = "| " + " | ".join(protected) + " |"
+    return "\n".join(lines)
 
 
 def _json_chars(value: Any) -> int:
@@ -93,6 +129,7 @@ def project_workspace_action_response(payload: Dict[str, Any], *, budget_chars: 
     markdown = payload.get("workspace_markdown")
     if not isinstance(markdown, str) or not markdown.strip():
         return payload
+    markdown = stabilize_business_table_headers(markdown)
 
     initial_chars = _json_chars(payload)
     out = {

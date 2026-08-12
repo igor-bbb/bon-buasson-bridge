@@ -9088,7 +9088,7 @@ def _business_gpt_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Business GPT Actions',
-            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-001',
+            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002',
             'description': (
                 'Compact OpenAPI schema for the working VECTRA Business GPT. '
                 'It exposes only Runtime status, Business Data, Business Domain and user-facing business query actions. '
@@ -9109,7 +9109,7 @@ def _business_gpt_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'working_business_gpt_actions',
-        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-001',
+        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-002',
         'x-vectra-business-domain': 'bonboason',
         'x-vectra-excluded-scopes': [
             'professional_memory',

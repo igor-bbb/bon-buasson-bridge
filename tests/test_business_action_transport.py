@@ -3,6 +3,7 @@ from app.assistant_runtime.business_action_transport import (
     canonical_workspace_request_properties,
     project_workspace_action_response,
     route_explicit_business_data_fields,
+    stabilize_business_table_headers,
 )
 
 
@@ -41,11 +42,41 @@ def _payload(markdown="# Бизнес\n\n## Показатели\n\n| Показ
     }
 
 
+def test_business_table_headers_are_explicitly_tokenized_without_touching_data_rows():
+    source = "\n".join([
+        "## Показатели",
+        "",
+        "| Показатель | Текущий период | Прошлый год | Изменение | Что означает |",
+        "| --- | --- | --- | --- | --- |",
+        "| Оборот | 100 | 90 | +10 | масштаб бизнеса |",
+    ])
+    result = stabilize_business_table_headers(source)
+    assert "| **Показатель** | **Текущий период** | **Прошлый год** | **Изменение** | **Что означает** |" in result
+    assert "| Оборот | 100 | 90 | +10 | масштаб бизнеса |" in result
+    assert stabilize_business_table_headers(result) == result
+
+
+def test_all_workspace_levels_keep_independent_header_cells():
+    schemas = [
+        "Показатель | Текущий период | Прошлый год | Изменение | Что означает",
+        "Объект | Оборот | Доля в зоне | Доля бизнеса | Финрез ДО | Δ прибыли | Потенциал | Сетей | SKU | Приоритет",
+        "Фактор | Текущий период | Прошлый год | Δ | Денежный эффект | Сигнал",
+        "SKU | Оборот | Доля контракта | Доля бизнеса | Финрез | Сетей в бизнесе | Роль",
+    ]
+    for schema in schemas:
+        count = len(schema.split(" | "))
+        markdown = f"| {schema} |\n| " + " | ".join("---" for _ in range(count)) + " |\n| " + " | ".join(f"v{i}" for i in range(count)) + " |"
+        result = stabilize_business_table_headers(markdown).splitlines()
+        assert result[0].count("|") == count + 1
+        assert result[0].count("**") == count * 2
+        assert result[2] == markdown.splitlines()[2]
+
+
 def test_transport_projection_preserves_complete_workspace_and_removes_duplicates():
     source = _payload()
     result = project_workspace_action_response(source, budget_chars=60000)
 
-    assert result["workspace_markdown"] == source["workspace_markdown"]
+    assert result["workspace_markdown"] == stabilize_business_table_headers(source["workspace_markdown"])
     assert "workspace_primary_block" not in result
     assert "metrics" not in result
     assert "semantic_model" not in result["canonical_workspace"]
@@ -59,7 +90,7 @@ def test_transport_projection_keeps_markdown_even_when_it_alone_exceeds_budget()
     markdown = "# Бизнес\n\n" + ("Полная строка рабочего стола.\n" * 100)
     result = project_workspace_action_response(_payload(markdown), budget_chars=1000)
 
-    assert result["workspace_markdown"] == markdown
+    assert result["workspace_markdown"] == stabilize_business_table_headers(markdown)
     assert result["response_budget_guard"]["workspace_markdown_preserved"] is True
     assert result["response_budget_guard"]["continuation_state_omitted"] is True
     assert "active_workspace_state" not in result
@@ -135,7 +166,7 @@ def test_business_query_edge_always_projects_workspace_without_changing_markdown
     result = json.loads(response.body.decode("utf-8"))
 
     assert calls == ["Бизнес 2026-02"]
-    assert result["workspace_markdown"] == source["workspace_markdown"]
+    assert result["workspace_markdown"] == stabilize_business_table_headers(source["workspace_markdown"])
     assert "workspace_primary_block" not in result
     assert "metrics" not in result
     assert result["response_budget_guard"]["release_id"] == RELEASE_ID
