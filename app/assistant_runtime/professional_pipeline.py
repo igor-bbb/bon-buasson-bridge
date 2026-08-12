@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-EXPECTED-NEGATIVE-OUTCOME-001"
-CONTRACT_VERSION = "1.1"
+RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-RESEARCH-CONTINUITY-001"
+CONTRACT_VERSION = "1.2"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -68,6 +68,68 @@ _FAILURE = {"FAIL", "FAILED", "ERROR", "INTERNAL_ERROR"}
 _EXPECTED_NEGATIVE_OUTCOMES = {
     "trace_normative_usage": {"normative_section_not_found"},
 }
+
+# Product Research must remain available while an engineering candidate waits
+# for Product Owner approval. These operations either read existing state or
+# append research evidence/governance records without changing Runtime,
+# Business Data, Business Logic or Professional Knowledge.
+_RESEARCH_SAFE_OPERATIONS = {
+    "query",
+    "get_canonical_workspace",
+    "canonical_workspace",
+    "manager_top_summary",
+    "manager_summary",
+    "contract_summary",
+    "category_summary",
+    "sku_summary",
+    "open_workspace",
+    "open_existing_business_workspace",
+    "navigate_existing_business_workspace",
+    "get_business_runtime_context",
+    "inspect_business_navigation_context",
+    "get_research_workspace",
+    "research_workspace",
+    "get_research_workspace_snapshot",
+    "research_workspace_snapshot",
+    "discover_business_objects",
+    "business_object_discovery",
+    "create_product_observation",
+    "get_development_requests",
+    "get_development_request",
+    "get_new_development_requests",
+    "generate_product_review_report",
+    "record_owner_decision",
+    "capture_business_workspace_research_step",
+    "add_research_program_evidence",
+    "research_program_evidence_add",
+    "add_research_evidence",
+    "research_evidence_add",
+    "register_professional_evidence",
+    "evidence_register",
+    "add_business_review_evidence",
+    "business_review_evidence_add",
+}
+
+# These operations cross from research/governance into implementation or
+# mutate protected system/knowledge state. An open engineering candidate must
+# continue to hold them until the required Product Owner approval is present.
+_PROTECTED_MUTATION_OPERATIONS = {
+    "create_engineering_task",
+    "update_engineering_execution",
+    "capitalize_confirmed_knowledge",
+    "create_candidate",
+    "transition_active_work_context",
+    "start_runtime_recovery",
+    "connect_business_runtime",
+    "link_research_engineering_task",
+    "research_engineering_task_link",
+    "link_research_knowledge_capitalization",
+    "research_knowledge_capitalization_link",
+}
+
+_READ_OPERATION_PREFIXES = (
+    "get_", "list_", "read_", "search_", "trace_", "inspect_", "verify_", "open_", "navigate_", "discover_",
+)
 
 
 def _now() -> str:
@@ -154,6 +216,55 @@ def _expected_negative_outcome(operation_type: str, result: Any) -> bool:
     allowed_reasons = _EXPECTED_NEGATIVE_OUTCOMES.get(operation, set())
     reason = str(result.get("failure_reason") or "").strip().lower()
     return bool(reason and reason in allowed_reasons)
+
+
+def _operation_access(operation_type: str, family: str, result: Any) -> Dict[str, Any]:
+    """Classify the current operation without weakening protected writes."""
+    operation = str(operation_type or "").strip().lower()
+    if operation in _PROTECTED_MUTATION_OPERATIONS:
+        return {
+            "classification": "PROTECTED_SYSTEM_MUTATION",
+            "research_safe": False,
+            "read_only": False,
+            "journal_or_evidence_write": False,
+        }
+
+    journal_or_evidence_write = operation in {
+        "create_product_observation",
+        "record_owner_decision",
+        "capture_business_workspace_research_step",
+        "add_research_program_evidence",
+        "research_program_evidence_add",
+        "add_research_evidence",
+        "research_evidence_add",
+        "register_professional_evidence",
+        "evidence_register",
+        "add_business_review_evidence",
+        "business_review_evidence_add",
+    }
+    explicit_read_only = isinstance(result, dict) and result.get("read_only") is True
+    inferred_read_only = operation.startswith(_READ_OPERATION_PREFIXES) or operation in {
+        "query", "canonical_workspace", "manager_top_summary", "manager_summary",
+        "contract_summary", "category_summary", "sku_summary",
+    }
+    research_activity = family in {"business_workspace", "business_research"}
+    research_safe = bool(
+        operation in _RESEARCH_SAFE_OPERATIONS
+        or explicit_read_only
+        or research_activity
+    )
+    if journal_or_evidence_write:
+        classification = "RESEARCH_GOVERNANCE_WRITE"
+    elif explicit_read_only or inferred_read_only or research_activity:
+        classification = "READ_ONLY_RESEARCH"
+    else:
+        classification = "CONTROLLED_ACTIVITY"
+    return {
+        "classification": classification,
+        "research_safe": research_safe,
+        "read_only": bool(explicit_read_only or inferred_read_only),
+        "journal_or_evidence_write": journal_or_evidence_write,
+    }
 
 
 def _event_hash(parts: Iterable[Any]) -> str:
@@ -284,16 +395,32 @@ def process_professional_response(
     attention = snapshot.get("attention") if isinstance(snapshot.get("attention"), dict) else {}
 
     focus_family = _focus_family(active_context)
+    operation_access = _operation_access(operation_type, family, result)
+    research_safe = operation_access.get("research_safe") is True
     blocker = False if expected_negative else _confirmed_blocker(result, normalized_status)
     accumulated_blocker = bool(attention.get("stop_recommended"))
     unrelated = focus_family not in {"general_professional_activity", family} and family not in {
         "professional_identity", "professional_runtime", "professional_continuity", "self_governance"
     }
 
-    if blocker:
+    if blocker and research_safe:
+        governance_decision = "RECORD_DEFECT_AND_CONTINUE_INDEPENDENT_RESEARCH"
+        governance_status = "RESEARCH_CONTINUE"
+        response_requirement = (
+            "Report and preserve the failed route as evidence. Keep engineering changes on hold, "
+            "but continue independent read-only research and Development Journal work."
+        )
+    elif blocker:
         governance_decision = "STOP_AND_PREPARE_ENGINEERING_TASK"
         governance_status = "HOLD"
         response_requirement = "Report the confirmed Runtime blocker precisely and do not continue as if the operation succeeded."
+    elif accumulated_blocker and research_safe:
+        governance_decision = "CONTINUE_RESEARCH_WITH_ENGINEERING_HOLD"
+        governance_status = "RESEARCH_CONTINUE"
+        response_requirement = (
+            "Continue the independent read-only research or Development Journal operation. "
+            "Do not start engineering implementation or another protected system mutation."
+        )
     elif accumulated_blocker:
         governance_decision = "STOP_FOR_OPEN_ENGINEERING_BLOCKERS"
         governance_status = "HOLD"
@@ -315,7 +442,11 @@ def process_professional_response(
         governance_status = "PASS"
         response_requirement = "Continue according to the active professional context."
 
-    outcome_classification = "EXPECTED_NEGATIVE" if expected_negative else "STANDARD"
+    outcome_classification = (
+        "EXPECTED_NEGATIVE" if expected_negative
+        else "RESEARCH_DEFECT" if blocker and research_safe
+        else "STANDARD"
+    )
     event_hash = _event_hash((operation_type, runtime_service, endpoint, normalized_status, outcome_classification, family, active_context.get("cycle_id")))
     previous_state = _persist_pipeline_event({
         "event_hash": event_hash,
@@ -350,6 +481,15 @@ def process_professional_response(
     if not isinstance(professional_runtime_state, dict):
         professional_runtime_state = {}
 
+    engineering_hold = bool(blocker or accumulated_blocker)
+    route_blocked = bool(blocker)
+    recommended_next_action = next_action or active_context.get("next_recommended_step") or continuity.get("resume_from")
+    if blocker and research_safe:
+        recommended_next_action = (
+            "Record the defect and evidence, then continue a different independent read-only "
+            "Workspace, navigation route or Development Journal operation."
+        )
+
     return {
         "status": governance_status,
         "pipeline_id": "VECTRA-PROFESSIONAL-PIPELINE",
@@ -362,6 +502,7 @@ def process_professional_response(
             "active_focus_family": focus_family,
             "result_status": normalized_status,
             "outcome_classification": outcome_classification,
+            "operation_access": operation_access,
         },
         "self_governance": {
             "decision": governance_decision,
@@ -371,9 +512,28 @@ def process_professional_response(
             "new_branch_detected": unrelated,
             "attention": deepcopy(attention),
         },
+        "execution_gates": {
+            "research": {
+                "status": "CONTINUE" if research_safe else ("HOLD" if engineering_hold else "PASS"),
+                "mode": "RESEARCH_CONTINUE" if research_safe and engineering_hold else "STANDARD",
+                "independent_routes_allowed": research_safe,
+                "development_journal_allowed": research_safe,
+            },
+            "current_route": {
+                "status": "BLOCKED" if route_blocked else "PASS",
+                "operation_type": operation_type,
+                "failure_is_route_scoped": bool(route_blocked and research_safe),
+            },
+            "engineering": {
+                "status": "HOLD" if engineering_hold else "PASS",
+                "mode": "ENGINEERING_HOLD" if engineering_hold else "STANDARD",
+                "product_owner_approval_required": engineering_hold,
+                "protected_mutations_allowed": not engineering_hold,
+            },
+        },
         "blocker_reconciliation": blocker_reconciliation,
         "engineering_observation": observation,
-        "recommended_next_action": next_action or active_context.get("next_recommended_step") or continuity.get("resume_from"),
+        "recommended_next_action": recommended_next_action,
         "runtime_state_updated": bool(previous_state.get("diagnostic", {}).get("readback_verified")),
         "professional_runtime_state": _compact_professional_runtime_state(professional_runtime_state),
         "response_mode": "compact",
@@ -403,6 +563,7 @@ def verify_professional_pipeline() -> Dict[str, Any]:
         "runtime_state_updated": pass_probe.get("runtime_state_updated") is True,
         "product_owner_decision_not_auto_approved": True,
         "new_branch_detection_available": isinstance(notice_probe.get("self_governance", {}).get("new_branch_detected"), bool),
+        "research_and_engineering_gates_available": isinstance(pass_probe.get("execution_gates"), dict),
     }
     return {
         "status": "PASS" if all(checks.values()) else "HOLD",

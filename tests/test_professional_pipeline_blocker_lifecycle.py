@@ -84,3 +84,77 @@ def test_unregistered_fail_reason_remains_blocking(tmp_path, monkeypatch):
     assert result["self_governance"]["expected_negative_outcome"] is False
     assert result["self_governance"]["confirmed_blocker"] is True
     assert result["engineering_observation"]["observation"]["type"] == "BLOCKER"
+
+
+def test_navigation_defect_blocks_route_and_engineering_but_research_continues(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    defect = process_professional_response(
+        operation_type="navigate_existing_business_workspace",
+        runtime_service="digital_business_analyst.navigate_existing_business_workspace",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+
+    assert defect["status"] == "RESEARCH_CONTINUE"
+    assert defect["professional_context"]["outcome_classification"] == "RESEARCH_DEFECT"
+    assert defect["self_governance"]["decision"] == "RECORD_DEFECT_AND_CONTINUE_INDEPENDENT_RESEARCH"
+    assert defect["execution_gates"]["research"]["status"] == "CONTINUE"
+    assert defect["execution_gates"]["current_route"]["status"] == "BLOCKED"
+    assert defect["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert defect["execution_gates"]["engineering"]["product_owner_approval_required"] is True
+    assert defect["engineering_observation"]["observation"]["type"] == "BLOCKER"
+
+
+def test_open_candidate_does_not_block_journal_or_independent_read_only_route(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    process_professional_response(
+        operation_type="navigate_existing_business_workspace",
+        runtime_service="digital_business_analyst.navigate_existing_business_workspace",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+
+    journal = process_professional_response(
+        operation_type="create_product_observation",
+        runtime_service="development_journal.create_development_request",
+        endpoint="/vectra/laboratory/facade/product-review",
+        result={"status": "PASS", "record_id": "DEV-0012", "readback_status": "PASS"},
+    )
+    other_route = process_professional_response(
+        operation_type="get_canonical_workspace",
+        runtime_service="canonical_workspace.get",
+        endpoint="/vectra/query",
+        result={"status": "PASS", "read_only": True, "workspace_type": "sku"},
+    )
+
+    assert journal["status"] == "RESEARCH_CONTINUE"
+    assert journal["professional_context"]["operation_access"]["classification"] == "RESEARCH_GOVERNANCE_WRITE"
+    assert journal["execution_gates"]["research"]["development_journal_allowed"] is True
+    assert journal["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert other_route["status"] == "RESEARCH_CONTINUE"
+    assert other_route["execution_gates"]["research"]["independent_routes_allowed"] is True
+    assert other_route["execution_gates"]["current_route"]["status"] == "PASS"
+
+
+def test_open_candidate_still_blocks_protected_engineering_mutation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    process_professional_response(
+        operation_type="navigate_existing_business_workspace",
+        runtime_service="digital_business_analyst.navigate_existing_business_workspace",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+    engineering = process_professional_response(
+        operation_type="create_engineering_task",
+        runtime_service="development_journal.record_owner_decision",
+        endpoint="/vectra/laboratory/facade/product-review",
+        result={"status": "PASS"},
+    )
+
+    assert engineering["status"] == "HOLD"
+    assert engineering["professional_context"]["operation_access"]["classification"] == "PROTECTED_SYSTEM_MUTATION"
+    assert engineering["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert engineering["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
