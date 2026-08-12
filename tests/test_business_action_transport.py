@@ -94,3 +94,48 @@ def test_explicit_action_fields_route_to_existing_facade_payload():
         "workspace_type": "business",
         "object_id": "bonboason",
     }
+
+
+def test_business_openapi_uses_dedicated_query_edge_and_laboratory_facade_keeps_shared_runtime():
+    import inspect
+
+    from app.api.routes import (
+        _business_gpt_openapi_schema,
+        vectra_laboratory_facade_business_data,
+    )
+
+    business_schema = _business_gpt_openapi_schema()
+    assert business_schema["paths"]["/vectra/business/query"]["post"]["operationId"] == "executeVectraQuery"
+    assert "/vectra/query" not in business_schema["paths"]
+
+    laboratory_facade_source = inspect.getsource(vectra_laboratory_facade_business_data)
+    assert "response = vectra_query(" in laboratory_facade_source
+    assert "response = vectra_business_query(" not in laboratory_facade_source
+
+
+def test_business_query_edge_always_projects_workspace_without_changing_markdown(monkeypatch):
+    from fastapi.responses import JSONResponse
+
+    from app.api import routes
+    from app.models.request_models import VectraQueryRequest
+
+    source = _payload("# Бизнес\n\nПолный канонический рабочий стол")
+    calls = []
+
+    def fake_vectra_query(request):
+        calls.append(request.message)
+        return JSONResponse(content=source)
+
+    monkeypatch.setattr(routes, "vectra_query", fake_vectra_query)
+    response = routes.vectra_business_query(
+        VectraQueryRequest(message="Бизнес 2026-02", session_id="business-edge-test")
+    )
+    import json
+
+    result = json.loads(response.body.decode("utf-8"))
+
+    assert calls == ["Бизнес 2026-02"]
+    assert result["workspace_markdown"] == source["workspace_markdown"]
+    assert "workspace_primary_block" not in result
+    assert "metrics" not in result
+    assert result["response_budget_guard"]["release_id"] == RELEASE_ID

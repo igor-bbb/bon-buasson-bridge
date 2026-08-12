@@ -618,8 +618,8 @@ def _verify_laboratory_api_key(x_vectra_laboratory_key: str | None = None) -> No
 # Sprint 11: final public payload guard for Custom GPT Actions.
 # The exact platform limit is not exposed to the API, so we keep a conservative
 # budget and trim non-essential render blocks before the response leaves API.
-VECTRA_PUBLIC_RESPONSE_BUDGET = 60000
-VECTRA_PUBLIC_RESPONSE_HARD_BUDGET = 80000
+VECTRA_PUBLIC_RESPONSE_BUDGET = 90000
+VECTRA_PUBLIC_RESPONSE_HARD_BUDGET = 120000
 
 
 PUBLIC_TOP_LEVEL_KEYS = ('profit_loss_rating', 'opportunity_rating', 'business_reasons', 'priority_action', 'period_result_block', 'opportunity_money', 'navigation_money', 'net_drain_money', 'gross_loss_money', 'internal_drain_money', 'compare_base', 'context', 'metrics', 'structure', 'drain_block', 'all_block', 'navigation', 'reasons_block', 'decision_block', 'decision_block_render', 'reasons_block_render', 'kpi_block', 'structure_block', 'main_driver', 'drain_block_render', 'drain_total', 'navigation_block', 'summary_block', 'explanation_block', 'next_step_block', 'product_layer_block', 'product_insight_block', 'product_tmc_decision_block', 'path', 'diagnosis_block', 'recommended_next_step_block', 'opportunity_explanation_block', 'anomaly_explanation_block', 'screen_order', 'kpi_table', 'factor_change_table', 'benchmark_diagnostic_table', 'decision_workspace', 'decision_workspace_block', 'sku_passport', 'sku_passport_block', 'business_context', 'business_context_block', 'category_workspace', 'category_workspace_block', 'business_opportunity', 'business_opportunity_block', 'recommendation_engine', 'recommendation_block', 'narrative_engine', 'narrative_block', 'product_workspace', 'product_workspace_block', 'management_intelligence', 'management_workspace', 'management_passport', 'management_workspace_block', 'business_workspace_block', 'contract_workspace_block')
@@ -4781,10 +4781,8 @@ def _enforce_public_response_budget(payload: dict) -> dict:
         ):
             out.pop(key, None)
         out['screen_order'] = ['workspace_markdown']
-        return project_workspace_action_response(
-            out,
-            budget_chars=VECTRA_PUBLIC_RESPONSE_BUDGET,
-        )
+        out['response_budget_guard']['final_json_chars'] = _json_len(out)
+        return out
 
     if render_mode == 'list_only':
         out['all_block'] = _compact_public_all_block(out.get('all_block', []))
@@ -8992,9 +8990,9 @@ _BUSINESS_GPT_FACADE_ACTIONS = [
     (
         'executeVectraQuery',
         'POST',
-        '/vectra/query',
+        '/vectra/business/query',
         'Execute VECTRA business query',
-        'Stateful user-facing VECTRA query endpoint for commands such as Бизнес 2026-02 and business drill-down navigation.',
+        'Bounded Business GPT transport for commands such as Бизнес 2026-02 and business drill-down navigation. The shared Laboratory Runtime endpoint remains unchanged.',
     ),
 ]
 
@@ -9090,7 +9088,7 @@ def _business_gpt_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Business GPT Actions',
-            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001',
+            'version': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-001',
             'description': (
                 'Compact OpenAPI schema for the working VECTRA Business GPT. '
                 'It exposes only Runtime status, Business Data, Business Domain and user-facing business query actions. '
@@ -9111,7 +9109,7 @@ def _business_gpt_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'working_business_gpt_actions',
-        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001',
+        'x-vectra-release': 'VECTRA-BUSINESS-GPT-WORKSPACE-TRANSPORT-001-CORRECTION-001',
         'x-vectra-business-domain': 'bonboason',
         'x-vectra-excluded-scopes': [
             'professional_memory',
@@ -13155,6 +13153,28 @@ def vectra_query(request: VectraQueryRequest):
     render_only_payload = attach_canonical_workspace_contract(render_only_payload)
     render_only_payload = _enforce_public_response_budget(render_only_payload)
     return json_response(render_only_payload)
+
+
+@router.post('/vectra/business/query', summary='Stateful VECTRA Business GPT Query')
+def vectra_business_query(request: VectraQueryRequest):
+    """Return the shared Runtime Workspace through a bounded Business GPT edge.
+
+    ``/vectra/query`` remains the full professional Runtime boundary used by
+    Laboratory.  The Business GPT OpenAPI points to this dedicated edge, which
+    removes duplicate transport projections on every Workspace response instead
+    of waiting for an internal character threshold.  The canonical
+    ``workspace_markdown`` is preserved byte-for-byte.
+    """
+    response = vectra_query(request)
+    try:
+        payload = json.loads(response.body.decode('utf-8'))
+    except Exception:
+        logger.exception('vectra_business_query_response_decode_failed')
+        return response
+    return json_response(project_workspace_action_response(
+        payload,
+        budget_chars=VECTRA_PUBLIC_RESPONSE_BUDGET,
+    ))
 
 
 @router.get('/meta/entities')
