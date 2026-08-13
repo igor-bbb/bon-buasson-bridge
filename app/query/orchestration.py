@@ -2795,6 +2795,64 @@ def _build_query_from_numeric_selection(message: str, session_ctx: Dict[str, Any
         }
     return {'status': 'error', 'reason': f'Команда «{message}» недоступна в текущем состоянии. Используйте действия, показанные на текущем рабочем столе, или команду «все» для витрины.'}
 
+
+def _build_query_from_visible_list_selection(message: str, session_ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve an exact visible row before any global entity lookup.
+
+    A rendered showcase is the canonical selection scope. Text and numeric
+    selection must therefore reuse the same row-level filter_payload; otherwise
+    a globally duplicated category name can silently jump to another branch.
+    """
+    name_norm = normalize_entity_text(message)
+    if not name_norm:
+        return {}
+    state = get_session_state(session_ctx)
+    if str(state.get('view_mode') or '').lower() not in {'all', 'format_filter'} and not state.get('show_all'):
+        return {}
+    matches = [
+        item for item in (state.get('last_list_items') or [])
+        if isinstance(item, dict)
+        and normalize_entity_text(item.get('object_name') or item.get('name')) == name_norm
+    ]
+    if len(matches) != 1:
+        return {}
+    selected = matches[0]
+    selected_filter = selected.get('filter_payload') if isinstance(selected.get('filter_payload'), dict) else None
+    if selected.get('selection_type') == 'format_filter':
+        return {
+            'status': 'ok',
+            'query': {
+                'query_type': 'format_filter',
+                'format_value': selected.get('format_value') or selected.get('object_name'),
+                'filter_payload': selected_filter or state.get('filter') or {},
+            },
+        }
+    level = selected.get('level')
+    object_name = selected.get('object_name') or selected.get('name')
+    period = (selected_filter or {}).get('period') or state.get('period')
+    if not level or not object_name or not period:
+        return {}
+    return {
+        'status': 'ok',
+        'query': {
+            'mode': 'diagnosis',
+            'level': level,
+            'object_name': object_name,
+            'period_current': period,
+            'period_previous': state.get('period_previous'),
+            'query_type': 'summary',
+            'period': period,
+            'object': object_name,
+            'filter_payload': selected_filter or _build_filter_from_scope(
+                level,
+                object_name,
+                period,
+                existing_filter=state.get('filter') or {},
+            ),
+            'view_mode': 'default',
+        },
+    }
+
 def _build_query_from_named_selection(message: str, session_ctx: Dict[str, Any]) -> Dict[str, Any]:
     """Open a visible child object by its displayed name inside current рабочий стол.
 
@@ -2806,6 +2864,9 @@ def _build_query_from_named_selection(message: str, session_ctx: Dict[str, Any])
     name_norm = normalize_entity_text(message)
     if not name_norm or len(name_norm) < 2:
         return {}
+    visible_selection = _build_query_from_visible_list_selection(message, session_ctx)
+    if visible_selection.get('status') == 'ok':
+        return visible_selection
     state = get_session_state(session_ctx)
     format_items = [
         item for item in (state.get('last_list_items') or [])
@@ -4618,13 +4679,29 @@ def _restore_screen_for_back(screen: Any) -> Dict[str, Any]:
 def _handle_back(session_id: str) -> Dict[str, Any]:
     current = get_session(session_id)
 
+    def restore_executable_workspace(screen: Any) -> Dict[str, Any]:
+        """Restore both the rendered screen and its executable UI state."""
+        result = _restore_screen_for_back(screen)
+        if isinstance(result, dict) and result.get('status') != 'error' and isinstance(screen, dict):
+            update_session(session_id, {
+                'current_screen': deepcopy(screen),
+                'last_payload': deepcopy(screen),
+                'view_mode': 'drain',
+                'show_all': False,
+                'full_view': False,
+                'last_list_items': [],
+                'last_list_level': None,
+                'last_response_type': 'object',
+            })
+            _sync_session_from_active_workspace(session_id, screen)
+        return result
+
     # UI/action display modes are not real drilldown steps. Back from these
     # modes restores the same analytical object screen from State and does not
     # run a new analytical calculation.
     if current.get('view_mode') in {'all', 'reasons', 'kpi', 'action', 'format_filter'}:
         screen = current.get('current_screen') or current.get('last_payload')
-        save_session_state(session_id, view_mode='drain', show_all=False)
-        result = _restore_screen_for_back(screen)
+        result = restore_executable_workspace(screen)
         if isinstance(result, dict):
             result['runtime_navigation'] = {'mode': 'local_back_restore', 'recalculated_workspace': False}
         return result
@@ -4632,13 +4709,13 @@ def _handle_back(session_id: str) -> Dict[str, Any]:
     restored = pop_state(session_id)
     if not restored:
         screen = current.get('current_screen') or current.get('last_payload')
-        result = _restore_screen_for_back(screen) if screen else {'status': 'error', 'reason': 'Назад недоступно.'}
+        result = restore_executable_workspace(screen) if screen else {'status': 'error', 'reason': 'Назад недоступно.'}
         if isinstance(result, dict) and result.get('status') != 'error':
             result['runtime_navigation'] = {'mode': 'current_screen_restore', 'recalculated_workspace': False}
         return result
 
     screen = restored.get('current_screen') or restored.get('last_payload')
-    result = _restore_screen_for_back(screen) if screen else {'status': 'error', 'reason': 'Назад недоступно.'}
+    result = restore_executable_workspace(screen) if screen else {'status': 'error', 'reason': 'Назад недоступно.'}
     if isinstance(result, dict) and result.get('status') != 'error':
         result['runtime_navigation'] = {'mode': 'stack_restore', 'recalculated_workspace': False}
     return result
@@ -5589,45 +5666,49 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
             # contextual named-selection. Otherwise a name that is visible in the
             # previous screen can be opened as a child object and bypass role
             # disambiguation (for example: «Труш Максим» as Top Manager vs Manager).
-            direct_opening = _maybe_execute_direct_object_opening(message, session_ctx, session_id)
-            if direct_opening is not None:
-                return _finalize_response(direct_opening)
-
-            named_selection = _build_query_from_named_selection(message, session_ctx)
-            if named_selection.get('status') == 'ok':
-                parsed = named_selection
+            visible_selection = _build_query_from_visible_list_selection(message, session_ctx)
+            if visible_selection.get('status') == 'ok':
+                parsed = visible_selection
             else:
-                analytical_intent = _detect_voice_analytical_intent(message, normalized)
-                if analytical_intent:
-                    return _finalize_response(_execute_voice_analytical_request(message, analytical_intent, session_ctx=session_ctx))
+                direct_opening = _maybe_execute_direct_object_opening(message, session_ctx, session_id)
+                if direct_opening is not None:
+                    return _finalize_response(direct_opening)
 
-                voice_intent = _detect_voice_management_intent(message, normalized)
-                if voice_intent:
-                    return _finalize_response(_execute_voice_management_request(message, voice_intent, session_ctx=session_ctx, session_id=session_id))
+                named_selection = _build_query_from_named_selection(message, session_ctx)
+                if named_selection.get('status') == 'ok':
+                    parsed = named_selection
+                else:
+                    analytical_intent = _detect_voice_analytical_intent(message, normalized)
+                    if analytical_intent:
+                        return _finalize_response(_execute_voice_analytical_request(message, analytical_intent, session_ctx=session_ctx))
 
-                if _has_active_workspace(session_ctx) and not _explicit_context_change_intent(message):
-                    return _finalize_response(_contextual_free_dialogue_response(message, session_ctx))
+                    voice_intent = _detect_voice_management_intent(message, normalized)
+                    if voice_intent:
+                        return _finalize_response(_execute_voice_management_request(message, voice_intent, session_ctx=session_ctx, session_id=session_id))
 
-                # A free-text query starts a new analytical path.
-                # Do not carry an old business-drain vector into a direct manager/network entry.
-                clear_full_view_flag(session_id)
-                update_session(session_id, {
-                    'current_screen': None,
-                    'last_payload': None,
-                    'last_list_items': [],
-                    'last_list_level': None,
-                    'full_view': False,
-                    'view_mode': 'drain',
-                    'stack': [],
-                })
-                parsed = _validate_parsed_query(message, parse_query_intent(message))
-                if parsed.get('status') != 'ok':
-                    if workspace_opening_intent:
-                        # W14.3 Critical: a Workspace-opening message reached the
-                        # API/orchestration layer. Do not return a silent local
-                        # refusal; expose that an API attempt happened and failed.
-                        return _finalize_response(build_workspace_api_attempt_error(message, parsed.get('reason')))
-                    return _finalize_response(parsed)
+                    if _has_active_workspace(session_ctx) and not _explicit_context_change_intent(message):
+                        return _finalize_response(_contextual_free_dialogue_response(message, session_ctx))
+
+                    # A free-text query starts a new analytical path.
+                    # Do not carry an old business-drain vector into a direct manager/network entry.
+                    clear_full_view_flag(session_id)
+                    update_session(session_id, {
+                        'current_screen': None,
+                        'last_payload': None,
+                        'last_list_items': [],
+                        'last_list_level': None,
+                        'full_view': False,
+                        'view_mode': 'drain',
+                        'stack': [],
+                    })
+                    parsed = _validate_parsed_query(message, parse_query_intent(message))
+                    if parsed.get('status') != 'ok':
+                        if workspace_opening_intent:
+                            # W14.3 Critical: a Workspace-opening message reached the
+                            # API/orchestration layer. Do not return a silent local
+                            # refusal; expose that an API attempt happened and failed.
+                            return _finalize_response(build_workspace_api_attempt_error(message, parsed.get('reason')))
+                        return _finalize_response(parsed)
 
         # full path / contextual object parsing completed above
         if False:
