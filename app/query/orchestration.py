@@ -5012,15 +5012,11 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
                 return opened
             return _execute_action_command('sku_passport', session_ctx)
         if action_type == 'free_dialogue':
-            return {
-                'status': 'ok',
-                'render_mode': 'assistant_hint',
-                'context': dict(ctx),
-                'summary_block': 'Задайте вопрос по открытому рабочему столу свободным текстом.',
-                'kpi_block': [],
-                'navigation_block': ['причины', 'все', 'назад'],
-                'screen_order': ['summary_block', 'navigation_block'],
-            }
+            # Free dialogue is a temporary assistant response, not a new
+            # analytical Workspace. Reuse the canonical active state in the
+            # public response and keep current_screen untouched so the next
+            # local command continues from the same object, period and role.
+            return _contextual_free_dialogue_response('', state)
         # Context/object action: first try to open a visible child whose name is present in the label.
         items = screen.get('all_block') if isinstance(screen.get('all_block'), list) else []
         for idx, item in enumerate(items, start=1):

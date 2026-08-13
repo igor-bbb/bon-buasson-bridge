@@ -123,3 +123,53 @@ def test_semantic_priority_action_does_not_confuse_menu_number_with_child_index(
     assert result["status"] == "ok"
     assert opened["object_name"] == "B"
     assert opened["period_current"] == "2026-02"
+
+
+def test_free_dialogue_keeps_canonical_workspace_for_next_local_command():
+    session_id = f"free-dialogue-continuity-{uuid.uuid4().hex}"
+    source = _screen(level="business", object_name="Бизнес", period="2026-02")
+    source["reasons_block"] = [{"name": "Логистика", "effect_money": -100}]
+    source["reasons_block_render"] = ["Логистика | -100 грн"]
+    # The visible Business menu routes the user's question through the same
+    # action dispatcher as its numeric free-dialogue item.
+    source["workspace_markdown"] = "\n".join([
+        "# Бизнес | 2026-02",
+        "## Что делаем дальше?",
+        "1. Показать причины изменения результата.",
+        "2. Спросить ассистента: «что бы ты сделал первым и почему?»",
+    ])
+    source = apply_runtime_contract(source)
+    orchestration.update_session(session_id, {
+        "current_screen": source,
+        "last_payload": source,
+        "view_mode": "drain",
+    })
+
+    free_response = routes.vectra_business_query(VectraQueryRequest(
+        message="Что бы ты сделал первым и почему?",
+        session_id=session_id,
+    ))
+    import json
+    free_payload = json.loads(free_response.body.decode("utf-8"))
+
+    assert free_payload["status"] == "ok"
+    assert free_payload["render_mode"] == "voice_diagnostic"
+    assert free_payload["active_workspace_state"]["workspace_level"] == "business"
+    assert free_payload["active_workspace_state"]["period"] == "2026-02"
+    assert len(free_response.body) < 20_000
+    preserved = orchestration.get_session(session_id)["current_screen"]
+    assert preserved["context"]["level"] == "business"
+    assert preserved["context"]["object_name"] == "Бизнес"
+    assert preserved["context"]["period"] == "2026-02"
+
+    reasons_response = routes.vectra_business_query(VectraQueryRequest(
+        message="Показать причины изменения результата",
+        session_id=session_id,
+    ))
+    reasons_payload = json.loads(reasons_response.body.decode("utf-8"))
+
+    assert reasons_payload["status"] == "ok"
+    assert reasons_payload["render_mode"] == "reasons"
+    assert reasons_payload["context"]["level"] == "business"
+    assert reasons_payload["context"]["object_name"] == "Бизнес"
+    assert reasons_payload["context"]["period"] == "2026-02"
