@@ -40,6 +40,11 @@ from app.assistant_runtime.canonical_workspace_contract import (
     normalize_workspace_type,
 )
 from app.assistant_runtime.action_execution_diagnostics import execution_evidence
+from app.assistant_runtime.self_governance_runtime import (
+    get_engineering_blockers,
+    reconcile_engineering_blocker_development_verification,
+    record_engineering_blocker_owner_decision,
+)
 from app.development_journal import (
     add_runtime_event as add_development_journal_runtime_event,
     add_global_record as add_development_journal_global_record,
@@ -8307,7 +8312,7 @@ _FACADE_ACTIONS = [
         'POST',
         '/vectra/laboratory/facade/product-review',
         'Execute an explicit VECTRA Product Review operation',
-        'Use the exact requested operation_type. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
+        'Use the exact requested operation_type. Read and decide Self Governance blockers through get_engineering_blockers and record_engineering_blocker_decision. For get_development_request pass payload.record_id and never substitute inspect_workspace.',
     ),
     ('getVectraActionManifest', 'GET', '/vectra/laboratory/actions/manifest', 'Get VECTRA Laboratory Action Manifest', 'Returns public facade Actions and internal Runtime operations.'),
     ('runVectraSelfAudit', 'GET', '/vectra/laboratory/self-audit', 'Run VECTRA Self Audit', 'Use immediately for Исследуй себя, Проверь своё состояние, Что ты знаешь о себе or Проведи самоисследование. Returns the canonical VECTRA assistant_response from Runtime.'),
@@ -8872,11 +8877,13 @@ def _product_review_action_request_schema() -> dict:
         'get_development_request',
         'get_development_requests',
         'get_new_development_requests',
+        'get_engineering_blockers',
         'inspect_workspace',
         'verify_workspace',
         'detect_product_issue',
         'create_product_observation',
         'record_owner_decision',
+        'record_engineering_blocker_decision',
         'create_engineering_task',
         'update_engineering_execution',
         'record_product_verification',
@@ -8887,10 +8894,12 @@ def _product_review_action_request_schema() -> dict:
         'description': (
             'Inputs for the selected operation. create_product_observation requires confirmed_gap; '
             'record_owner_decision requires record_id and decision; update_engineering_execution '
-            'requires record_id and stage; record_product_verification requires record_id and verdict.'
+            'requires record_id and stage; record_product_verification requires record_id and verdict; '
+            'record_engineering_blocker_decision requires engineering_item_id and decision.'
         ),
         'properties': {
             'record_id': {'type': 'string', 'description': 'Persistent bridge record id, for example DEV-0001.'},
+            'engineering_item_id': {'type': 'string', 'description': 'Self Governance blocker id, for example ENG-20260813073434-4e75fde2.'},
             'confirmed_gap': {'type': 'string', 'description': 'Confirmed product or engineering gap.'},
             'evidence_summary': {'type': 'string', 'description': 'Observed evidence supporting the gap.'},
             'proposal': {'type': 'string', 'description': 'Proposed VECTRA development response.'},
@@ -8899,6 +8908,7 @@ def _product_review_action_request_schema() -> dict:
                 'enum': ['APPROVED', 'REJECTED', 'DEFERRED'],
                 'description': 'Explicit Product Owner decision for record_owner_decision.',
             },
+            'include_resolved': {'type': 'boolean', 'default': False, 'description': 'Include resolved Self Governance blockers in readback.'},
             'comment': {'type': 'string', 'description': 'Product Owner or engineering comment.'},
             'stage': {
                 'type': 'string',
@@ -8935,13 +8945,15 @@ def _product_review_action_request_schema() -> dict:
                     'replace it with inspect_workspace or any other operation. For a full Product '
                     'Verification lifecycle call inspect_workspace, '
                     'create_product_observation, get_development_request, record_owner_decision, '
-                    'update_engineering_execution, record_product_verification, then read the same record again.'
+                    'update_engineering_execution, record_product_verification, then read the same record again. '
+                    'Use get_engineering_blockers and record_engineering_blocker_decision for the '
+                    'explicit Product Owner lifecycle of Self Governance ENG blocker candidates.'
                 ),
             },
             'payload': payload_schema,
             'product_owner_approval': {
                 'type': 'boolean',
-                'description': 'Set true only after explicit Product Owner authorization for record_owner_decision or create_engineering_task.',
+                'description': 'Set true only after explicit Product Owner authorization for record_owner_decision, record_engineering_blocker_decision or create_engineering_task.',
             },
             'session_id': {'type': 'string', 'description': 'Laboratory session id.'},
             'request_id': {'type': 'string', 'description': 'Client request id for traceability.'},
@@ -8949,6 +8961,16 @@ def _product_review_action_request_schema() -> dict:
         'additionalProperties': False,
         'examples': [
             {'operation_type': 'get_development_request', 'payload': {'record_id': 'DEV-0001'}},
+            {'operation_type': 'get_engineering_blockers', 'payload': {}},
+            {
+                'operation_type': 'record_engineering_blocker_decision',
+                'product_owner_approval': True,
+                'payload': {
+                    'engineering_item_id': 'ENG-20260813073434-4e75fde2',
+                    'decision': 'APPROVED',
+                    'comment': 'Create a managed DEV record for this confirmed blocker.',
+                },
+            },
             {'operation_type': 'inspect_workspace', 'payload': {}},
             {
                 'operation_type': 'create_product_observation',
@@ -9556,8 +9578,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-002',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
+            'version': 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraProductReviewOperation to read and decide Self Governance ENG blocker candidates through the explicit Product Owner governance bridge. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9573,7 +9595,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-002',
+        'x-vectra-release': 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11288,6 +11310,20 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type == 'get_engineering_blockers':
+            result = get_engineering_blockers(
+                str(payload.get('engineering_item_id') or '') or None,
+                include_resolved=bool(payload.get('include_resolved')),
+            )
+            return json_response(_facade_response(operation_type, 'self_governance_runtime.get_engineering_blockers', '/vectra/laboratory/facade/product-review', result, next_action='Present unresolved blocker candidates to Product Owner for an explicit decision.'))
+        if operation_type == 'record_engineering_blocker_decision':
+            result = record_engineering_blocker_owner_decision(
+                str(payload.get('engineering_item_id') or ''),
+                str(payload.get('decision') or ''),
+                product_owner_confirmed=bool(approval or payload.get('product_owner_approval')),
+                comment=str(payload.get('comment') or ''),
+            )
+            return json_response(_facade_response(operation_type, 'self_governance_runtime.record_engineering_blocker_owner_decision', '/vectra/laboratory/facade/product-review', result, next_action='If approved, continue Engineering through the linked Development Journal record; otherwise preserve the recorded Product Owner decision.'))
         if operation_type in {'inspect_workspace', 'verify_workspace'}:
             result = run_vectra_runtime_product_verification()
             return json_response(_facade_response(operation_type, 'repository.run_runtime_product_verification', '/vectra/runtime/verify', result))
@@ -11319,6 +11355,12 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
             return json_response(_facade_response(operation_type, 'development_journal.update_development_execution', '/vectra/laboratory/facade/product-review', result))
         if operation_type == 'record_product_verification':
             result = record_development_verification(str(payload.get('record_id') or ''), payload)
+            if result.get('status') == 'ok':
+                result['governance_blocker_reconciliation'] = reconcile_engineering_blocker_development_verification(
+                    str(payload.get('record_id') or ''),
+                    str(payload.get('verdict') or ''),
+                    release_id=str(payload.get('release_id') or ''),
+                )
             return json_response(_facade_response(operation_type, 'development_journal.record_development_verification', '/vectra/laboratory/facade/product-review', result))
         if operation_type == 'generate_product_review_report':
             result = build_development_journal_response(limit=int(payload.get('limit') or 50))

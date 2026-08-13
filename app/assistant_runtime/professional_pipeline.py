@@ -49,6 +49,8 @@ _OPERATION_FAMILIES = {
     "read_professional_knowledge": "knowledge_capitalization",
     "read_business_knowledge": "knowledge_capitalization",
     "create_engineering_task": "engineering",
+    "get_engineering_blockers": "self_governance",
+    "record_engineering_blocker_decision": "self_governance",
     "transition_active_work_context": "self_governance",
     "get_active_work_context": "self_governance",
 }
@@ -99,6 +101,8 @@ _RESEARCH_SAFE_OPERATIONS = {
     "get_new_development_requests",
     "generate_product_review_report",
     "record_owner_decision",
+    "get_engineering_blockers",
+    "record_engineering_blocker_decision",
     "capture_business_workspace_research_step",
     "add_research_program_evidence",
     "research_program_evidence_add",
@@ -232,6 +236,7 @@ def _operation_access(operation_type: str, family: str, result: Any) -> Dict[str
     journal_or_evidence_write = operation in {
         "create_product_observation",
         "record_owner_decision",
+        "record_engineering_blocker_decision",
         "capture_business_workspace_research_step",
         "add_research_program_evidence",
         "research_program_evidence_add",

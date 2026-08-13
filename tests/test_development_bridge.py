@@ -112,10 +112,12 @@ def test_product_review_action_publishes_explicit_bridge_contract():
     operation_schema = request_schema['properties']['operation_type']
 
     required_operations = {
+        'get_engineering_blockers',
         'inspect_workspace',
         'create_product_observation',
         'get_development_request',
         'record_owner_decision',
+        'record_engineering_blocker_decision',
         'update_engineering_execution',
         'record_product_verification',
     }
@@ -128,7 +130,10 @@ def test_product_review_action_publishes_explicit_bridge_contract():
     assert 'do not replace it with inspect_workspace' in operation_schema['description']
 
     payload_properties = request_schema['properties']['payload']['properties']
-    assert {'record_id', 'confirmed_gap', 'decision', 'stage', 'release_id', 'commit_sha', 'verdict'} <= set(payload_properties)
+    assert {
+        'record_id', 'engineering_item_id', 'confirmed_gap', 'decision', 'stage',
+        'release_id', 'commit_sha', 'verdict', 'include_resolved',
+    } <= set(payload_properties)
     assert payload_properties['verdict']['enum'] == ['PASS', 'FAIL']
 
 
@@ -150,6 +155,8 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
         'headroom': 1,
         'status': 'PASS',
     }
+    assert schema['info']['version'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
+    assert schema['x-vectra-release'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001'
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
