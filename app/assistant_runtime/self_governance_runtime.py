@@ -21,6 +21,7 @@ from app.assistant_runtime.durable_runtime_state import (
 
 RELEASE_ID = "VECTRA-CORE-ONTOLOGY-001-INCREMENT-001"
 WORK_CONTEXT_LIFECYCLE_RELEASE_ID = "VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001"
+BLOCKER_GOVERNANCE_RELEASE_ID = "VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001"
 CONTRACT_VERSION = "2.2"
 STATE_FILE = Path("runtime") / "governance" / "self_governance_state.json"
 
@@ -728,6 +729,360 @@ def verify_runtime_operation_blockers(
         ],
         "attention": _attention_summary(state),
         "readback_verified": bool(diagnostic.get("readback_verified")),
+        "read_only": False,
+    }
+
+
+def get_engineering_blockers(
+    engineering_item_id: Optional[str] = None,
+    *,
+    include_resolved: bool = False,
+) -> Dict[str, Any]:
+    """Return Self Governance blocker candidates through a Product Owner view.
+
+    Professional Pipeline creates durable ``ENG-*`` candidates when a Runtime
+    failure is confirmed.  This read contract makes those candidates visible
+    without requiring the Product Owner to inspect the internal Governance
+    snapshot or infer a decision path from technical HOLD output.
+    """
+    requested_id = str(engineering_item_id or "").strip()
+    state_result = read_self_governance_state()
+    state = state_result.get("governance") if isinstance(state_result.get("governance"), dict) else {}
+    terminal_statuses = {"IMPLEMENTED", "VERIFIED", "CLOSED", "REJECTED"}
+    items = []
+    for raw in state.get("engineering_queue", []):
+        if not isinstance(raw, dict) or raw.get("blocking") is not True:
+            continue
+        item_id = str(raw.get("engineering_item_id") or "")
+        if requested_id and item_id != requested_id:
+            continue
+        status = str(raw.get("status") or "CANDIDATE").upper()
+        if not include_resolved and status in terminal_statuses:
+            continue
+        item = deepcopy(raw)
+        item.setdefault("owner_decision", {"status": "PENDING"})
+        item["product_owner_decision_required"] = bool(
+            status not in terminal_statuses
+            and (item.get("owner_decision") or {}).get("status") not in {"APPROVED", "REJECTED"}
+        )
+        items.append(item)
+
+    attention = _attention_summary(state)
+    found = bool(items) or not requested_id
+    return {
+        "status": "PASS" if found else "NOT_FOUND",
+        "operation_type": "get_engineering_blockers",
+        "engineering_item_id": requested_id or None,
+        "blockers_count": len(items),
+        "blockers": items,
+        "open_blockers_count": int(attention.get("open_blockers") or 0),
+        "engineering_hold": bool(attention.get("stop_recommended")),
+        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "allowed_decisions": ["APPROVED", "REJECTED", "DEFERRED"],
+        "failure_reason": None if found else "engineering_blocker_not_found",
+        "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+        "read_only": True,
+    }
+
+
+def record_engineering_blocker_owner_decision(
+    engineering_item_id: str,
+    decision: str,
+    *,
+    product_owner_confirmed: bool = False,
+    comment: str = "",
+) -> Dict[str, Any]:
+    """Record an explicit Product Owner decision for one ``ENG-*`` blocker.
+
+    Approval creates and approves one linked Development Journal record while
+    preserving ENGINEERING_HOLD until the blocker is actually verified or
+    closed. Rejection resolves only the selected blocker. Deferral records the
+    decision but intentionally keeps the hold active.
+    """
+    item_id = str(engineering_item_id or "").strip()
+    normalized_decision = str(decision or "").strip().upper()
+    allowed = {"APPROVED", "REJECTED", "DEFERRED"}
+    if not item_id:
+        return {
+            "status": "HOLD",
+            "operation_type": "record_engineering_blocker_decision",
+            "failure_reason": "engineering_item_id_required",
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+    if normalized_decision not in allowed:
+        return {
+            "status": "HOLD",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "failure_reason": "explicit_owner_decision_required",
+            "allowed_decisions": sorted(allowed),
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+    if not product_owner_confirmed:
+        return {
+            "status": "HOLD",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "failure_reason": "product_owner_confirmation_required",
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    state_result = read_self_governance_state()
+    state = state_result.get("governance") if isinstance(state_result.get("governance"), dict) else {}
+    current_item = next(
+        (
+            deepcopy(item)
+            for item in state.get("engineering_queue", [])
+            if isinstance(item, dict)
+            and str(item.get("engineering_item_id") or "") == item_id
+            and item.get("blocking") is True
+        ),
+        None,
+    )
+    if current_item is None:
+        return {
+            "status": "NOT_FOUND",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "failure_reason": "engineering_blocker_not_found",
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    prior_decision = str((current_item.get("owner_decision") or {}).get("status") or "").upper()
+    if prior_decision == normalized_decision and current_item.get("product_owner_confirmed") is True:
+        attention = _attention_summary(state)
+        return {
+            "status": "PASS",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "decision": deepcopy(current_item.get("owner_decision") or {}),
+            "development_record_id": current_item.get("development_record_id"),
+            "decision_reused": True,
+            "engineering_hold": bool(attention.get("stop_recommended")),
+            "open_blockers_count": int(attention.get("open_blockers") or 0),
+            "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+            "failure_reason": None,
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": False,
+        }
+    if prior_decision in {"APPROVED", "REJECTED"}:
+        return {
+            "status": "HOLD",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "failure_reason": "owner_decision_already_recorded",
+            "existing_decision": prior_decision,
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    development_record_id = current_item.get("development_record_id")
+    if normalized_decision == "APPROVED" and not development_record_id:
+        # Local import avoids coupling Development Journal startup to the
+        # Governance module while keeping the approved transition executable.
+        from app.development_journal import create_development_request, record_owner_decision
+
+        created = create_development_request(
+            {
+                "event_type": "self_governance_blocker",
+                "component": str(current_item.get("subsystem") or "self_governance"),
+                "confirmed_gap": str(current_item.get("title") or "Confirmed Runtime blocker."),
+                "evidence_summary": str(
+                    current_item.get("description")
+                    or "Professional Pipeline created a durable blocker candidate."
+                ),
+                "proposal": "Prepare one bounded engineering increment and verify it through Product Verification.",
+                "priority": "P1",
+                "runtime_context": {
+                    "source_environment": "Self Governance",
+                    "engineering_item_id": item_id,
+                    "observation_id": current_item.get("observation_id"),
+                    "governance_source": "professional_pipeline",
+                },
+                "session_id": f"self-governance-{item_id}",
+                "source_environment": "Self Governance",
+            }
+        )
+        development_record_id = created.get("record_id")
+        if created.get("status") != "ok" or not development_record_id:
+            return {
+                "status": "HOLD",
+                "operation_type": "record_engineering_blocker_decision",
+                "engineering_item_id": item_id,
+                "failure_reason": "development_record_creation_failed",
+                "journal_result": created,
+                "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+                "read_only": True,
+            }
+        approved = record_owner_decision(
+            str(development_record_id),
+            {
+                "decision": "APPROVED",
+                "product_owner_approval": True,
+                "comment": comment or f"Approved from Self Governance blocker {item_id}.",
+            },
+        )
+        if approved.get("status") != "ok":
+            return {
+                "status": "HOLD",
+                "operation_type": "record_engineering_blocker_decision",
+                "engineering_item_id": item_id,
+                "development_record_id": development_record_id,
+                "failure_reason": "development_record_owner_decision_failed",
+                "journal_result": approved,
+                "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+                "read_only": True,
+            }
+
+    decision_record = {
+        "status": normalized_decision,
+        "actor": "Product Owner",
+        "comment": str(comment or ""),
+        "decided_at": _now(),
+    }
+    updated: Dict[str, Any] = {}
+
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        merged = _merge_seed(current)
+        for item in merged.get("engineering_queue", []):
+            if not isinstance(item, dict) or str(item.get("engineering_item_id") or "") != item_id:
+                continue
+            item["status"] = normalized_decision
+            item["owner_decision"] = deepcopy(decision_record)
+            item["product_owner_confirmed"] = True
+            item["updated_at"] = decision_record["decided_at"]
+            if development_record_id:
+                item["development_record_id"] = development_record_id
+            updated.update(deepcopy(item))
+            break
+        if normalized_decision == "REJECTED":
+            for observation in merged.get("observations", []):
+                if (
+                    isinstance(observation, dict)
+                    and str(observation.get("observation_id") or "")
+                    == str(current_item.get("observation_id") or "")
+                ):
+                    observation["status"] = "CLOSED"
+                    observation["closure_reason"] = "rejected_by_product_owner"
+                    observation["updated_at"] = decision_record["decided_at"]
+                    break
+        return merged
+
+    persisted_state, diagnostic = update_json_state(STATE_FILE, _seed, dict, updater)
+    _persist_root(persisted_state)
+    if not updated:
+        return {
+            "status": "NOT_FOUND",
+            "operation_type": "record_engineering_blocker_decision",
+            "engineering_item_id": item_id,
+            "failure_reason": "engineering_blocker_not_found_during_update",
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+    attention = _attention_summary(persisted_state)
+    return {
+        "status": "PASS",
+        "operation_type": "record_engineering_blocker_decision",
+        "engineering_item_id": item_id,
+        "decision": deepcopy(decision_record),
+        "development_record_id": development_record_id,
+        "decision_reused": False,
+        "engineering_hold": bool(attention.get("stop_recommended")),
+        "open_blockers_count": int(attention.get("open_blockers") or 0),
+        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "readback_verified": bool(diagnostic.get("readback_verified")),
+        "failure_reason": None,
+        "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+        "read_only": False,
+    }
+
+
+def reconcile_engineering_blocker_development_verification(
+    development_record_id: str,
+    verdict: str,
+    *,
+    release_id: str = "",
+) -> Dict[str, Any]:
+    """Project linked DEV Product Verification back into Governance HOLD.
+
+    A PASS is the evidence transition that verifies the linked ``ENG-*``
+    blocker and permits the hold to clear when no other blocker remains. A FAIL
+    returns the candidate to its approved blocking state for another bounded
+    engineering iteration.
+    """
+    record_id = str(development_record_id or "").strip()
+    normalized_verdict = str(verdict or "").strip().upper()
+    if not record_id or normalized_verdict not in {"PASS", "FAIL"}:
+        return {
+            "status": "NOT_APPLICABLE",
+            "operation_type": "reconcile_engineering_blocker_development_verification",
+            "verified_engineering_item_ids": [],
+            "failure_reason": "linked_development_verification_required",
+            "release": BLOCKER_GOVERNANCE_RELEASE_ID,
+            "read_only": True,
+        }
+
+    changed: List[Dict[str, Any]] = []
+    verified_at = _now()
+
+    def updater(current: Dict[str, Any]) -> Dict[str, Any]:
+        state = _merge_seed(current)
+        observations = {
+            str(item.get("observation_id") or ""): item
+            for item in state.get("observations", [])
+            if isinstance(item, dict)
+        }
+        for item in state.get("engineering_queue", []):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("development_record_id") or "") != record_id:
+                continue
+            verification = {
+                "status": normalized_verdict,
+                "development_record_id": record_id,
+                "release_id": str(release_id or ""),
+                "verified_at": verified_at,
+            }
+            item["status"] = "VERIFIED" if normalized_verdict == "PASS" else "APPROVED"
+            item["verification"] = verification
+            item["updated_at"] = verified_at
+            observation = observations.get(str(item.get("observation_id") or ""))
+            if isinstance(observation, dict):
+                observation["verification"] = deepcopy(verification)
+                observation["updated_at"] = verified_at
+                if normalized_verdict == "PASS":
+                    observation["status"] = "CLOSED"
+                    observation["closure_reason"] = "linked_development_product_verification_pass"
+                else:
+                    observation["status"] = "OPEN"
+                    observation.pop("closure_reason", None)
+            changed.append(deepcopy(item))
+        return state
+
+    persisted_state, diagnostic = update_json_state(STATE_FILE, _seed, dict, updater)
+    _persist_root(persisted_state)
+    attention = _attention_summary(persisted_state)
+    return {
+        "status": "PASS" if changed else "NOT_APPLICABLE",
+        "operation_type": "reconcile_engineering_blocker_development_verification",
+        "development_record_id": record_id,
+        "verdict": normalized_verdict,
+        "verified_engineering_item_ids": [
+            item.get("engineering_item_id") for item in changed if item.get("engineering_item_id")
+        ],
+        "open_blockers_count": int(attention.get("open_blockers") or 0),
+        "engineering_hold": bool(attention.get("stop_recommended")),
+        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "readback_verified": bool(diagnostic.get("readback_verified")),
+        "failure_reason": None,
+        "release": BLOCKER_GOVERNANCE_RELEASE_ID,
         "read_only": False,
     }
 
