@@ -46,6 +46,7 @@ from app.domain.summary import (
     get_category_summary,
     get_tmc_group_summary,
     get_sku_summary,
+    _format_from_product_text,
 )
 from app.presentation.contracts import error_response, not_implemented_response, ok_response
 from app.presentation.views import (
@@ -2763,6 +2764,15 @@ def _build_query_from_numeric_selection(message: str, session_ctx: Dict[str, Any
         selected = items[index]
         selected_filter = selected.get('filter_payload') if isinstance(selected.get('filter_payload'), dict) else None
         period = (selected_filter or {}).get('period') or state.get('period')
+        if selected.get('selection_type') == 'format_filter':
+            return {
+                'status': 'ok',
+                'query': {
+                    'query_type': 'format_filter',
+                    'format_value': selected.get('format_value') or selected.get('object_name'),
+                    'filter_payload': selected_filter or state.get('filter') or {},
+                },
+            }
         return {
             'status': 'ok',
             'query': {
@@ -2797,6 +2807,22 @@ def _build_query_from_named_selection(message: str, session_ctx: Dict[str, Any])
     if not name_norm or len(name_norm) < 2:
         return {}
     state = get_session_state(session_ctx)
+    format_items = [
+        item for item in (state.get('last_list_items') or [])
+        if isinstance(item, dict)
+        and item.get('selection_type') == 'format_filter'
+        and normalize_entity_text(item.get('object_name')) == name_norm
+    ]
+    if len(format_items) == 1:
+        selected = format_items[0]
+        return {
+            'status': 'ok',
+            'query': {
+                'query_type': 'format_filter',
+                'format_value': selected.get('format_value') or selected.get('object_name'),
+                'filter_payload': selected.get('filter_payload') if isinstance(selected.get('filter_payload'), dict) else state.get('filter') or {},
+            },
+        }
     screen = state.get('current_screen') or state.get('last_payload') or {}
     if not isinstance(screen, dict):
         return {}
@@ -4253,6 +4279,142 @@ def _render_all_screen_from_ready(screen: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _derived_format_groups(screen: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return deterministic format facets without creating a Format object."""
+    state = _screen_active_workspace_state(screen)
+    ctx = screen.get('context') if isinstance(screen.get('context'), dict) else {}
+    base_filter = state.get('filter') if isinstance(state.get('filter'), dict) else _screen_filter_for_vitrine(screen)
+    if ctx.get('period') and not base_filter.get('period'):
+        base_filter = {**base_filter, 'period': ctx.get('period')}
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in _filter_rows_safe(base_filter):
+        fmt = _format_from_product_text(row.get('tmc_group') or row.get('sku'))
+        if not fmt or fmt == 'формат не определён':
+            continue
+        grouped.setdefault(str(fmt), []).append(row)
+    result = []
+    for fmt, rows in grouped.items():
+        metrics = aggregate_metrics(rows) if rows else {}
+        result.append({
+            'format': fmt,
+            'revenue': _to_float_local(metrics.get('revenue')),
+            'finrez_pre': _to_float_local(metrics.get('finrez_pre')),
+            'sku_count': len({str(row.get('sku')) for row in rows if row.get('sku')}),
+        })
+    return sorted(result, key=lambda item: (-item['revenue'], normalize_entity_text(item['format'])))
+
+
+def _render_format_selector(screen: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    ctx = screen.get('context') if isinstance(screen.get('context'), dict) else {}
+    state = _screen_active_workspace_state(screen)
+    if str(ctx.get('level') or '').strip().lower() != 'category':
+        return {'status': 'error', 'reason': 'Фильтр формата доступен только внутри категории.'}
+    groups = _derived_format_groups(screen)
+    if not groups:
+        return {'status': 'error', 'reason': 'Для текущей категории форматы не определены.'}
+    lines = [
+        f'Форматы категории: {ctx.get("object_name") or "Категория"} | {ctx.get("period") or ""}',
+        '№ | Формат | Оборот | Финрез до | SKU',
+    ]
+    selection_items = []
+    for index, item in enumerate(groups, start=1):
+        lines.append(
+            f'{index} | {item["format"]} | {_fmt_action_money(item["revenue"])} грн | '
+            f'{_fmt_signed_int_local(item["finrez_pre"])} грн | {item["sku_count"]}'
+        )
+        selection_items.append({
+            'object_name': item['format'],
+            'normalized_name': normalize_entity_text(item['format']),
+            'selection_type': 'format_filter',
+            'format_value': item['format'],
+            'level': 'category',
+            'filter_payload': dict(state.get('filter') or _screen_filter_for_vitrine(screen)),
+        })
+    save_session_state(
+        session_id,
+        view_mode='format_filter',
+        show_all=False,
+        last_response_type='format_filter',
+        last_list_level='sku',
+        last_list_items=selection_items,
+    )
+    return {
+        'status': 'ok',
+        'context': dict(ctx),
+        'path': screen.get('path') or state.get('path') or [],
+        'render_mode': 'list_only',
+        'summary_block': 'Выберите вычисляемый формат. Формат не является самостоятельным объектом Workspace.',
+        'drain_block_render': lines,
+        'all_block': [],
+        'navigation_block': ['назад — вернуться к категории'],
+        'format_filter': {'mode': 'derived_filter', 'object_type_created': False, 'formats_count': len(groups)},
+        'screen_order': ['summary_block', 'drain_block_render', 'navigation_block'],
+    }
+
+
+def _route_format_filter_query(query: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Show SKU matching a derived format inside the current category."""
+    fmt = str(query.get('format_value') or '').strip()
+    state = get_session_state(get_session(session_id))
+    screen = state.get('current_screen') or state.get('last_payload') or {}
+    ctx = screen.get('context') if isinstance(screen, dict) and isinstance(screen.get('context'), dict) else {}
+    base_filter = query.get('filter_payload') if isinstance(query.get('filter_payload'), dict) else state.get('filter') or {}
+    rows = [
+        row for row in _filter_rows_safe(base_filter)
+        if normalize_entity_text(_format_from_product_text(row.get('tmc_group') or row.get('sku'))) == normalize_entity_text(fmt)
+    ]
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        if row.get('sku'):
+            grouped.setdefault(str(row.get('sku')), []).append(row)
+    if not grouped:
+        return {'status': 'error', 'reason': f'В текущей категории нет SKU формата «{fmt}».'}
+    items = []
+    for sku, sku_rows in grouped.items():
+        metrics = aggregate_metrics(sku_rows)
+        items.append({
+            'object_name': sku,
+            'level': 'sku',
+            'revenue': _to_float_local(metrics.get('revenue')),
+            'finrez_pre': _to_float_local(metrics.get('finrez_pre')),
+        })
+    items.sort(key=lambda item: (-item['revenue'], normalize_entity_text(item['object_name'])))
+    pseudo_screen = {
+        'status': 'ok',
+        'context': dict(ctx),
+        'path': screen.get('path') or [],
+        'filter': dict(base_filter),
+        'children_level': 'sku',
+        'all_block': items,
+    }
+    view = _render_all_screen_from_ready(pseudo_screen)
+    if view.get('status') == 'error':
+        return view
+    lines = list(view.get('drain_block_render') or [])
+    if lines:
+        lines[0] = f'Витрина SKU: {ctx.get("object_name") or "Категория"} | Формат: {fmt} | {ctx.get("period") or ""}'
+    view['drain_block_render'] = lines
+    view['summary_block'] = 'SKU отфильтрованы по вычисляемому формату внутри текущей категории.'
+    view['format_filter'] = {'mode': 'derived_filter', 'value': fmt, 'object_type_created': False}
+    list_items = view.pop('_list_items_for_state', [])
+    prepared = []
+    for item in list_items:
+        if not isinstance(item, dict):
+            continue
+        sku_filter = dict(base_filter)
+        sku_filter['sku'] = item.get('object_name')
+        prepared.append({**item, 'filter_payload': sku_filter})
+    save_session_state(
+        session_id,
+        view_mode='all',
+        show_all=True,
+        last_response_type='format_sku_list',
+        last_list_level='sku',
+        last_list_items=prepared,
+    )
+    return view
+
+
 def _render_reasons_screen_from_ready(screen: Dict[str, Any]) -> Dict[str, Any]:
     block = screen.get('reasons_block')
     render = screen.get('reasons_block_render')
@@ -4459,7 +4621,7 @@ def _handle_back(session_id: str) -> Dict[str, Any]:
     # UI/action display modes are not real drilldown steps. Back from these
     # modes restores the same analytical object screen from State and does not
     # run a new analytical calculation.
-    if current.get('view_mode') in {'all', 'reasons', 'kpi', 'action'}:
+    if current.get('view_mode') in {'all', 'reasons', 'kpi', 'action', 'format_filter'}:
         screen = current.get('current_screen') or current.get('last_payload')
         save_session_state(session_id, view_mode='drain', show_all=False)
         result = _restore_screen_for_back(screen)
@@ -4873,7 +5035,7 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
     if not str(message).isdigit():
         return None
     state = get_session_state(session_ctx)
-    if str(state.get('view_mode') or '').lower() == 'all' or state.get('show_all'):
+    if str(state.get('view_mode') or '').lower() in {'all', 'format_filter'} or state.get('show_all'):
         return None
     source_screen = state.get('current_screen') or session_ctx.get('current_screen') or session_ctx.get('last_payload') or {}
     display_screen = session_ctx.get('last_payload') if str(state.get('view_mode') or '').lower() == 'action' else source_screen
@@ -4902,6 +5064,9 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
         if view.get('status') != 'error':
             save_session_state(session_id, view_mode='reasons', show_all=False)
         return view
+
+    def show_format_selector() -> Dict[str, Any]:
+        return _render_format_selector(source_screen, session_id)
 
 
     def open_visible_child(index: int) -> Optional[Dict[str, Any]]:
@@ -4974,6 +5139,10 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
             return _handle_back(session_id)
         if action_type == 'show_all':
             return show_all()
+        if action_type in {'select_network', 'product_navigation'}:
+            return show_all()
+        if action_type == 'format_filter':
+            return show_format_selector()
         if action_type == 'reasons':
             return show_reasons()
         if action_type == 'negotiation':
@@ -5469,5 +5638,8 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
 
     if query_type == 'drill_down':
         return _finalize_response(_route_drill_query(query, get_session(session_id), session_id))
+
+    if query_type == 'format_filter':
+        return _finalize_response(_route_format_filter_query(query, session_id))
 
     return _finalize_response(_route_base_query(query, session_id))
