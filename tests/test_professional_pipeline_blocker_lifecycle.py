@@ -1,4 +1,5 @@
 from app.assistant_runtime.professional_pipeline import process_professional_response
+from app.assistant_runtime.self_governance_runtime import verify_runtime_operation_blockers
 
 
 def _call(operation_type: str, status: str):
@@ -179,6 +180,58 @@ def test_successful_read_only_query_cannot_reconcile_engineering_hold(tmp_path, 
     assert protected_write["status"] == "HOLD"
     assert protected_write["execution_gates"]["engineering"]["status"] == "HOLD"
     assert protected_write["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
+
+
+def test_repeated_known_failure_recreates_durable_hold_before_independent_read(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    first_failure = process_professional_response(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+    assert first_failure["self_governance"]["attention"]["open_blockers"] == 1
+
+    # Simulate stale Production state left by the previous release: the event
+    # hash remains deduplicated, while its automatically created blocker was
+    # already reconciled and closed.
+    stale_reconciliation = verify_runtime_operation_blockers(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        verification_status="PASS",
+    )
+    assert stale_reconciliation["verified_blockers_count"] == 1
+    assert stale_reconciliation["attention"]["open_blockers"] == 0
+
+    repeated_failure = process_professional_response(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+    independent_workspace = process_professional_response(
+        operation_type="get_canonical_workspace",
+        runtime_service="canonical_workspace.get",
+        endpoint="/vectra/query",
+        result={
+            "status": "PASS",
+            "read_only": True,
+            "workspace_type": "contract",
+            "object_id": "Аврора",
+            "period": "2026-02",
+        },
+    )
+
+    assert repeated_failure["engineering_observation"] is not None
+    assert repeated_failure["self_governance"]["attention"]["open_blockers"] == 1
+    assert independent_workspace["status"] == "RESEARCH_CONTINUE"
+    assert independent_workspace["blocker_reconciliation"]["reason"] == "research_safe_operation_cannot_reconcile_engineering_blocker"
+    assert independent_workspace["blocker_reconciliation"]["verified_blockers_count"] == 0
+    assert independent_workspace["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert independent_workspace["execution_gates"]["engineering"]["product_owner_approval_required"] is True
+    assert independent_workspace["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
 
 
 def test_open_candidate_still_blocks_protected_engineering_mutation(tmp_path, monkeypatch):

@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-ENGINEERING-HOLD-INTEGRITY-001"
-CONTRACT_VERSION = "1.3"
+RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-ENGINEERING-HOLD-INTEGRITY-001-REV2"
+CONTRACT_VERSION = "1.4"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -477,8 +477,17 @@ def process_professional_response(
         "processed_at": _now(),
     })
     observation = None
-    # Only the first occurrence of a deterministic event creates an observation.
-    if previous_state.get("was_new") is True and not expected_negative:
+    # Normally only the first occurrence of a deterministic event creates an
+    # observation. A previously seen failure may, however, have no remaining
+    # open blocker (for example, an older release reconciled it too broadly).
+    # In that case a repeated confirmed blocker must recreate durable HOLD
+    # state; otherwise the current response is HOLD but the next independent
+    # research read incorrectly returns engineering PASS.
+    should_record_observation = bool(
+        previous_state.get("was_new") is True
+        or (blocker and not accumulated_blocker)
+    )
+    if should_record_observation and not expected_negative:
         observation = _record_confirmed_observation_once(
             event_hash=event_hash,
             operation_type=operation_type,
