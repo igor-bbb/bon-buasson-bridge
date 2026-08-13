@@ -2004,11 +2004,9 @@ def get_session(session_id: str) -> Dict[str, Any]:
         _hydrate_session_store()
         current = dict(_blank_state())
         stored = SESSION_STORE.get(session_id, {})
-        # Some clients create a fresh session_id for every message. When that
-        # happens, UI-only commands (all/reasons/back) must still see the last
-        # active screen instead of returning "нет данных".
-        if not stored:
-            stored = _latest_active_session_payload()
+        # Session state is object-scoped and must never leak between callers.
+        # Clients without a stable session_id restore context explicitly via
+        # active_workspace_state at the API boundary.
         current.update(stored)
         return current
 
@@ -5033,15 +5031,27 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
                 opened = open_visible_child(idx)
                 if opened is not None:
                     return opened
-        # If the action explicitly says main risk / largest reserve and the visible menu
-        # did not carry an object name, use the same numeric position as a last-resort.
-        try:
-            number = int(action.get('number') or 0)
-            opened = open_visible_child(number)
-            if opened is not None:
-                return opened
-        except Exception:
-            pass
+        # Menu numbering and child ordering are different namespaces. For a
+        # semantic priority command select from the visible object metrics;
+        # never interpret the action number as a child-row number.
+        if items and any(token in label_norm for token in ('главн', 'крупнейш', 'наибольш', 'максимальн', 'приоритет')):
+            scored = []
+            for idx, item in enumerate(items, start=1):
+                if not isinstance(item, dict) or not (item.get('object_name') or item.get('name')):
+                    continue
+                values = [
+                    item.get('navigation_money'), item.get('opportunity_money'),
+                    item.get('potential_money'), item.get('effect_money'),
+                ]
+                score = max((_to_float_local(value) for value in values if value is not None), default=0.0)
+                if 'риск' in label_norm:
+                    delta = _to_float_local(item.get('profit_delta_money') or item.get('object_result_money'))
+                    score = max(score, abs(min(delta, 0.0)))
+                scored.append((score, idx))
+            if scored:
+                opened = open_visible_child(max(scored)[1])
+                if opened is not None:
+                    return opened
         return None
 
     runtime_action = get_action_from_state(screen, n)
@@ -5158,6 +5168,40 @@ def _execute_numeric_workspace_action(message: str, session_ctx: Dict[str, Any],
                 save_session_state(session_id, view_mode='action', show_all=False)
             return result
     return None
+
+
+def _visible_workspace_action_number(message: str, session_ctx: Dict[str, Any]) -> Optional[int]:
+    """Resolve a textual command only against the last visible action menu."""
+    message_norm = normalize_entity_text(message)
+    if not message_norm:
+        return None
+    state = get_session_state(session_ctx)
+    screen = state.get('current_screen') or state.get('last_payload') or {}
+    if not isinstance(screen, dict):
+        return None
+    active_state = _screen_active_workspace_state(screen) or state.get('active_workspace_state') or {}
+    actions = active_state.get('action_map') if isinstance(active_state.get('action_map'), list) else screen.get('workspace_action_map')
+    if not isinstance(actions, list):
+        return None
+
+    matches = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        label_norm = normalize_entity_text(action.get('label') or action.get('normalized_label') or '')
+        if not label_norm:
+            continue
+        # Labels often include an explanation after an em dash. Both the full
+        # visible label and its imperative clause are valid user commands.
+        command_norm = normalize_entity_text(re.split(r'\s+[—-]\s+', str(action.get('label') or ''), maxsplit=1)[0])
+        exact = message_norm in {label_norm, command_norm}
+        contained = len(message_norm) >= 8 and (message_norm in label_norm or label_norm in message_norm)
+        command_contained = len(command_norm) >= 8 and (message_norm in command_norm or command_norm in message_norm)
+        if exact or contained or command_contained:
+            number = int(action.get('number') or 0)
+            if number > 0:
+                matches.append(number)
+    return matches[0] if len(set(matches)) == 1 else None
 
 
 def _maybe_execute_direct_object_opening(message: str, session_ctx: Dict[str, Any], session_id: str) -> Optional[Dict[str, Any]]:
@@ -5310,6 +5354,11 @@ def orchestrate_vectra_query(message: str, session_id: str = 'default') -> Dict[
         parsed = _build_query_from_numeric_selection(normalized, session_ctx)
         if parsed.get('status') != 'ok':
             return _finalize_response(parsed)
+    elif (visible_action_number := _visible_workspace_action_number(message, session_ctx)) is not None:
+        visible_result = _execute_numeric_workspace_action(str(visible_action_number), session_ctx, session_id)
+        if visible_result is not None:
+            return _finalize_response(visible_result)
+        return _finalize_response({'status': 'error', 'reason': 'Видимое действие недоступно в текущем состоянии рабочего стола.'})
     elif _is_search_command(normalized):
         last_payload = session_ctx.get('last_payload') or {}
         if last_payload:

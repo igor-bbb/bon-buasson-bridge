@@ -4890,11 +4890,28 @@ def _hydrate_runtime_context_from_request(session_id: str, request: VectraQueryR
                 'active_workspace_state': state,
                 'workspace_action_map': state.get('action_map') if isinstance(state.get('action_map'), list) else [],
             }
+            # Preserve the full analytical screen when it represents the same
+            # explicit object. Otherwise replace it with the explicit public
+            # state snapshot. This makes the request state authoritative for
+            # every Business role, not only Product Team research.
+            existing = get_session(session_id)
+            existing_screen = existing.get('current_screen') if isinstance(existing.get('current_screen'), dict) else {}
+            existing_state = existing_screen.get('active_workspace_state') if isinstance(existing_screen.get('active_workspace_state'), dict) else {}
+            same_identity = all(
+                str(existing_state.get(key) or '') == str(state.get(key) or '')
+                for key in ('workspace_level', 'object_name', 'period')
+            )
+            if same_identity and existing_screen:
+                hydrated_screen = dict(existing_screen)
+                hydrated_screen['active_workspace_state'] = state
+                hydrated_screen['workspace_action_map'] = state.get('action_map') if isinstance(state.get('action_map'), list) else []
+            else:
+                hydrated_screen = screen
             if isinstance(active_research_state, dict) and active_research_state:
-                screen['active_research_state'] = active_research_state
-                screen['research_flow_status'] = active_research_state
-                screen['research_path'] = research_path if isinstance(research_path, list) else active_research_state.get('research_path', [])
-                screen['current_step'] = current_step or active_research_state.get('current_step')
+                hydrated_screen['active_research_state'] = active_research_state
+                hydrated_screen['research_flow_status'] = active_research_state
+                hydrated_screen['research_path'] = research_path if isinstance(research_path, list) else active_research_state.get('research_path', [])
+                hydrated_screen['current_step'] = current_step or active_research_state.get('current_step')
             payload.update({
                 'active_workspace_state': state,
                 'active_research_state': active_research_state if isinstance(active_research_state, dict) else None,
@@ -4904,17 +4921,16 @@ def _hydrate_runtime_context_from_request(session_id: str, request: VectraQueryR
                 'scope_object_name': state.get('object_name'),
                 'period_current': state.get('period'),
                 'filter': state.get('filter') if isinstance(state.get('filter'), dict) else {},
+                'view_mode': 'drain',
+                'show_all': False,
             })
             # DEV-0004: when Custom GPT calls vectraQuery with explicit Product
             # Team research runtime state, hydrate both current_screen and
             # last_payload. Numeric/local research commands must not fall back
             # into ordinary free dialogue just because the server has no hidden
             # chat history for the current Action call.
-            if str(state.get('workspace_level') or '').strip().lower() == 'product_team_research':
-                payload['current_screen'] = screen
-                payload['last_payload'] = screen
-            else:
-                payload.setdefault('last_payload', screen)
+            payload['current_screen'] = hydrated_screen
+            payload['last_payload'] = hydrated_screen
         if payload:
             update_session(session_id, {k: v for k, v in payload.items() if v not in (None, '')})
     except Exception:
@@ -4923,6 +4939,17 @@ def _hydrate_runtime_context_from_request(session_id: str, request: VectraQueryR
 def _stable_session_id(request: VectraQueryRequest) -> str:
     raw = (getattr(request, 'session_id', None) or '').strip()
     return raw or 'default'
+
+
+def _canonical_workspace_open_command(workspace_type: str, object_id: str, period: str) -> str:
+    commands = {
+        'business': f'Бизнес {period}',
+        'top_manager': f'Покажи {object_id} как топ-менеджера {period}',
+        'manager': f'Покажи {object_id} как менеджера {period}',
+        'network': f'Покажи контракт {object_id} {period}',
+        'contract': f'Покажи контракт {object_id} {period}',
+    }
+    return commands[workspace_type]
 
 
 def _normalize_product_team_command_text(message: str) -> str:
@@ -11161,7 +11188,16 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
         if operation_type == 'verify':
             return json_response(_facade_response(operation_type, 'business_data.verify', '/vectra/laboratory/business-data/verify', verify_vectra_business_data_access()))
         if operation_type == 'query':
-            return json_response(_facade_response(operation_type, 'business_data.query', '/vectra/laboratory/business-data/query', run_vectra_business_data_query(message=str(payload.get('message') or payload.get('query') or ''), session_id=session_id or 'laboratory-facade')))
+            query_request = VectraQueryRequest(
+                message=str(payload.get('message') or payload.get('query') or ''),
+                session_id=session_id or 'laboratory-facade',
+                active_workspace_state=payload.get('active_workspace_state') if isinstance(payload.get('active_workspace_state'), dict) else None,
+                workspace_action_map=payload.get('workspace_action_map') if isinstance(payload.get('workspace_action_map'), list) else None,
+                runtime_context=payload.get('runtime_context') if isinstance(payload.get('runtime_context'), dict) else None,
+            )
+            query_response = vectra_query(query_request)
+            query_result = json.loads(query_response.body.decode('utf-8'))
+            return json_response(_facade_response(operation_type, 'business_data.query', '/vectra/query', query_result))
         if operation_type in {'first_impression', 'explore', 'initial_exploration', 'business_first_impression'}:
             return json_response(_facade_response(operation_type, 'business_data.first_impression', '/vectra/laboratory/facade/business-data', get_vectra_business_data_first_impression(period=period or None, message=str(payload.get('message') or payload.get('query') or ''))))
         if operation_type in {'get_canonical_workspace', 'canonical_workspace'}:
@@ -11182,7 +11218,7 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
                 return json_response(_facade_error(operation_type, 'object_id is required', runtime_service='canonical_workspace.get'))
             if business_domain.lower().replace('_', '').replace('-', '') not in {'bonboason', 'бонбуассон'}:
                 return json_response(_facade_error(operation_type, 'Unknown business_domain', runtime_service='canonical_workspace.get'))
-            command = f'Бизнес {period}' if workspace_type == 'business' else f'{object_id} {period}'
+            command = _canonical_workspace_open_command(workspace_type, object_id, period)
             canonical_session = session_id or f'laboratory-canonical-{uuid.uuid4().hex}'
             response = vectra_query(VectraQueryRequest(message=command, session_id=canonical_session))
             rendered = json.loads(response.body.decode('utf-8'))
@@ -11192,6 +11228,20 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
                 return json_response(_facade_error(
                     operation_type,
                     'Canonical Workspace was not produced by Runtime',
+                    runtime_service='canonical_workspace.get',
+                    endpoint='/vectra/query',
+                ))
+            expected_level = {'top_manager': 'manager_top', 'contract': 'network'}.get(workspace_type, workspace_type)
+            actual_level = str(canonical.get('workspace_type') or '').strip().lower()
+            actual_object = str(canonical.get('object_id') or '').strip().casefold()
+            if (
+                actual_level != expected_level
+                or str(canonical.get('period') or '') != period
+                or (workspace_type != 'business' and actual_object != object_id.casefold())
+            ):
+                return json_response(_facade_error(
+                    operation_type,
+                    'Canonical Workspace identity mismatch',
                     runtime_service='canonical_workspace.get',
                     endpoint='/vectra/query',
                 ))

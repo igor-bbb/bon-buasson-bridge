@@ -375,7 +375,7 @@ def build_active_workspace_state(payload: Dict[str, Any]) -> Dict[str, Any]:
     actions = build_workspace_action_map(payload)
     existing_state = payload.get('active_workspace_state') if isinstance(payload.get('active_workspace_state'), dict) else {}
     state = {
-        'state_version': 'W15_ACTIVE_WORKSPACE_STATE_V2',
+        'state_version': 'W15_ACTIVE_WORKSPACE_STATE_V3',
         'source_of_truth': 'last_displayed_workspace',
         'workspace_level': ctx.get('level') or payload.get('level'),
         'object_name': ctx.get('object_name') or payload.get('object_name'),
@@ -409,7 +409,7 @@ def apply_runtime_contract(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload['active_workspace_state'] = state
     payload['workspace_action_map'] = state.get('action_map', [])
     payload['workspace_runtime_contract'] = {
-        'version': 'W15_1_RUNTIME_NAVIGATION_CONTRACT',
+        'version': 'W15_2_RUNTIME_NAVIGATION_CONTRACT',
         'rendering_authority': 'workspace_markdown is the only user-visible Workspace artifact.',
         'navigation_authority': 'numeric commands resolve only against active_workspace_state.action_map extracted from the visible workspace_markdown menu.',
         'state_authority': 'active_workspace_state is the primary source of context for free dialogue and local commands until explicit object change.',

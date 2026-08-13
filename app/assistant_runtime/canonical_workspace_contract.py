@@ -12,8 +12,8 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-002"
-CONTRACT_VERSION = "2.2"
+RELEASE_ID = "VECTRA-PROFESSIONAL-NAVIGATION-CONTEXT-INTEGRITY-001"
+CONTRACT_VERSION = "2.3"
 SUPPORTED_WORKSPACE_TYPES = ("business", "top_manager", "manager", "network", "contract")
 _WORKSPACE_TYPE_ALIASES = {
     "business": "business",
