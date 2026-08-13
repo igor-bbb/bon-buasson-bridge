@@ -138,6 +138,49 @@ def test_open_candidate_does_not_block_journal_or_independent_read_only_route(tm
     assert other_route["execution_gates"]["current_route"]["status"] == "PASS"
 
 
+def test_successful_read_only_query_cannot_reconcile_engineering_hold(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    failed_route = process_professional_response(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        result={"status": "FAIL", "failure_reason": "nli_unresolved_message", "read_only": True},
+    )
+    successful_independent_route = process_professional_response(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        result={
+            "status": "PASS",
+            "read_only": True,
+            "action_type": "tasks",
+            "object_id": "Аврора",
+            "period": "2026-02",
+        },
+    )
+
+    assert failed_route["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert successful_independent_route["status"] == "RESEARCH_CONTINUE"
+    assert successful_independent_route["blocker_reconciliation"]["status"] == "NOT_APPLICABLE"
+    assert successful_independent_route["blocker_reconciliation"]["verified_blockers_count"] == 0
+    assert successful_independent_route["self_governance"]["attention"]["open_blockers"] == 1
+    assert successful_independent_route["execution_gates"]["research"]["status"] == "CONTINUE"
+    assert successful_independent_route["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert successful_independent_route["execution_gates"]["engineering"]["product_owner_approval_required"] is True
+    assert successful_independent_route["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
+
+    protected_write = process_professional_response(
+        operation_type="capitalize_confirmed_knowledge",
+        runtime_service="knowledge_capitalization.capitalize_confirmed_knowledge",
+        endpoint="/vectra/laboratory/facade/memory",
+        result={"status": "PASS"},
+    )
+    assert protected_write["status"] == "HOLD"
+    assert protected_write["execution_gates"]["engineering"]["status"] == "HOLD"
+    assert protected_write["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
+
+
 def test_open_candidate_still_blocks_protected_engineering_mutation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

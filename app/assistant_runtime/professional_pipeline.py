@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-RESEARCH-CONTINUITY-001"
-CONTRACT_VERSION = "1.2"
+RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-ENGINEERING-HOLD-INTEGRITY-001"
+CONTRACT_VERSION = "1.3"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -383,20 +383,35 @@ def process_professional_response(
     family = _operation_family(operation_type, runtime_service)
     normalized_status = _normalize_status(result)
     expected_negative = _expected_negative_outcome(operation_type, result)
-    blocker_reconciliation = verify_runtime_operation_blockers(
-        operation_type=operation_type,
-        runtime_service=runtime_service,
-        endpoint=endpoint,
-        verification_status=normalized_status,
-    )
+    operation_access = _operation_access(operation_type, family, result)
+    research_safe = operation_access.get("research_safe") is True
+    # A successful read-only/research operation cannot disprove an earlier
+    # blocker merely because both requests share a broad operation_type such
+    # as ``query``. The failed and successful requests may target different
+    # objects, periods, routes or action-map entries. Keep the engineering
+    # hold until a non-research verification or explicit Product Owner
+    # lifecycle decision handles the corresponding blocker.
+    if research_safe:
+        blocker_reconciliation = {
+            "status": "NOT_APPLICABLE",
+            "reason": "research_safe_operation_cannot_reconcile_engineering_blocker",
+            "verified_blockers_count": 0,
+            "verified_engineering_item_ids": [],
+            "read_only": True,
+        }
+    else:
+        blocker_reconciliation = verify_runtime_operation_blockers(
+            operation_type=operation_type,
+            runtime_service=runtime_service,
+            endpoint=endpoint,
+            verification_status=normalized_status,
+        )
     snapshot = get_self_governance_snapshot()
     active_context = snapshot.get("active_work_context") if isinstance(snapshot.get("active_work_context"), dict) else {}
     continuity = snapshot.get("professional_continuity") if isinstance(snapshot.get("professional_continuity"), dict) else {}
     attention = snapshot.get("attention") if isinstance(snapshot.get("attention"), dict) else {}
 
     focus_family = _focus_family(active_context)
-    operation_access = _operation_access(operation_type, family, result)
-    research_safe = operation_access.get("research_safe") is True
     blocker = False if expected_negative else _confirmed_blocker(result, normalized_status)
     accumulated_blocker = bool(attention.get("stop_recommended"))
     unrelated = focus_family not in {"general_professional_activity", family} and family not in {
