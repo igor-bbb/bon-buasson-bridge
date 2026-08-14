@@ -121,6 +121,8 @@ def test_product_review_action_publishes_explicit_bridge_contract():
         'record_engineering_blocker_decision',
         'update_engineering_execution',
         'record_product_verification',
+        'generate_product_review_report',
+        'verify_development_journal_export',
     }
     assert required_operations <= set(operation_schema['enum'])
     assert operation_schema['enum'][0] == 'get_development_request'
@@ -156,12 +158,12 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
         'headroom': 1,
         'status': 'PASS',
     }
-    assert schema['info']['version'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
-    assert schema['x-vectra-release'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
+    assert schema['info']['version'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2'
+    assert schema['x-vectra-release'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2'
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001'
-    assert root_schema['x-vectra-root-openapi']['previous_release_fix'] == 'VECTRA-PROFESSIONAL-LABORATORY-WORKSPACE-CONTINUITY-001'
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2'
+    assert root_schema['x-vectra-root-openapi']['previous_release_fix'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001'
 
 
 def test_product_review_summary_report_accepts_public_limit(tmp_path, monkeypatch):
@@ -170,7 +172,7 @@ def test_product_review_summary_report_accepts_public_limit(tmp_path, monkeypatc
         journal.create_development_request({'confirmed_gap': f'Report gap {index}'})
 
     import app.api.routes as routes
-    monkeypatch.setattr(routes, 'build_development_journal_response', journal.build_journal_response)
+    monkeypatch.setattr(routes, 'build_development_journal_facade_response', journal.build_journal_facade_response)
 
     response = routes.vectra_laboratory_facade_product_review({
         'operation_type': 'generate_product_review_report',
@@ -180,8 +182,61 @@ def test_product_review_summary_report_accepts_public_limit(tmp_path, monkeypatc
 
     assert body['status'] == 'ok'
     assert body['error'] is None
-    assert body['runtime_service_called'] == 'development_journal.build_journal_response'
+    assert body['runtime_service_called'] == 'development_journal.build_journal_facade_response'
     report = body['result']['development_journal']
     assert report['open_engineering_tasks_count'] == 3
     assert len(report['open_engineering_tasks']) == 2
     assert report['report_limit'] == 2
+
+
+def test_product_review_summary_report_stays_transport_safe_at_limit_50(tmp_path, monkeypatch):
+    journal = _journal(tmp_path, monkeypatch)
+    for index in range(28):
+        journal.create_development_request({
+            'confirmed_gap': f'Large report gap {index}: ' + ('x' * 4000),
+        })
+
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, 'build_development_journal_facade_response', journal.build_journal_facade_response)
+    response = routes.vectra_laboratory_facade_product_review({
+        'operation_type': 'generate_product_review_report',
+        'payload': {'limit': 50},
+    })
+    body = json.loads(response.body)
+
+    assert body['status'] == 'ok'
+    assert body['error'] is None
+    assert len(response.body) < 90000
+    assert body['result']['development_journal']['records_count'] == 28
+    assert body['result']['development_journal']['report_limit'] == 50
+    assert body['result']['transport_projection']['bounded_workspace_markdown'] is True
+
+
+def test_product_review_verifies_full_export_with_compact_readback(tmp_path, monkeypatch):
+    journal = _journal(tmp_path, monkeypatch)
+    for index in range(4):
+        journal.create_development_request({'confirmed_gap': f'Export gap {index}'})
+
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, 'build_development_journal_export_readback', journal.build_journal_export_readback)
+    response = routes.vectra_laboratory_facade_product_review({
+        'operation_type': 'verify_development_journal_export',
+        'payload': {'include_test': False},
+    })
+    body = json.loads(response.body)
+    result = body['result']
+
+    assert body['status'] == 'ok'
+    assert body['runtime_service_called'] == 'development_journal.build_journal_export_readback'
+    assert result['export_complete'] is True
+    assert result['full_export_executed'] is True
+    assert result['full_export_returned'] is False
+    assert result['expected_counts'] == {
+        'records_count': 4,
+        'acceptance_checks_count': 0,
+        'open_engineering_tasks_count': 4,
+        'closed_engineering_tasks_count': 0,
+    }
+    assert result['export_counts']['covered_records_count'] == 4
+    assert len(result['export_sha256']) == 64
+    assert len(result['workspace_markdown_sha256']) == 64

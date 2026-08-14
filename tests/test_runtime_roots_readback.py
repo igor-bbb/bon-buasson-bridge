@@ -67,7 +67,7 @@ def test_memory_facade_publishes_and_reads_snapshot_without_refresh(monkeypatch)
     assert "get_runtime_snapshot" in schema["properties"]["operation_type"]["enum"]
     public_schema = routes._laboratory_full_openapi_schema()
     assert routes._count_openapi_operations(public_schema) == 29
-    assert public_schema["info"]["version"] == "VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001"
+    assert public_schema["info"]["version"] == "VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2"
     assert public_schema["servers"] == [{"url": "https://bon-buasson-api.onrender.com"}]
 
     calls = []

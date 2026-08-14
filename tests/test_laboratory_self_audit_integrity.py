@@ -112,8 +112,8 @@ def test_openapi_publishes_one_unambiguous_self_audit_route_and_no_auto_domain_a
     assert "Never call activate_domain automatically" in domain_description
     assert domain_schema["examples"] == [{"operation_type": "list_domains"}]
     assert schema["servers"] == [{"url": "https://bon-buasson-api.onrender.com"}]
-    assert schema["info"]["version"] == "VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001"
-    assert schema["x-vectra-release"] == "VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001"
+    assert schema["info"]["version"] == "VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2"
+    assert schema["x-vectra-release"] == "VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2"
     assert schema["x-vectra-gpt-actions-operation-limit"]["operation_count"] == 29
 
 

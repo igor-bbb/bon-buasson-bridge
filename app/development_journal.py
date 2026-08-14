@@ -1642,6 +1642,153 @@ def build_journal_response(
         },
     }
 
+
+def _bounded_text(value: Any, limit: int = 600) -> str:
+    text = str(value or '')
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
+
+
+def _facade_record_summary(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Project a journal record into a bounded Product Review read model."""
+    return {
+        'id': record.get('id'),
+        'record_kind': record.get('record_kind'),
+        'event_type': _bounded_text(record.get('event_type') or record.get('type'), 160),
+        'status': record.get('status'),
+        'priority': record.get('priority'),
+        'component': _bounded_text(record.get('component'), 160),
+        'technical_reason': _bounded_text(record.get('technical_reason'), 600),
+        'fixed_release': record.get('fixed_release'),
+        'confirmed_release': record.get('confirmed_release'),
+        'created_at': record.get('created_at') or record.get('first_seen_at'),
+        'updated_at': record.get('updated_at') or record.get('last_seen_at'),
+    }
+
+
+def build_journal_facade_response(limit: int = 50) -> Dict[str, Any]:
+    """Return a transport-safe journal report for the Product Review Action."""
+    report = build_journal_response(export=False, include_test=False, limit=limit)
+    journal = report.get('development_journal') if isinstance(report.get('development_journal'), dict) else {}
+    compact_journal = {
+        **{
+            key: journal.get(key)
+            for key in (
+                'schema_version', 'summary', 'records_count',
+                'acceptance_checks_count', 'open_engineering_tasks_count',
+                'closed_engineering_tasks_count', 'report_limit', 'include_test',
+            )
+        },
+        'acceptance_checks': [_facade_record_summary(record) for record in journal.get('acceptance_checks') or []],
+        'open_engineering_tasks': [_facade_record_summary(record) for record in journal.get('open_engineering_tasks') or []],
+        'closed_engineering_tasks': [_facade_record_summary(record) for record in journal.get('closed_engineering_tasks') or []],
+    }
+    summary = compact_journal.get('summary') or {}
+    lines = [
+        '# 📒 Development Journal VECTRA',
+        '',
+        '## Общая статистика',
+        f'- **Всего записей:** {summary.get("total_records", 0)}',
+        f'- **Проверок Release Manager:** {summary.get("release_manager_checks", 0)}',
+        f'- **Открытых инженерных задач:** {summary.get("open_engineering_tasks", 0)}',
+        f'- **Закрытых инженерных задач:** {summary.get("closed_engineering_tasks", 0)}',
+        '',
+        '## Открытые инженерные задачи',
+    ]
+    if not compact_journal['open_engineering_tasks']:
+        lines.append('Открытых инженерных задач нет.')
+    else:
+        for record in compact_journal['open_engineering_tasks']:
+            lines += [
+                '',
+                f'### {record.get("id") or "—"} — {record.get("status") or "—"}',
+                f'- **Приоритет:** {record.get("priority") or "—"}',
+                f'- **Компонент:** {record.get("component") or "—"}',
+                f'- **Описание:** {record.get("technical_reason") or "—"}',
+            ]
+    lines += [
+        '',
+        '## Доступные действия',
+        '1. **verify_development_journal_export** — компактная проверка полноты штатного экспорта.',
+        '2. **get_development_request** — полное чтение выбранной записи по DEV-ID.',
+    ]
+    result = {
+        'status': report.get('status', 'ok'),
+        'render_mode': report.get('render_mode', 'development_journal'),
+        'context': report.get('context'),
+        'workspace_markdown': '\n'.join(lines),
+        'navigation_block': [
+            'verify_development_journal_export — проверить полноту Production-экспорта',
+            'get_development_request — прочитать полную DEV-запись',
+        ],
+        'development_journal': compact_journal,
+        'transport_projection': {
+            'status': 'PASS',
+            'full_record_bodies_omitted': True,
+            'full_record_readback_operation': 'get_development_request',
+            'bounded_workspace_markdown': True,
+        },
+    }
+    result['transport_projection']['response_json_chars'] = len(
+        json.dumps(result, ensure_ascii=False, sort_keys=True, default=str)
+    )
+    return result
+
+
+def build_journal_export_readback(include_test: bool = False) -> Dict[str, Any]:
+    """Execute the full export internally and return compact completeness proof."""
+    export = build_journal_response(export=True, include_test=include_test)
+    journal = export.get('development_journal') if isinstance(export.get('development_journal'), dict) else {}
+    summary = journal.get('summary') if isinstance(journal.get('summary'), dict) else {}
+    acceptance_checks = journal.get('acceptance_checks') or []
+    open_tasks = journal.get('open_engineering_tasks') or []
+    closed_tasks = journal.get('closed_engineering_tasks') or []
+    exported_records = acceptance_checks + open_tasks + closed_tasks
+    record_ids = [str(record.get('id') or '') for record in exported_records if isinstance(record, dict)]
+    export_counts = {
+        'records_count': int(journal.get('records_count') or 0),
+        'acceptance_checks_count': len(acceptance_checks),
+        'open_engineering_tasks_count': len(open_tasks),
+        'closed_engineering_tasks_count': len(closed_tasks),
+        'covered_records_count': len(exported_records),
+        'unique_record_ids_count': len(set(record_ids)),
+    }
+    expected_counts = {
+        'records_count': int(summary.get('total_records') or 0),
+        'acceptance_checks_count': int(summary.get('release_manager_checks') or 0),
+        'open_engineering_tasks_count': int(summary.get('open_engineering_tasks') or 0),
+        'closed_engineering_tasks_count': int(summary.get('closed_engineering_tasks') or 0),
+    }
+    complete = (
+        export.get('render_mode') == 'development_journal_export'
+        and export_counts['records_count'] == expected_counts['records_count']
+        and export_counts['acceptance_checks_count'] == expected_counts['acceptance_checks_count']
+        and export_counts['open_engineering_tasks_count'] == expected_counts['open_engineering_tasks_count']
+        and export_counts['closed_engineering_tasks_count'] == expected_counts['closed_engineering_tasks_count']
+        and export_counts['covered_records_count'] == expected_counts['records_count']
+        and export_counts['unique_record_ids_count'] == export_counts['covered_records_count']
+    )
+    canonical_export = json.dumps(journal, ensure_ascii=False, sort_keys=True, default=str)
+    workspace_markdown = str(export.get('workspace_markdown') or '')
+    return {
+        'status': 'ok' if complete else 'error',
+        'render_mode': 'development_journal_export_readback',
+        'verification_status': 'PASS' if complete else 'FAIL',
+        'readback_status': 'PASS' if complete else 'FAIL',
+        'failure_reason': None if complete else 'development_journal_export_incomplete',
+        'export_complete': complete,
+        'full_export_executed': True,
+        'full_export_returned': False,
+        'export_render_mode': export.get('render_mode'),
+        'schema_version': journal.get('schema_version'),
+        'include_test': include_test,
+        'expected_counts': expected_counts,
+        'export_counts': export_counts,
+        'record_ids': record_ids,
+        'export_sha256': hashlib.sha256(canonical_export.encode('utf-8')).hexdigest(),
+        'workspace_markdown_sha256': hashlib.sha256(workspace_markdown.encode('utf-8')).hexdigest(),
+        'workspace_markdown_chars': len(workspace_markdown),
+    }
+
 # ---------------------------------------------------------------------------
 # W14.8 — Dialogue Engineering Review
 # ---------------------------------------------------------------------------

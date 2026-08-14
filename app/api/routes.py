@@ -50,6 +50,8 @@ from app.development_journal import (
     add_global_record as add_development_journal_global_record,
     build_capture_response as build_development_journal_capture_response,
     build_journal_response as build_development_journal_response,
+    build_journal_facade_response as build_development_journal_facade_response,
+    build_journal_export_readback as build_development_journal_export_readback,
     analyze_dialogue_and_create_records as analyze_development_journal_dialogue,
     build_dialogue_review_response as build_development_journal_dialogue_review_response,
     create_development_request,
@@ -8888,6 +8890,7 @@ def _product_review_action_request_schema() -> dict:
         'update_engineering_execution',
         'record_product_verification',
         'generate_product_review_report',
+        'verify_development_journal_export',
     ]
     payload_schema = {
         'type': 'object',
@@ -8895,7 +8898,8 @@ def _product_review_action_request_schema() -> dict:
             'Inputs for the selected operation. create_product_observation requires confirmed_gap; '
             'record_owner_decision requires record_id and decision; update_engineering_execution '
             'requires record_id and stage; record_product_verification requires record_id and verdict; '
-            'record_engineering_blocker_decision requires engineering_item_id and decision.'
+            'record_engineering_blocker_decision requires engineering_item_id and decision; '
+            'verify_development_journal_export executes the full export and returns compact completeness proof.'
         ),
         'properties': {
             'record_id': {'type': 'string', 'description': 'Persistent bridge record id, for example DEV-0001.'},
@@ -9578,8 +9582,8 @@ def _laboratory_facade_openapi_schema() -> dict:
         'openapi': '3.1.0',
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
-            'version': 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraProductReviewOperation to read and decide Self Governance ENG blocker candidates through the explicit Product Owner governance bridge. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
+            'version': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Product Review provides a bounded Development Journal report and compact full-export verification readback without adding a public Action slot. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9595,7 +9599,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         },
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
-        'x-vectra-release': 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001',
+        'x-vectra-release': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11377,8 +11381,11 @@ def vectra_laboratory_facade_product_review(request: dict = None, x_vectra_labor
                 )
             return json_response(_facade_response(operation_type, 'development_journal.record_development_verification', '/vectra/laboratory/facade/product-review', result))
         if operation_type == 'generate_product_review_report':
-            result = build_development_journal_response(limit=int(payload.get('limit') or 50))
-            return json_response(_facade_response(operation_type, 'development_journal.build_journal_response', '/development-journal', result))
+            result = build_development_journal_facade_response(limit=int(payload.get('limit') or 50))
+            return json_response(_facade_response(operation_type, 'development_journal.build_journal_facade_response', '/development-journal', result))
+        if operation_type == 'verify_development_journal_export':
+            result = build_development_journal_export_readback(include_test=bool(payload.get('include_test')))
+            return json_response(_facade_response(operation_type, 'development_journal.build_journal_export_readback', '/development-journal/export', result))
         return json_response(_facade_error(operation_type, f'Unsupported product review operation_type: {operation_type}', runtime_service='product_review_facade'))
     except Exception as exc:
         logger.exception('product_review_facade_operation_failed')
