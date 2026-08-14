@@ -159,4 +159,5 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
     assert schema['x-vectra-release'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-LABORATORY-WORKSPACE-CONTINUITY-001'
+    assert root_schema['x-vectra-root-openapi']['previous_release_fix'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'

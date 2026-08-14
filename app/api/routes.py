@@ -11179,6 +11179,20 @@ def vectra_laboratory_facade_business_domain(request: dict = None, x_vectra_labo
         return json_response(_facade_error(operation_type, str(exc), runtime_service='business_domain_facade'))
 
 
+LABORATORY_FACADE_DEFAULT_SESSION_ID = 'laboratory-facade'
+
+
+def _laboratory_facade_session_id(session_id: str | None) -> str:
+    """Keep adjacent Laboratory Workspace operations in one default session.
+
+    A caller may still provide an explicit session id for isolation. When it
+    does not, canonical Workspace opening and the following contextual query
+    must use the same Laboratory session; otherwise a visible command is
+    evaluated without the Workspace that advertised it.
+    """
+    return str(session_id or '').strip() or LABORATORY_FACADE_DEFAULT_SESSION_ID
+
+
 @router.post('/vectra/laboratory/facade/business-data', summary='Execute VECTRA Business Data facade operation')
 def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_laboratory_key: str | None = Header(default=None, alias='X-VECTRA-LABORATORY-KEY')):
     _verify_laboratory_api_key(x_vectra_laboratory_key)
@@ -11214,7 +11228,7 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
         if operation_type == 'query':
             query_request = VectraQueryRequest(
                 message=str(payload.get('message') or payload.get('query') or ''),
-                session_id=session_id or 'laboratory-facade',
+                session_id=_laboratory_facade_session_id(session_id),
                 active_workspace_state=payload.get('active_workspace_state') if isinstance(payload.get('active_workspace_state'), dict) else None,
                 workspace_action_map=payload.get('workspace_action_map') if isinstance(payload.get('workspace_action_map'), list) else None,
                 runtime_context=payload.get('runtime_context') if isinstance(payload.get('runtime_context'), dict) else None,
@@ -11243,7 +11257,7 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
             if business_domain.lower().replace('_', '').replace('-', '') not in {'bonboason', 'бонбуассон'}:
                 return json_response(_facade_error(operation_type, 'Unknown business_domain', runtime_service='canonical_workspace.get'))
             command = _canonical_workspace_open_command(workspace_type, object_id, period)
-            canonical_session = session_id or f'laboratory-canonical-{uuid.uuid4().hex}'
+            canonical_session = _laboratory_facade_session_id(session_id)
             response = vectra_query(VectraQueryRequest(message=command, session_id=canonical_session))
             rendered = json.loads(response.body.decode('utf-8'))
             rendered = attach_canonical_workspace_contract(rendered)

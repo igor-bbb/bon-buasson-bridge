@@ -1,9 +1,11 @@
+import json
 import uuid
 
 from app.api import routes
 from app.models.request_models import VectraQueryRequest
 from app.query import orchestration
 from app.workspace_runtime import apply_runtime_contract
+from app.assistant_runtime.canonical_workspace_contract import attach_canonical_workspace_contract
 
 
 def _screen(level="network", object_name="Аврора", period="2026-02"):
@@ -59,6 +61,120 @@ def test_explicit_workspace_state_hydrates_current_screen_for_business_roles():
         "parent_object": None,
     }
     assert current["active_workspace_state"]["action_map"] == state["action_map"]
+
+
+def test_laboratory_facade_uses_one_default_session_for_open_and_followup_query(monkeypatch):
+    observed_sessions = []
+
+    def fake_vectra_query(request):
+        observed_sessions.append(request.session_id)
+        if request.message.startswith("Покажи контракт"):
+            payload = attach_canonical_workspace_contract(
+                _screen(level="network", object_name="Варус", period="2026-02")
+            )
+        else:
+            payload = {
+                "status": "ok",
+                "context": {"level": "category", "object_name": "Напитки", "period": "2026-02"},
+            }
+        return routes.json_response(payload)
+
+    monkeypatch.setattr(routes, "vectra_query", fake_vectra_query)
+
+    opened = routes.vectra_laboratory_facade_business_data({
+        "operation_type": "get_canonical_workspace",
+        "payload": {
+            "business_domain": "bonboason",
+            "period": "2026-02",
+            "workspace_type": "contract",
+            "object_id": "Варус",
+        },
+    })
+    continued = routes.vectra_laboratory_facade_business_data({
+        "operation_type": "query",
+        "payload": {"message": "Разобрать категорию с наибольшим эффектом"},
+    })
+
+    assert json.loads(opened.body)["status"] == "ok"
+    assert json.loads(continued.body)["status"] == "ok"
+    assert observed_sessions == ["laboratory-facade", "laboratory-facade"]
+
+
+def test_laboratory_facade_preserves_explicit_session_isolation(monkeypatch):
+    observed_sessions = []
+
+    def fake_vectra_query(request):
+        observed_sessions.append(request.session_id)
+        payload = attach_canonical_workspace_contract(
+            _screen(level="network", object_name="Варус", period="2026-02")
+        )
+        return routes.json_response(payload)
+
+    monkeypatch.setattr(routes, "vectra_query", fake_vectra_query)
+
+    for session_id in ("laboratory-explicit-a", "laboratory-explicit-b"):
+        routes.vectra_laboratory_facade_business_data({
+            "operation_type": "get_canonical_workspace",
+            "session_id": session_id,
+            "payload": {
+                "business_domain": "bonboason",
+                "period": "2026-02",
+                "workspace_type": "contract",
+                "object_id": "Варус",
+            },
+        })
+
+    assert observed_sessions == ["laboratory-explicit-a", "laboratory-explicit-b"]
+
+
+def test_laboratory_default_session_executes_visible_priority_command_end_to_end(monkeypatch):
+    source = apply_runtime_contract({
+        "status": "ok",
+        "render_mode": "contract_workspace",
+        "context": {"level": "network", "object_name": "Варус", "period": "2026-02"},
+        "path": ["Бизнес", "Топ", "Менеджер", "Варус"],
+        "filter": {"period": "2026-02", "network": "Варус"},
+        "all_block": [
+            {"object_name": "A", "level": "category", "effect_money": 10},
+            {"object_name": "B", "level": "category", "effect_money": 90},
+            {"object_name": "C", "level": "category", "effect_money": 20},
+        ],
+        "workspace_markdown": "\n".join([
+            "# Варус",
+            "## Что делаем дальше?",
+            "1. Подготовить переговоры.",
+            "2. Создать задачи.",
+            "3. Разобрать категорию с наибольшим эффектом.",
+        ]),
+    })
+    orchestration.update_session("laboratory-facade", {
+        "current_screen": source,
+        "last_payload": source,
+        "view_mode": "drain",
+    })
+    opened = {}
+
+    def fake_route(query, _session_id):
+        opened.update(query)
+        return _screen(
+            level=query["level"],
+            object_name=query["object_name"],
+            period=query["period_current"],
+        )
+
+    monkeypatch.setattr(orchestration, "_route_base_query", fake_route)
+
+    response = routes.vectra_laboratory_facade_business_data({
+        "operation_type": "query",
+        "payload": {"message": "Разобрать категорию с наибольшим эффектом"},
+    })
+    payload = json.loads(response.body)
+
+    assert payload["status"] == "ok"
+    assert payload["result"]["status"] == "ok"
+    assert payload["result"].get("reason") != "nli_unresolved_message"
+    assert opened["object_name"] == "B"
+    assert opened["period_current"] == "2026-02"
 
 
 def test_visible_text_command_and_digit_resolve_to_same_action_map_entry():
