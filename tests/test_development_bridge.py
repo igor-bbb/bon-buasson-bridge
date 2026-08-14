@@ -1,4 +1,5 @@
 import importlib
+import json
 
 from app.api.routes import _laboratory_facade_openapi_schema
 from app.main import app
@@ -159,5 +160,28 @@ def test_product_review_contract_keeps_public_action_limit_and_production_server
     assert schema['x-vectra-release'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
 
     root_schema = app.openapi()
-    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-LABORATORY-WORKSPACE-CONTINUITY-001'
-    assert root_schema['x-vectra-root-openapi']['previous_release_fix'] == 'VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001'
+    assert root_schema['x-vectra-root-openapi']['release_fix'] == 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001'
+    assert root_schema['x-vectra-root-openapi']['previous_release_fix'] == 'VECTRA-PROFESSIONAL-LABORATORY-WORKSPACE-CONTINUITY-001'
+
+
+def test_product_review_summary_report_accepts_public_limit(tmp_path, monkeypatch):
+    journal = _journal(tmp_path, monkeypatch)
+    for index in range(3):
+        journal.create_development_request({'confirmed_gap': f'Report gap {index}'})
+
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, 'build_development_journal_response', journal.build_journal_response)
+
+    response = routes.vectra_laboratory_facade_product_review({
+        'operation_type': 'generate_product_review_report',
+        'payload': {'limit': 2},
+    })
+    body = json.loads(response.body)
+
+    assert body['status'] == 'ok'
+    assert body['error'] is None
+    assert body['runtime_service_called'] == 'development_journal.build_journal_response'
+    report = body['result']['development_journal']
+    assert report['open_engineering_tasks_count'] == 3
+    assert len(report['open_engineering_tasks']) == 2
+    assert report['report_limit'] == 2

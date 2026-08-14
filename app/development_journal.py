@@ -1499,7 +1499,21 @@ def _acceptance_defects(record: Dict[str, Any]) -> Any:
     return ctx.get('defects_found') or rep.get('defects_found') or 0
 
 
-def build_journal_response(export: bool = False, include_test: bool = False) -> Dict[str, Any]:
+def build_journal_response(
+    export: bool = False,
+    include_test: bool = False,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """Build the Development Journal workspace or export.
+
+    The Product Review facade exposes ``payload.limit`` for the summary report,
+    so the journal builder must accept the same bounded argument.  Exports stay
+    complete; ``limit`` applies only to the interactive summary lists.
+    """
+    try:
+        report_limit = max(1, min(int(limit or 50), 100))
+    except (TypeError, ValueError):
+        report_limit = 50
     views = get_journal_views(include_test=include_test)
     records = views['records']
     acceptance_checks = sorted(
@@ -1536,7 +1550,7 @@ def build_journal_response(export: bool = False, include_test: bool = False) -> 
     if not acceptance_checks:
         lines.append('Проверок Release Manager пока нет.')
     else:
-        for idx, r in enumerate(acceptance_checks[:50 if not export else len(acceptance_checks)], start=1):
+        for idx, r in enumerate(acceptance_checks[:report_limit if not export else len(acceptance_checks)], start=1):
             lines += [
                 '',
                 f'### Проверка №{idx}',
@@ -1550,7 +1564,7 @@ def build_journal_response(export: bool = False, include_test: bool = False) -> 
     if not open_tasks:
         lines.append('Открытых инженерных задач нет.')
     else:
-        for r in open_tasks[:50 if not export else len(open_tasks)]:
+        for r in open_tasks[:report_limit if not export else len(open_tasks)]:
             ctx = r.get('runtime_context') or r.get('context') or {}
             lines += [
                 '', f'### {r.get("id")} — {r.get("event_type") or r.get("type")}',
@@ -1579,7 +1593,7 @@ def build_journal_response(export: bool = False, include_test: bool = False) -> 
         if not closed_tasks:
             lines.append('Закрытых инженерных задач нет.')
         else:
-            for r in closed_tasks[:50 if not export else len(closed_tasks)]:
+            for r in closed_tasks[:report_limit if not export else len(closed_tasks)]:
                 lines += ['', f'### {r.get("id")} — {r.get("event_type") or r.get("type")}', f'- **Текущий статус:** {r.get("status")}', f'- **Исправлено релизом:** {r.get("fixed_release") or "—"}', f'- **Подтверждено релизом:** {r.get("confirmed_release") or "—"}', f'- **Закрыто:** {r.get("closed_at") or r.get("updated_at") or "—"}', f'- **Компонент:** {r.get("component")}', f'- **Описание:** {r.get("technical_reason")}']
     if export:
         lifecycle_tasks = sorted(open_tasks + closed_tasks, key=lambda r: str(r.get('id') or ''))
@@ -1620,9 +1634,10 @@ def build_journal_response(export: bool = False, include_test: bool = False) -> 
             'acceptance_checks_count': len(acceptance_checks),
             'open_engineering_tasks_count': len(open_tasks),
             'closed_engineering_tasks_count': len(closed_tasks),
-            'acceptance_checks': acceptance_checks if export else acceptance_checks[:50],
-            'open_engineering_tasks': open_tasks if export else open_tasks[:50],
-            'closed_engineering_tasks': closed_tasks if export else closed_tasks[:50],
+            'acceptance_checks': acceptance_checks if export else acceptance_checks[:report_limit],
+            'open_engineering_tasks': open_tasks if export else open_tasks[:report_limit],
+            'closed_engineering_tasks': closed_tasks if export else closed_tasks[:report_limit],
+            'report_limit': None if export else report_limit,
             'include_test': include_test,
         },
     }
