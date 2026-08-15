@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-PIPELINE-ENGINEERING-HOLD-INTEGRITY-001-REV2"
-CONTRACT_VERSION = "1.4"
+RELEASE_ID = "VECTRA-PROFESSIONAL-GOVERNANCE-APPROVED-EXECUTION-001"
+CONTRACT_VERSION = "1.5"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -418,7 +418,8 @@ def process_professional_response(
 
     focus_family = _focus_family(active_context)
     blocker = False if expected_negative else _confirmed_blocker(result, normalized_status)
-    accumulated_blocker = bool(attention.get("stop_recommended"))
+    accumulated_open_blocker = bool(attention.get("open_blockers"))
+    accumulated_hold = bool(attention.get("stop_recommended"))
     unrelated = focus_family not in {"general_professional_activity", family} and family not in {
         "professional_identity", "professional_runtime", "professional_continuity", "self_governance"
     }
@@ -434,14 +435,14 @@ def process_professional_response(
         governance_decision = "STOP_AND_PREPARE_ENGINEERING_TASK"
         governance_status = "HOLD"
         response_requirement = "Report the confirmed Runtime blocker precisely and do not continue as if the operation succeeded."
-    elif accumulated_blocker and research_safe:
+    elif accumulated_hold and research_safe:
         governance_decision = "CONTINUE_RESEARCH_WITH_ENGINEERING_HOLD"
         governance_status = "RESEARCH_CONTINUE"
         response_requirement = (
             "Continue the independent read-only research or Development Journal operation. "
             "Do not start engineering implementation or another protected system mutation."
         )
-    elif accumulated_blocker:
+    elif accumulated_hold:
         governance_decision = "STOP_FOR_OPEN_ENGINEERING_BLOCKERS"
         governance_status = "HOLD"
         response_requirement = "Report the successful Runtime result, but do not continue past the remaining open engineering blockers."
@@ -490,7 +491,7 @@ def process_professional_response(
     # research read incorrectly returns engineering PASS.
     should_record_observation = bool(
         previous_state.get("was_new") is True
-        or (blocker and not accumulated_blocker)
+        or (blocker and not accumulated_open_blocker)
     )
     if should_record_observation and not expected_negative:
         observation = _record_confirmed_observation_once(
@@ -510,7 +511,11 @@ def process_professional_response(
     if not isinstance(professional_runtime_state, dict):
         professional_runtime_state = {}
 
-    engineering_hold = bool(blocker or accumulated_blocker)
+    # The failed route remains blocked, but an explicitly approved blocker must
+    # not deadlock its own bounded engineering implementation. Refreshed
+    # Governance attention is authoritative: new or deferred blockers keep
+    # HOLD; approved blockers remain open for Product Verification without HOLD.
+    engineering_hold = bool(attention.get("stop_recommended"))
     route_blocked = bool(blocker)
     recommended_next_action = next_action or active_context.get("next_recommended_step") or continuity.get("resume_from")
     if blocker and research_safe:
@@ -556,8 +561,10 @@ def process_professional_response(
             "engineering": {
                 "status": "HOLD" if engineering_hold else "PASS",
                 "mode": "ENGINEERING_HOLD" if engineering_hold else "STANDARD",
-                "product_owner_approval_required": engineering_hold,
+                "product_owner_approval_required": bool(attention.get("product_owner_approval_required")),
                 "protected_mutations_allowed": not engineering_hold,
+                "execution_scope": attention.get("engineering_execution_scope") or "NONE",
+                "approved_engineering_item_ids": deepcopy(attention.get("approved_engineering_item_ids") or []),
             },
         },
         "blocker_reconciliation": blocker_reconciliation,

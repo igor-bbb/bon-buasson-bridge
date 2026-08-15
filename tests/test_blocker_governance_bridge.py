@@ -53,7 +53,7 @@ def test_blocker_is_visible_and_requires_explicit_product_owner_decision(tmp_pat
     assert blocked["failure_reason"] == "product_owner_confirmation_required"
 
 
-def test_approval_creates_one_linked_dev_record_and_preserves_hold(tmp_path, monkeypatch):
+def test_approval_creates_one_linked_dev_record_and_releases_hold_for_approved_scope(tmp_path, monkeypatch):
     journal, governance = _runtime(tmp_path, monkeypatch)
     engineering_item_id = _blocker(governance)
 
@@ -67,8 +67,16 @@ def test_approval_creates_one_linked_dev_record_and_preserves_hold(tmp_path, mon
     assert approved["status"] == "PASS"
     assert approved["decision"]["status"] == "APPROVED"
     assert approved["development_record_id"].startswith("DEV-")
-    assert approved["engineering_hold"] is True
-    assert approved["protected_mutations_allowed"] is False
+    assert approved["engineering_hold"] is False
+    assert approved["hold_blockers_count"] == 0
+    assert approved["approved_blockers_count"] == 1
+    assert approved["protected_mutations_allowed"] is True
+    assert approved["engineering_execution_scope"] == "APPROVED_BLOCKERS_ONLY"
+    assert approved["approved_engineering_item_ids"] == [engineering_item_id]
+    gate = governance.get_governance_gate()
+    assert gate["status"] == "PASS"
+    assert gate["open_blocker_count"] == 1
+    assert gate["hold_blocker_count"] == 0
 
     readback = journal.get_development_bridge(approved["development_record_id"])
     assert readback["readback_status"] == "PASS"
@@ -83,7 +91,36 @@ def test_approval_creates_one_linked_dev_record_and_preserves_hold(tmp_path, mon
     assert repeated["status"] == "PASS"
     assert repeated["decision_reused"] is True
     assert repeated["development_record_id"] == approved["development_record_id"]
+    assert repeated["engineering_hold"] is False
+    assert repeated["hold_blockers_count"] == 0
+    assert repeated["engineering_execution_scope"] == "APPROVED_BLOCKERS_ONLY"
     assert journal.get_development_bridge()["records_count"] == 1
+
+
+def test_approved_blocker_does_not_hide_a_second_unapproved_hold(tmp_path, monkeypatch):
+    _, governance = _runtime(tmp_path, monkeypatch)
+    approved_id = _blocker(governance, "Runtime operation first returned FAIL")
+    pending_id = _blocker(governance, "Runtime operation second returned FAIL")
+
+    approved = governance.record_engineering_blocker_owner_decision(
+        approved_id,
+        "APPROVED",
+        product_owner_confirmed=True,
+    )
+
+    assert approved["open_blockers_count"] == 2
+    assert approved["approved_blockers_count"] == 1
+    assert approved["hold_blockers_count"] == 1
+    assert approved["engineering_hold"] is True
+    assert approved["protected_mutations_allowed"] is False
+    readback = governance.get_engineering_blockers()
+    assert readback["approved_engineering_item_ids"] == [approved_id]
+    assert readback["product_owner_approval_required"] is True
+    assert {item["engineering_item_id"] for item in readback["blockers"]} == {approved_id, pending_id}
+    gate = governance.get_governance_gate()
+    assert gate["status"] == "HOLD"
+    assert gate["open_blocker_count"] == 2
+    assert gate["hold_blocker_count"] == 1
 
 
 def test_rejection_resolves_only_selected_blocker(tmp_path, monkeypatch):
@@ -158,7 +195,67 @@ def test_linked_dev_pass_reconciles_governance_blocker_and_clears_hold(tmp_path,
     assert resolved["blockers"][0]["verification"]["status"] == "PASS"
 
 
-def test_linked_dev_fail_keeps_approved_blocker_on_hold(tmp_path, monkeypatch):
+def test_regression_reuses_closed_dev_without_repeat_approval_hold(tmp_path, monkeypatch):
+    journal, governance = _runtime(tmp_path, monkeypatch)
+    first_engineering_item_id = _blocker(governance)
+    first_approval = governance.record_engineering_blocker_owner_decision(
+        first_engineering_item_id,
+        "APPROVED",
+        product_owner_confirmed=True,
+    )
+    record_id = first_approval["development_record_id"]
+    journal.update_development_execution(
+        record_id,
+        {"stage": "awaiting_verification", "release_id": "R-WORKSPACE-1"},
+    )
+    journal.record_development_verification(
+        record_id,
+        {"verdict": "PASS", "release_id": "R-WORKSPACE-1"},
+    )
+    governance.reconcile_engineering_blocker_development_verification(
+        record_id,
+        "PASS",
+        release_id="R-WORKSPACE-1",
+    )
+    assert journal.get_development_bridge(record_id)["record"]["current_status"] == "Closed"
+
+    regression_engineering_item_id = _blocker(governance)
+    regression_approval = governance.record_engineering_blocker_owner_decision(
+        regression_engineering_item_id,
+        "APPROVED",
+        product_owner_confirmed=True,
+        comment="Approved regression repair; repeat approval is not required.",
+    )
+
+    assert regression_approval["development_record_id"] == record_id
+    assert regression_approval["engineering_hold"] is False
+    assert regression_approval["product_owner_approval_required"] is False
+    assert regression_approval["engineering_execution_scope"] == "APPROVED_BLOCKERS_ONLY"
+    reopened = journal.get_development_bridge(record_id)["record"]
+    assert reopened["current_status"] == "Open"
+    assert reopened["owner_decision"]["status"] == "APPROVED"
+
+    journal.update_development_execution(
+        record_id,
+        {"stage": "awaiting_verification", "release_id": "R-WORKSPACE-REGRESSION"},
+    )
+    journal.record_development_verification(
+        record_id,
+        {"verdict": "PASS", "release_id": "R-WORKSPACE-REGRESSION"},
+    )
+    reconciled = governance.reconcile_engineering_blocker_development_verification(
+        record_id,
+        "PASS",
+        release_id="R-WORKSPACE-REGRESSION",
+    )
+
+    assert reconciled["verified_engineering_item_ids"] == [regression_engineering_item_id]
+    assert reconciled["open_blockers_count"] == 0
+    assert reconciled["engineering_hold"] is False
+    assert journal.get_development_bridge(record_id)["record"]["current_status"] == "Closed"
+
+
+def test_linked_dev_fail_keeps_approved_blocker_open_for_rework_without_repeat_approval(tmp_path, monkeypatch):
     _, governance = _runtime(tmp_path, monkeypatch)
     engineering_item_id = _blocker(governance)
     approved = governance.record_engineering_blocker_owner_decision(
@@ -174,8 +271,12 @@ def test_linked_dev_fail_keeps_approved_blocker_on_hold(tmp_path, monkeypatch):
     )
 
     assert reconciled["status"] == "PASS"
-    assert reconciled["engineering_hold"] is True
-    assert reconciled["protected_mutations_allowed"] is False
+    assert reconciled["engineering_hold"] is False
+    assert reconciled["hold_blockers_count"] == 0
+    assert reconciled["approved_blockers_count"] == 1
+    assert reconciled["product_owner_approval_required"] is False
+    assert reconciled["protected_mutations_allowed"] is True
+    assert reconciled["engineering_execution_scope"] == "APPROVED_BLOCKERS_ONLY"
     open_item = governance.get_engineering_blockers(engineering_item_id)["blockers"][0]
     assert open_item["status"] == "APPROVED"
     assert open_item["verification"]["status"] == "FAIL"

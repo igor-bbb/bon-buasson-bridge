@@ -1,5 +1,8 @@
 from app.assistant_runtime.professional_pipeline import process_professional_response
-from app.assistant_runtime.self_governance_runtime import verify_runtime_operation_blockers
+from app.assistant_runtime.self_governance_runtime import (
+    record_engineering_blocker_owner_decision,
+    verify_runtime_operation_blockers,
+)
 
 
 def _call(operation_type: str, status: str):
@@ -254,3 +257,41 @@ def test_open_candidate_still_blocks_protected_engineering_mutation(tmp_path, mo
     assert engineering["professional_context"]["operation_access"]["classification"] == "PROTECTED_SYSTEM_MUTATION"
     assert engineering["execution_gates"]["engineering"]["status"] == "HOLD"
     assert engineering["execution_gates"]["engineering"]["protected_mutations_allowed"] is False
+
+
+def test_approved_blocker_releases_pipeline_hold_for_bounded_engineering(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    defect = process_professional_response(
+        operation_type="query",
+        runtime_service="business_data_facade.query",
+        endpoint="/vectra/query",
+        result={"status": "ERROR", "failure_reason": "runtime_operation_failed", "read_only": True},
+    )
+    engineering_item_id = defect["engineering_observation"]["attention"]["blockers"][-1]["engineering_item_id"]
+    approved = record_engineering_blocker_owner_decision(
+        engineering_item_id,
+        "APPROVED",
+        product_owner_confirmed=True,
+        comment="Approve bounded regression repair.",
+    )
+    assert approved["engineering_hold"] is False
+
+    independent_read = process_professional_response(
+        operation_type="get_canonical_workspace",
+        runtime_service="canonical_workspace.get",
+        endpoint="/vectra/query",
+        result={"status": "PASS", "read_only": True},
+    )
+    engineering_step = process_professional_response(
+        operation_type="update_development_execution",
+        runtime_service="development_journal.update_development_execution",
+        endpoint="/vectra/laboratory/facade/product-review",
+        result={"status": "PASS", "record_id": approved["development_record_id"]},
+    )
+
+    assert independent_read["execution_gates"]["engineering"]["status"] == "PASS"
+    assert independent_read["execution_gates"]["engineering"]["product_owner_approval_required"] is False
+    assert independent_read["execution_gates"]["engineering"]["execution_scope"] == "APPROVED_BLOCKERS_ONLY"
+    assert engineering_step["status"] != "HOLD"
+    assert engineering_step["execution_gates"]["engineering"]["status"] == "PASS"
+    assert engineering_step["execution_gates"]["engineering"]["approved_engineering_item_ids"] == [engineering_item_id]

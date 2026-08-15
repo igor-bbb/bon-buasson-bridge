@@ -21,8 +21,8 @@ from app.assistant_runtime.durable_runtime_state import (
 
 RELEASE_ID = "VECTRA-CORE-ONTOLOGY-001-INCREMENT-001"
 WORK_CONTEXT_LIFECYCLE_RELEASE_ID = "VECTRA-PROFESSIONAL-WORK-CONTEXT-LIFECYCLE-001"
-BLOCKER_GOVERNANCE_RELEASE_ID = "VECTRA-PROFESSIONAL-BLOCKER-GOVERNANCE-BRIDGE-001"
-CONTRACT_VERSION = "2.2"
+BLOCKER_GOVERNANCE_RELEASE_ID = "VECTRA-PROFESSIONAL-GOVERNANCE-APPROVED-EXECUTION-001"
+CONTRACT_VERSION = "2.3"
 STATE_FILE = Path("runtime") / "governance" / "self_governance_state.json"
 
 VALID_OBSERVATION_TYPES = {"KNOWLEDGE", "IMPROVEMENT", "ARCHITECTURE_CHANGE", "BLOCKER"}
@@ -776,9 +776,13 @@ def get_engineering_blockers(
         "blockers_count": len(items),
         "blockers": items,
         "open_blockers_count": int(attention.get("open_blockers") or 0),
+        "hold_blockers_count": int(attention.get("hold_blockers") or 0),
+        "approved_blockers_count": int(attention.get("approved_blockers") or 0),
         "engineering_hold": bool(attention.get("stop_recommended")),
-        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "product_owner_approval_required": bool(attention.get("product_owner_approval_required")),
         "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "engineering_execution_scope": attention.get("engineering_execution_scope"),
+        "approved_engineering_item_ids": deepcopy(attention.get("approved_engineering_item_ids") or []),
         "allowed_decisions": ["APPROVED", "REJECTED", "DEFERRED"],
         "failure_reason": None if found else "engineering_blocker_not_found",
         "release": BLOCKER_GOVERNANCE_RELEASE_ID,
@@ -796,9 +800,10 @@ def record_engineering_blocker_owner_decision(
     """Record an explicit Product Owner decision for one ``ENG-*`` blocker.
 
     Approval creates and approves one linked Development Journal record while
-    preserving ENGINEERING_HOLD until the blocker is actually verified or
-    closed. Rejection resolves only the selected blocker. Deferral records the
-    decision but intentionally keeps the hold active.
+    releasing ENGINEERING_HOLD for the explicitly approved engineering scope.
+    The blocker remains open until Product Verification verifies or closes it.
+    Rejection resolves only the selected blocker. Deferral records the decision
+    but intentionally keeps the hold active.
     """
     item_id = str(engineering_item_id or "").strip()
     normalized_decision = str(decision or "").strip().upper()
@@ -865,7 +870,9 @@ def record_engineering_blocker_owner_decision(
             "decision_reused": True,
             "engineering_hold": bool(attention.get("stop_recommended")),
             "open_blockers_count": int(attention.get("open_blockers") or 0),
+            "hold_blockers_count": int(attention.get("hold_blockers") or 0),
             "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+            "engineering_execution_scope": attention.get("engineering_execution_scope"),
             "failure_reason": None,
             "release": BLOCKER_GOVERNANCE_RELEASE_ID,
             "read_only": False,
@@ -994,8 +1001,12 @@ def record_engineering_blocker_owner_decision(
         "decision_reused": False,
         "engineering_hold": bool(attention.get("stop_recommended")),
         "open_blockers_count": int(attention.get("open_blockers") or 0),
-        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "hold_blockers_count": int(attention.get("hold_blockers") or 0),
+        "approved_blockers_count": int(attention.get("approved_blockers") or 0),
+        "product_owner_approval_required": bool(attention.get("product_owner_approval_required")),
         "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "engineering_execution_scope": attention.get("engineering_execution_scope"),
+        "approved_engineering_item_ids": deepcopy(attention.get("approved_engineering_item_ids") or []),
         "readback_verified": bool(diagnostic.get("readback_verified")),
         "failure_reason": None,
         "release": BLOCKER_GOVERNANCE_RELEASE_ID,
@@ -1043,6 +1054,8 @@ def reconcile_engineering_blocker_development_verification(
                 continue
             if str(item.get("development_record_id") or "") != record_id:
                 continue
+            if str(item.get("status") or "").upper() in {"IMPLEMENTED", "VERIFIED", "CLOSED", "REJECTED"}:
+                continue
             verification = {
                 "status": normalized_verdict,
                 "development_record_id": record_id,
@@ -1077,9 +1090,12 @@ def reconcile_engineering_blocker_development_verification(
             item.get("engineering_item_id") for item in changed if item.get("engineering_item_id")
         ],
         "open_blockers_count": int(attention.get("open_blockers") or 0),
+        "hold_blockers_count": int(attention.get("hold_blockers") or 0),
+        "approved_blockers_count": int(attention.get("approved_blockers") or 0),
         "engineering_hold": bool(attention.get("stop_recommended")),
-        "product_owner_approval_required": bool(attention.get("stop_recommended")),
+        "product_owner_approval_required": bool(attention.get("product_owner_approval_required")),
         "protected_mutations_allowed": not bool(attention.get("stop_recommended")),
+        "engineering_execution_scope": attention.get("engineering_execution_scope"),
         "readback_verified": bool(diagnostic.get("readback_verified")),
         "failure_reason": None,
         "release": BLOCKER_GOVERNANCE_RELEASE_ID,
@@ -1178,13 +1194,38 @@ def _attention_summary(state: Dict[str, Any]) -> Dict[str, Any]:
         item for item in state.get("engineering_queue", [])
         if isinstance(item, dict) and item.get("blocking") is True and item.get("status") not in {"IMPLEMENTED", "VERIFIED", "CLOSED", "REJECTED"}
     ]
+    approved_blockers = [
+        item for item in blockers
+        if str(item.get("status") or "").upper() in {"APPROVED", "IN_IMPLEMENTATION"}
+        and item.get("product_owner_confirmed") is True
+        and str((item.get("owner_decision") or {}).get("status") or "").upper() == "APPROVED"
+    ]
+    approved_ids = {
+        str(item.get("engineering_item_id") or "")
+        for item in approved_blockers
+    }
+    hold_blockers = [
+        item for item in blockers
+        if str(item.get("engineering_item_id") or "") not in approved_ids
+    ]
     return {
         "open_improvements": len(backlog),
         "by_subsystem": by_subsystem,
         "recommendations": recommendations,
         "open_blockers": len(blockers),
         "blockers": deepcopy(blockers),
-        "stop_recommended": bool(blockers),
+        "hold_blockers": len(hold_blockers),
+        "approved_blockers": len(approved_blockers),
+        "approved_engineering_item_ids": sorted(approved_ids),
+        "approved_development_record_ids": sorted(
+            str(item.get("development_record_id") or "")
+            for item in approved_blockers
+            if str(item.get("development_record_id") or "")
+        ),
+        "product_owner_approval_required": bool(hold_blockers),
+        "approved_engineering_execution_allowed": bool(approved_blockers),
+        "engineering_execution_scope": "APPROVED_BLOCKERS_ONLY" if approved_blockers else "NONE",
+        "stop_recommended": bool(hold_blockers),
     }
 
 
@@ -1223,7 +1264,8 @@ def get_governance_gate() -> Dict[str, Any]:
         and item.get("status") not in {"IMPLEMENTED", "VERIFIED", "CAPITALIZED", "CLOSED", "DEFERRED"}
     ]
     blocker_count = int((snapshot.get("attention") or {}).get("open_blockers") or 0)
-    hold = blocker_count > 0
+    hold_blocker_count = int((snapshot.get("attention") or {}).get("hold_blockers") or 0)
+    hold = hold_blocker_count > 0
     return {
         "status": "HOLD" if hold else "PASS",
         "active_work_context": snapshot.get("active_work_context"),
@@ -1231,6 +1273,7 @@ def get_governance_gate() -> Dict[str, Any]:
         "open_critical_count": len(open_critical),
         "open_critical_decisions": deepcopy(open_critical),
         "open_blocker_count": blocker_count,
+        "hold_blocker_count": hold_blocker_count,
         "attention": snapshot.get("attention"),
         "continuation_policy": (
             "stop_and_prepare_engineering_task" if hold
