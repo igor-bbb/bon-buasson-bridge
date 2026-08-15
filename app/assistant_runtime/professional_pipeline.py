@@ -25,8 +25,8 @@ from app.assistant_runtime.self_governance_runtime import (
     verify_runtime_operation_blockers,
 )
 
-RELEASE_ID = "VECTRA-PROFESSIONAL-GOVERNANCE-APPROVED-EXECUTION-001"
-CONTRACT_VERSION = "1.5"
+RELEASE_ID = "VECTRA-PROFESSIONAL-GOVERNANCE-APPROVED-EXECUTION-001-REV2"
+CONTRACT_VERSION = "1.6"
 PIPELINE_STATE_FILE = Path("runtime") / "governance" / "professional_pipeline_state.json"
 
 _OPERATION_FAMILIES = {
@@ -69,6 +69,13 @@ _FAILURE = {"FAIL", "FAILED", "ERROR", "INTERNAL_ERROR"}
 # non-blocking; an arbitrary FAIL response cannot opt itself out of governance.
 _EXPECTED_NEGATIVE_OUTCOMES = {
     "trace_normative_usage": {"normative_section_not_found"},
+    # The Development Journal must reject an execution transition until the
+    # already-issued Product Owner decision has been persisted on that record.
+    # This is an expected governance denial, not a Runtime defect. Keeping the
+    # pair explicit prevents unrelated execution errors from escaping blocker
+    # registration.
+    "update_engineering_execution": {"owner_approval_required"},
+    "update_development_execution": {"owner_approval_required"},
 }
 
 # Product Research must remain available while an engineering candidate waits

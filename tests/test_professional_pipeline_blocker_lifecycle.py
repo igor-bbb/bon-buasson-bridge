@@ -90,6 +90,53 @@ def test_unregistered_fail_reason_remains_blocking(tmp_path, monkeypatch):
     assert result["engineering_observation"]["observation"]["type"] == "BLOCKER"
 
 
+def test_missing_persisted_owner_decision_is_expected_governance_denial(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = process_professional_response(
+        operation_type="update_engineering_execution",
+        runtime_service="development_journal.update_development_execution",
+        endpoint="/vectra/laboratory/facade/product-review",
+        result={
+            "status": "error",
+            "operation_type": "update_development_execution",
+            "failure_reason": "owner_approval_required",
+            "record_id": "DEV-0032",
+        },
+    )
+
+    assert result["status"] == "PASS"
+    assert result["professional_context"]["result_status"] == "ERROR"
+    assert result["professional_context"]["outcome_classification"] == "EXPECTED_NEGATIVE"
+    assert result["self_governance"]["expected_negative_outcome"] is True
+    assert result["self_governance"]["confirmed_blocker"] is False
+    assert result["self_governance"]["decision"] == "CONTINUE_AFTER_EXPECTED_NEGATIVE_OUTCOME"
+    assert result["engineering_observation"] is None
+    assert result["self_governance"]["attention"]["open_blockers"] == 0
+
+
+def test_other_engineering_execution_errors_remain_blocking(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = process_professional_response(
+        operation_type="update_engineering_execution",
+        runtime_service="development_journal.update_development_execution",
+        endpoint="/vectra/laboratory/facade/product-review",
+        result={
+            "status": "error",
+            "operation_type": "update_development_execution",
+            "failure_reason": "journal_record_not_found",
+            "record_id": "DEV-0032",
+        },
+    )
+
+    assert result["status"] == "HOLD"
+    assert result["self_governance"]["expected_negative_outcome"] is False
+    assert result["self_governance"]["confirmed_blocker"] is True
+    assert result["engineering_observation"] is not None
+    assert result["engineering_observation"]["observation"]["type"] == "BLOCKER"
+
+
 def test_navigation_defect_blocks_route_and_engineering_but_research_continues(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
