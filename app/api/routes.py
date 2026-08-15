@@ -31,6 +31,7 @@ from app.domain.summary import (
 )
 from app.domain.filters import get_normalized_rows, filter_rows
 from app.domain.metrics import aggregate_metrics
+from app.domain.business_abc import build_business_abc as get_vectra_business_abc
 from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query, save_last_payload, update_session, get_session
 from app.workspace_runtime import apply_runtime_contract
@@ -8221,8 +8222,8 @@ def _laboratory_business_data_openapi_schema() -> dict:
     return _laboratory_split_openapi_schema(
         _LABORATORY_BUSINESS_DATA_PATHS,
         title='VECTRA Laboratory Business Data Actions',
-        version='VECTRA-PROFESSIONAL-WORKSPACE-DISPLAY-SYNC-001-CORRECTION-002',
-        description='Business Data read-only Actions for VECTRA Laboratory, including get_canonical_workspace for the same final Professional Workspace used by Business Chat. This schema is intentionally below the GPT Actions 30-operation limit.',
+        version='VECTRA-BUSINESS-ABC-STRONG-SKU-001',
+        description='Business Data read-only Actions for VECTRA Laboratory, including canonical Workspace readback and context-independent rolling-six-month Business ABC / Strong SKU evidence. This schema is intentionally below the GPT Actions 30-operation limit.',
         scope='laboratory_business_data_actions',
     )
 
@@ -9489,14 +9490,15 @@ def _business_data_facade_request_schema() -> dict:
                     'manifest', 'status', 'entities', 'discovery', 'summary',
                     'manager_top_summary', 'manager_summary', 'contract_summary',
                     'category_summary', 'sku_summary', 'query', 'first_impression',
-                    'get_canonical_workspace', 'verify',
+                    'get_canonical_workspace', 'get_business_abc', 'verify',
                 ],
             },
             'payload': {
                 'type': 'object',
                 'properties': {
                     'business_domain': {'type': 'string', 'default': 'bonboason'},
-                    'period': {'type': 'string', 'description': 'Business period in YYYY-MM format.'},
+                    'period': {'type': 'string', 'description': 'Business period in YYYY-MM format; for get_business_abc this is the rolling-six-month end period.'},
+                    'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 50},
                     'workspace_type': {'type': 'string', 'enum': list(SUPPORTED_WORKSPACE_TYPES)},
                     'object_id': {'type': 'string'},
                     'manager_top': {'type': 'string'},
@@ -9583,7 +9585,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
             'version': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Product Review provides a bounded Development Journal report and compact full-export verification readback without adding a public Action slot. Read the official 12-root Runtime Snapshot through executeVectraMemoryOperation with operation_type=get_runtime_snapshot. Use executeVectraBusinessDataOperation with operation_type=get_canonical_workspace to read the same final Professional Workspace as Business Chat. Use exact facade operation types and runVectraSelfAudit for self-audit.',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for deterministic rolling-six-month Business ABC / Strong SKU evidence, or operation_type=get_canonical_workspace for the final Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot. Use exact facade operation types and runVectraSelfAudit for self-audit.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9600,6 +9602,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
         'x-vectra-release': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
+        'x-vectra-business-abc-release': 'VECTRA-BUSINESS-ABC-STRONG-SKU-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11227,6 +11230,15 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
             ))
         if operation_type in {'summary', 'summary_business', 'business_summary', 'summary/business'}:
             return json_response(_facade_response(operation_type, 'business_data.get_summary', '/vectra/laboratory/business-data/summary/business', public_summary(get_vectra_business_data_summary('business', period=period))))
+        if operation_type == 'get_business_abc':
+            result = get_vectra_business_abc(period, limit=int(payload.get('limit') or 50))
+            return json_response(_facade_response(
+                operation_type,
+                'business_abc.build_business_abc',
+                '/vectra/laboratory/facade/business-data',
+                result,
+                next_action='Use Strong SKU evidence to check presence or absence in a selected Network.',
+            ))
         if operation_type == 'verify':
             return json_response(_facade_response(operation_type, 'business_data.verify', '/vectra/laboratory/business-data/verify', verify_vectra_business_data_access()))
         if operation_type == 'query':

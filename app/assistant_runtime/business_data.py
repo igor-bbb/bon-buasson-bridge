@@ -27,7 +27,7 @@ from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query
 from app.workspace_runtime import apply_runtime_contract
 
-BUSINESS_DATA_ACCESS_RELEASE = "BUSINESS-DISCOVERY-ENGINE-001"
+BUSINESS_DATA_ACCESS_RELEASE = "VECTRA-BUSINESS-ABC-STRONG-SKU-001"
 READ_ONLY_ENDPOINTS = [
     "/vectra/laboratory/business-data/status",
     "/vectra/laboratory/business-data/entities",
@@ -126,6 +126,17 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "max_response_size": "medium_to_large",
         "read_only": True,
         "level": "sku",
+    },
+    {
+        "operation_type": "get_business_abc",
+        "description": "Deterministic rolling-six-month Business ABC and canonical Strong SKU evidence across the whole business.",
+        "required_parameters": ["period"],
+        "optional_parameters": ["limit"],
+        "supports_pagination": False,
+        "max_response_size": "bounded_medium",
+        "read_only": True,
+        "scope": "business",
+        "context_independent": True,
     },
     {
         "operation_type": "query",
