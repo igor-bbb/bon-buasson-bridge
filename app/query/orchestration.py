@@ -57,6 +57,7 @@ from app.presentation.views import (
     build_reasons_view,
 )
 from app.domain.normalization import parse_period_from_text
+from app.domain.network_sku_package import build_network_sku_package
 from app.query.entity_dictionary import normalize_entity_text, normalize_fuzzy_text
 from app.query.parsing import normalize_user_message, parse_query_intent
 from app.query.entity_resolution import resolve_entity, _canonical_values
@@ -3112,6 +3113,70 @@ def _build_sku_package_action(screen: Dict[str, Any]) -> Dict[str, Any]:
                 'screen_order': ['workspace_markdown'],
                 'workspace_markdown': '\n'.join(lines),
             }
+    if ctx.get('level') == 'network':
+        package = build_network_sku_package(str(ctx.get('period') or ''), str(ctx.get('object_name') or ''), limit=50)
+        if package.get('status') != 'PASS':
+            return {
+                'status': 'error',
+                'reason': package.get('failure_reason') or 'Не удалось получить канонический Business ABC.',
+                'network_sku_package': package,
+            }
+        candidates = package.get('candidates') if isinstance(package.get('candidates'), list) else []
+        summary = package.get('summary') if isinstance(package.get('summary'), dict) else {}
+        horizon = package.get('horizon') if isinstance(package.get('horizon'), dict) else {}
+        lines = [
+            f'📦 Пакет SKU для ввода — {ctx.get("object_name")}',
+            f'Период проверки сети: {ctx.get("period")}',
+            '',
+            'Источник: канонический Business ABC за rolling 6 месяцев.',
+            f'Горизонт Business ABC: {horizon.get("start_period")} — {horizon.get("end_period")}.',
+            'Strong SKU = A по обороту AND A по финрезу ДО. Сеть не участвует в определении силы SKU.',
+            'Candidate for Matrix = Strong SKU AND отсутствует в выбранной сети.',
+            '',
+            '## Паспорт пакета',
+            'Показатель | Значение',
+            f'Strong SKU бизнеса | {summary.get("strong_sku_count") or 0}',
+            f'Уже присутствуют в сети | {summary.get("present_strong_sku_count") or 0}',
+            f'Отсутствуют / кандидаты | {summary.get("candidate_count") or 0}',
+            f'Возвращено кандидатов | {len(candidates)}',
+            '',
+            '## Кандидаты на матрицу',
+            'SKU | Категория | Формат | ABC Revenue | ABC Finrez | Strong SKU | Presence in Network | Candidate for Matrix | Оборот бизнеса 6M | Финрез ДО бизнеса 6M | Контекст сети сейчас',
+        ]
+        if not candidates:
+            lines.append('Нет кандидатов | — | — | — | — | — | — | — | — | — | Все Strong SKU уже присутствуют в сети')
+        for item in candidates:
+            metrics = item.get('business_6m_metrics') if isinstance(item.get('business_6m_metrics'), dict) else {}
+            network_context = item.get('current_network_context') if isinstance(item.get('current_network_context'), dict) else {}
+            lines.append(
+                f'{item.get("sku") or "Позиция"} | {item.get("category") or "—"} | {item.get("format") or "—"} | '
+                f'{item.get("abc_revenue") or "—"} | {item.get("abc_finrez") or "—"} | да | нет | да | '
+                f'{_fmt_action_money(metrics.get("revenue"))} грн | {_fmt_action_money(metrics.get("finrez_pre"), signed=True)} грн | '
+                f'{_fmt_action_money(network_context.get("revenue"))} грн'
+            )
+        lines.extend([
+            '',
+            '## Action Zone',
+            '1. подготовить переговоры — собрать аргументы для байера',
+            '2. создать задачи — зафиксировать ввод выбранных позиций',
+            '3. перейти к исполнению — контроль выполнения задач',
+            '4. назад — вернуться на рабочий стол сети',
+        ])
+        return {
+            'status': 'ok',
+            'render_mode': 'action_package',
+            'context': {'level': 'network', 'object_name': ctx.get('object_name'), 'period': ctx.get('period'), 'parent_object': ctx.get('parent_object')},
+            'path': screen.get('path') or [],
+            'summary_block': 'Пакет кандидатов сформирован из канонического rolling-6 Business ABC / Strong SKU.',
+            'kpi_block': lines,
+            'structure_block': [],
+            'drain_block_render': [],
+            'drain_total': 0,
+            'navigation_block': ['подготовить переговоры — собрать позицию', 'создать задачи — зафиксировать действия', 'назад — вернуться к сети'],
+            'screen_order': ['workspace_markdown'],
+            'workspace_markdown': '\n'.join(lines),
+            'network_sku_package': package,
+        }
     workspace = screen.get('decision_workspace') if isinstance(screen.get('decision_workspace'), dict) else {}
     assortment = workspace.get('assortment_analysis') if isinstance(workspace.get('assortment_analysis'), dict) else {}
     missing = assortment.get('missing_business_sku_leaders') if isinstance(assortment.get('missing_business_sku_leaders'), list) else []
@@ -3701,7 +3766,7 @@ def _collect_task_candidates(screen: Dict[str, Any]) -> List[Dict[str, Any]]:
         capture_package_rows = False
         for line in raw_lines:
             text = str(line or '').strip()
-            if text.startswith('Позиция |'):
+            if text.startswith(('Позиция |', 'SKU |')):
                 capture_package_rows = True
                 continue
             if capture_package_rows and text.startswith('## '):

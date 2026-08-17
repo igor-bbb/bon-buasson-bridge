@@ -27,7 +27,7 @@ from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query
 from app.workspace_runtime import apply_runtime_contract
 
-BUSINESS_DATA_ACCESS_RELEASE = "VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2"
+BUSINESS_DATA_ACCESS_RELEASE = "VECTRA-NETWORK-SKU-PACKAGE-BUSINESS-ABC-001"
 READ_ONLY_ENDPOINTS = [
     "/vectra/laboratory/business-data/status",
     "/vectra/laboratory/business-data/entities",
@@ -137,6 +137,17 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "read_only": True,
         "scope": "business",
         "context_independent": True,
+    },
+    {
+        "operation_type": "get_network_sku_package",
+        "description": "Canonical rolling-six-month Strong SKU presence/absence and assortment-matrix candidates for a selected Network.",
+        "required_parameters": ["period", "network"],
+        "optional_parameters": ["limit", "object_id", "object_name"],
+        "supports_pagination": False,
+        "max_response_size": "bounded_medium",
+        "read_only": True,
+        "scope": "network",
+        "strong_sku_source": "get_business_abc",
     },
     {
         "operation_type": "query",

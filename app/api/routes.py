@@ -32,6 +32,7 @@ from app.domain.summary import (
 from app.domain.filters import get_normalized_rows, filter_rows
 from app.domain.metrics import aggregate_metrics
 from app.domain.business_abc import build_business_abc as get_vectra_business_abc
+from app.domain.network_sku_package import build_network_sku_package as get_vectra_network_sku_package
 from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query, save_last_payload, update_session, get_session
 from app.workspace_runtime import apply_runtime_contract
@@ -9491,14 +9492,14 @@ def _business_data_facade_request_schema() -> dict:
                     'manifest', 'status', 'entities', 'discovery', 'summary',
                     'manager_top_summary', 'manager_summary', 'contract_summary',
                     'category_summary', 'sku_summary', 'query', 'first_impression',
-                    'get_canonical_workspace', 'get_business_abc', 'verify',
+                    'get_canonical_workspace', 'get_business_abc', 'get_network_sku_package', 'verify',
                 ],
             },
             'payload': {
                 'type': 'object',
                 'properties': {
                     'business_domain': {'type': 'string', 'default': 'bonboason'},
-                    'period': {'type': 'string', 'description': 'Business period in YYYY-MM format; for get_business_abc this is the rolling-six-month end period.'},
+                    'period': {'type': 'string', 'description': 'Business period in YYYY-MM format; for Business ABC and Network SKU Package this is the rolling-six-month end period.'},
                     'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 50},
                     'workspace_type': {'type': 'string', 'enum': list(SUPPORTED_WORKSPACE_TYPES)},
                     'object_id': {'type': 'string'},
@@ -9592,7 +9593,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
             'version': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for deterministic rolling-six-month Business ABC / Strong SKU evidence. Use operation_type=get_canonical_workspace with response_mode=transport_readback for bounded Regression evidence or response_mode=full for the rendered Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot.',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for deterministic rolling-six-month Business ABC / Strong SKU evidence and operation_type=get_network_sku_package for presence/absence and assortment-matrix candidates in a selected Network. Use operation_type=get_canonical_workspace with response_mode=transport_readback for bounded Regression evidence or response_mode=full for the rendered Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9610,6 +9611,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'x-vectra-scope': 'laboratory_facade_actions',
         'x-vectra-release': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
         'x-vectra-business-abc-release': 'VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2',
+        'x-vectra-network-sku-package-release': 'VECTRA-NETWORK-SKU-PACKAGE-BUSINESS-ABC-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11245,6 +11247,19 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
                 '/vectra/laboratory/facade/business-data',
                 result,
                 next_action='Use Strong SKU evidence to check presence or absence in a selected Network.',
+            ))
+        if operation_type == 'get_network_sku_package':
+            result = get_vectra_network_sku_package(
+                period,
+                str(payload.get('network') or payload.get('object_id') or payload.get('object_name') or ''),
+                limit=int(payload.get('limit') or 50),
+            )
+            return json_response(_facade_response(
+                operation_type,
+                'network_sku_package.build_network_sku_package',
+                '/vectra/laboratory/facade/business-data',
+                result,
+                next_action='Use candidates as the evidence-based first wave for the selected Network assortment matrix.',
             ))
         if operation_type == 'verify':
             return json_response(_facade_response(operation_type, 'business_data.verify', '/vectra/laboratory/business-data/verify', verify_vectra_business_data_access()))
