@@ -108,7 +108,7 @@ def test_registered_business_data_action_contract_and_route(monkeypatch, tmp_pat
     operation = schema["paths"]["/vectra/laboratory/facade/business-data"]["post"]
     request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
     assert "get_business_abc" in request_schema["properties"]["operation_type"]["enum"]
-    assert schema["x-vectra-business-abc-release"] == "VECTRA-BUSINESS-ABC-STRONG-SKU-001"
+    assert schema["x-vectra-business-abc-release"] == "VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2"
     assert schema["servers"] == [{"url": "https://bon-buasson-api.onrender.com"}]
     assert routes._count_openapi_operations(schema) == 29
 

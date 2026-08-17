@@ -27,7 +27,7 @@ from app.query.entity_dictionary import get_entity_dictionary
 from app.query.orchestration import orchestrate_vectra_query
 from app.workspace_runtime import apply_runtime_contract
 
-BUSINESS_DATA_ACCESS_RELEASE = "VECTRA-BUSINESS-ABC-STRONG-SKU-001"
+BUSINESS_DATA_ACCESS_RELEASE = "VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2"
 READ_ONLY_ENDPOINTS = [
     "/vectra/laboratory/business-data/status",
     "/vectra/laboratory/business-data/entities",
@@ -151,11 +151,12 @@ BUSINESS_DATA_OPERATION_MANIFEST = [
         "operation_type": "get_canonical_workspace",
         "description": "Read the same canonical Professional Workspace used by Business Chat.",
         "required_parameters": ["business_domain", "period", "workspace_type", "object_id"],
-        "optional_parameters": ["session_id"],
+        "optional_parameters": ["session_id", "response_mode"],
         "supports_pagination": False,
         "max_response_size": "large",
         "read_only": True,
         "supported_workspace_types": ["business", "top_manager", "manager", "network", "contract"],
+        "supported_response_modes": ["full", "transport_readback"],
     },
     {
         "operation_type": "discovery",

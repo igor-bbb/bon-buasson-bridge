@@ -6,12 +6,14 @@ duplicates while preserving the complete rendered ``workspace_markdown``.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any, Dict
 
 
 RELEASE_ID = "VECTRA-PROFESSIONAL-PRODUCT-NAVIGATION-001-REV2"
+CANONICAL_READBACK_RELEASE_ID = "VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2"
 EXPLICIT_BUSINESS_DATA_FIELDS = (
     "business_domain",
     "period",
@@ -172,3 +174,63 @@ def project_workspace_action_response(payload: Dict[str, Any], *, budget_chars: 
     out["response_budget_guard"]["final_json_chars"] = final_chars
     out["response_budget_guard"]["within_budget"] = final_chars <= budget_chars
     return out
+
+
+def build_canonical_workspace_transport_readback(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Prove full canonical Workspace execution without returning its body.
+
+    Product Verification needs transport-safe evidence that the legacy
+    ``get_canonical_workspace`` route still executes. The full Workspace remains
+    available through the default response mode; this projection returns only
+    identity, hashes and compact structural counts.
+    """
+    payload = payload if isinstance(payload, dict) else {}
+    markdown = payload.get("workspace_markdown") if isinstance(payload.get("workspace_markdown"), str) else ""
+    canonical = payload.get("canonical_workspace") if isinstance(payload.get("canonical_workspace"), dict) else {}
+    presentation = canonical.get("presentation") if isinstance(canonical.get("presentation"), dict) else {}
+    action_map = payload.get("workspace_action_map") if isinstance(payload.get("workspace_action_map"), list) else []
+    required = bool(
+        markdown.strip()
+        and canonical.get("workspace_type")
+        and canonical.get("period")
+        and canonical.get("semantic_hash")
+        and canonical.get("presentation_hash")
+    )
+    return {
+        "status": "PASS" if required else "FAIL",
+        "operation_type": "get_canonical_workspace",
+        "response_mode": "transport_readback",
+        "release": CANONICAL_READBACK_RELEASE_ID,
+        "read_only": True,
+        "full_workspace_executed": True,
+        "full_workspace_returned": False,
+        "workspace_markdown_present": bool(markdown.strip()),
+        "workspace_markdown_chars": len(markdown),
+        "workspace_markdown_sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest() if markdown else None,
+        "canonical_identity": {
+            "business_domain": canonical.get("business_domain"),
+            "workspace_type": canonical.get("workspace_type"),
+            "object_id": canonical.get("object_id"),
+            "period": canonical.get("period"),
+        },
+        "canonical_hashes": {
+            "semantic_hash": canonical.get("semantic_hash"),
+            "presentation_hash": canonical.get("presentation_hash"),
+        },
+        "presentation": {
+            "format": presentation.get("format"),
+            "renderer": presentation.get("renderer"),
+            "headings_count": presentation.get("headings_count"),
+            "tables_count": presentation.get("tables_count"),
+        },
+        "workspace_action_count": len(action_map),
+        "active_workspace_state_present": isinstance(payload.get("active_workspace_state"), dict),
+        "transport_projection": {
+            "bounded": True,
+            "duplicate_workspace_projections_returned": False,
+            "source_runtime_json_chars": _json_chars(payload),
+        },
+        "verification_status": "PASS" if required else "FAIL",
+        "readback_status": "PASS" if required else "FAIL",
+        "failure_reason": None if required else "canonical_workspace_transport_readback_incomplete",
+    }

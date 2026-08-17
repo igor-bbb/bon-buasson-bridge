@@ -609,6 +609,7 @@ from app.assistant_runtime.observability import (
     get_runtime_observability_interface as get_vectra_runtime_observability_interface,
 )
 from app.assistant_runtime.business_action_transport import (
+    build_canonical_workspace_transport_readback,
     canonical_workspace_request_properties,
     project_workspace_action_response,
     route_explicit_business_data_fields,
@@ -8222,8 +8223,8 @@ def _laboratory_business_data_openapi_schema() -> dict:
     return _laboratory_split_openapi_schema(
         _LABORATORY_BUSINESS_DATA_PATHS,
         title='VECTRA Laboratory Business Data Actions',
-        version='VECTRA-BUSINESS-ABC-STRONG-SKU-001',
-        description='Business Data read-only Actions for VECTRA Laboratory, including canonical Workspace readback and context-independent rolling-six-month Business ABC / Strong SKU evidence. This schema is intentionally below the GPT Actions 30-operation limit.',
+        version='VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2',
+        description='Business Data read-only Actions for VECTRA Laboratory, including bounded canonical Workspace transport readback and context-independent rolling-six-month Business ABC / Strong SKU evidence. This schema is intentionally below the GPT Actions 30-operation limit.',
         scope='laboratory_business_data_actions',
     )
 
@@ -9506,6 +9507,12 @@ def _business_data_facade_request_schema() -> dict:
                     'network': {'type': 'string'},
                     'message': {'type': 'string'},
                     'session_id': {'type': 'string'},
+                    'response_mode': {
+                        'type': 'string',
+                        'enum': ['full', 'transport_readback'],
+                        'default': 'full',
+                        'description': 'Use transport_readback to verify full canonical Workspace execution through a compact Action response.',
+                    },
                 },
                 'additionalProperties': True,
             },
@@ -9585,7 +9592,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
             'version': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for deterministic rolling-six-month Business ABC / Strong SKU evidence, or operation_type=get_canonical_workspace for the final Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot. Use exact facade operation types and runVectraSelfAudit for self-audit.',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for deterministic rolling-six-month Business ABC / Strong SKU evidence. Use operation_type=get_canonical_workspace with response_mode=transport_readback for bounded Regression evidence or response_mode=full for the rendered Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9602,7 +9609,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'paths': paths,
         'x-vectra-scope': 'laboratory_facade_actions',
         'x-vectra-release': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
-        'x-vectra-business-abc-release': 'VECTRA-BUSINESS-ABC-STRONG-SKU-001',
+        'x-vectra-business-abc-release': 'VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11255,6 +11262,14 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
         if operation_type in {'first_impression', 'explore', 'initial_exploration', 'business_first_impression'}:
             return json_response(_facade_response(operation_type, 'business_data.first_impression', '/vectra/laboratory/facade/business-data', get_vectra_business_data_first_impression(period=period or None, message=str(payload.get('message') or payload.get('query') or ''))))
         if operation_type in {'get_canonical_workspace', 'canonical_workspace'}:
+            response_mode = str(payload.get('response_mode') or 'full').strip().lower()
+            if response_mode not in {'full', 'transport_readback'}:
+                return json_response(_facade_error(
+                    operation_type,
+                    'response_mode must be full or transport_readback',
+                    runtime_service='canonical_workspace.get',
+                    endpoint='/vectra/laboratory/facade/business-data',
+                ))
             requested_workspace_type = str(payload.get('workspace_type') or '').strip()
             workspace_type = normalize_workspace_type(requested_workspace_type)
             object_id = str(payload.get('object_id') or '').strip()
@@ -11298,6 +11313,15 @@ def vectra_laboratory_facade_business_data(request: dict = None, x_vectra_labora
                     'Canonical Workspace identity mismatch',
                     runtime_service='canonical_workspace.get',
                     endpoint='/vectra/query',
+                ))
+            if response_mode == 'transport_readback':
+                readback = build_canonical_workspace_transport_readback(rendered)
+                return json_response(_facade_response(
+                    operation_type,
+                    'canonical_workspace.get_transport_readback',
+                    '/vectra/query',
+                    readback,
+                    next_action='Use the compact readback as Regression evidence; request full mode only when the rendered Workspace itself is needed.',
                 ))
             result = {
                 'status': 'PASS',
