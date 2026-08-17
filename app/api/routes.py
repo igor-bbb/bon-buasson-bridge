@@ -307,6 +307,9 @@ from app.assistant_runtime.framework_validation import (
     verify_business_workspace_framework_validation as verify_vectra_business_workspace_framework_validation,
 )
 from app.assistant_runtime.business_framework_services import execute_framework_service as execute_vectra_framework_service
+from app.assistant_runtime.assortment_introduction_outcome import (
+    execute_assortment_outcome_operation as execute_vectra_assortment_outcome_operation,
+)
 from app.assistant_runtime.personality_runtime import run_self_audit as run_vectra_self_audit
 from app.assistant_runtime.business_framework_research import (
     get_business_framework_research_manifest as get_vectra_business_framework_research_manifest,
@@ -8331,7 +8334,7 @@ _FACADE_ACTIONS = [
     ('executeVectraBusinessDomainOperation', 'POST', '/vectra/laboratory/facade/business-domain', 'Execute VECTRA Business Domain operation', 'Mandatory Business Domain facade for working-session startup. Use list_domains to read published domains and activate_domain to activate the only active domain automatically. Ask Product Owner only when two or more active domains are available.'),
     ('executeVectraBusinessDataOperation', 'POST', '/vectra/laboratory/facade/business-data', 'Execute VECTRA Business Data operation', 'Read-only facade for Business Data and the canonical Professional Workspace. Use operation_type=get_canonical_workspace to receive the same final workspace as Business Chat.'),
     ('executeVectraRepositoryOperation', 'POST', '/vectra/laboratory/facade/repository', 'Execute VECTRA Repository operation', 'Facade for Repository Inspection operations.'),
-    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for memory, architecture, Runtime component status and read-only Runtime Snapshot operations. Use operation_type=get_runtime_snapshot for the official 12-root readback.'),
+    ('executeVectraMemoryOperation', 'POST', '/vectra/laboratory/facade/memory', 'Execute VECTRA Memory operation', 'Facade for memory, architecture, Runtime component status, read-only Runtime Snapshot and governed Assortment Introduction Outcome lineage operations.'),
     ('create_research_program', 'POST', '/vectra/laboratory/research/programs', 'Create Business Framework Research Program', 'Creates a Research Program Professional Activity for Digital Business Analyst. Use this action directly; do not route it through a guessed facade operation.'),
     ('get_research_workspace', 'POST', '/vectra/laboratory/research/workspace', 'Get Digital Business Analyst Research Workspace', 'Returns the current Research Workspace, active programs, backlog, hypotheses, findings, recommendations and maturity state.'),
     ('verify_business_runtime_access', 'POST', '/vectra/laboratory/business-runtime/access/verify', 'Verify Business Runtime autonomous access', 'Runs Stage 1 read-only operational verification and returns a Business Runtime Access Report.'),
@@ -8753,9 +8756,32 @@ def _memory_facade_operation_request_schema() -> dict:
     # operations needed for a complete persistence cycle.
     schema = _facade_operation_request_schema()
     operations = schema['properties']['operation_type']['enum']
-    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_runtime_snapshot', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'list_normative_sources', 'get_normative_source', 'verify_normative_sources', 'trace_normative_usage', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health'):
+    for operation_type in ('write_general_knowledge', 'verify_general_knowledge', 'execute_registered_action_sequence', 'get_registered_action_sequence', 'get_runtime_snapshot', 'get_architecture_registry_pilot', 'verify_architecture_registry_pilot', 'get_architecture_registry_status', 'get_architecture_object', 'list_architecture_objects', 'search_architecture_objects', 'get_object_relationships', 'get_traceability', 'resolve_dependencies', 'verify_architecture_object', 'evaluate_object_compliance', 'evaluate_registry_compliance', 'list_normative_sources', 'get_normative_source', 'verify_normative_sources', 'trace_normative_usage', 'get_verification_runtime_status', 'get_verification_status', 'list_verification_results', 'verify_runtime_object', 'verify_registry', 'get_verification_evidence', 'search_verification_results', 'get_execution_runtime_status', 'start_execution', 'run_execution', 'get_execution_status', 'get_execution_history', 'search_execution_results', 'get_orchestrator_status', 'create_execution_plan', 'start_execution_plan', 'get_execution_plan_status', 'get_execution_queue', 'search_execution_plans', 'start_runtime_session', 'restore_runtime_session', 'get_runtime_session_status', 'list_runtime_sessions', 'search_runtime_sessions', 'close_runtime_session', 'get_runtime_supervisor_status', 'get_runtime_health', 'get_runtime_readiness', 'get_runtime_events', 'search_runtime_events', 'get_runtime_diagnostics', 'get_runtime_recovery_status', 'start_runtime_recovery', 'get_runtime_recovery_history', 'search_runtime_recovery', 'get_runtime_recovery_plan', 'get_runtime_capabilities', 'get_runtime_capability', 'search_runtime_capabilities', 'verify_runtime_capability', 'get_runtime_capability_registry_status', 'get_runtime_dependency_graph', 'search_runtime_dependencies', 'trace_runtime_dependency', 'verify_runtime_dependency', 'get_runtime_dependency_graph_status', 'get_runtime_observability_status', 'get_runtime_observations', 'search_runtime_observations', 'trace_runtime_observation', 'verify_runtime_observation', 'get_runtime_health_status', 'get_runtime_health', 'search_runtime_health', 'trace_runtime_health', 'verify_runtime_health', 'create_assortment_outcome', 'record_assortment_expected_impact', 'record_assortment_checkpoint', 'record_assortment_evaluation', 'record_assortment_learning', 'get_assortment_outcome', 'list_assortment_outcomes', 'verify_assortment_outcome_repository'):
         if operation_type not in operations:
             operations.append(operation_type)
+    payload_properties = schema['properties']['payload']['properties']
+    payload_properties.update({
+        'outcome_id': {'type': 'string', 'description': 'Stable Assortment Introduction Outcome identifier.'},
+        'period': {'type': 'string', 'description': 'ABC evidence end period in YYYY-MM format.'},
+        'network': {'type': 'string'},
+        'category': {'type': 'string', 'enum': ['Вода', 'Напитки', 'Энергетики']},
+        'sku': {'type': 'string'},
+        'decision_date': {'type': 'string', 'format': 'date'},
+        'owner_role': {'type': 'string'},
+        'decision': {'type': 'string', 'enum': ['introduced', 'test', 'deferred']},
+        'expected_impact': {
+            'type': 'object',
+            'description': 'Use NOT_ASSESSED, or SCENARIO_DEFINED with scenario, range, assumptions, horizon and confidence.',
+            'additionalProperties': True,
+        },
+        'checkpoint': {'type': 'string', 'enum': ['M1', 'M2', 'M3']},
+        'metrics': {'type': 'object', 'additionalProperties': True},
+        'outcome_status': {
+            'type': 'string',
+            'enum': ['NOT_EVALUATED', 'IN_PROGRESS', 'CONFIRMED_POSITIVE', 'PARTIALLY_CONFIRMED', 'NO_EFFECT', 'NEGATIVE_OUTCOME', 'INCONCLUSIVE'],
+        },
+        'learning': {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 20},
+    })
     return schema
 
 
@@ -9599,7 +9625,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'info': {
             'title': 'VECTRA Laboratory Facade Actions',
             'version': 'VECTRA-PROFESSIONAL-DEVELOPMENT-JOURNAL-REPORT-001-REV2',
-            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation with operation_type=get_business_abc for whole-business strength, get_category_abc for independent rolling-six-month shelf-category strength, and get_category_network_sku_package to apply Network presence only after Category ABC. Use operation_type=get_network_sku_package for the existing Business Strong SKU Network package. Use operation_type=get_canonical_workspace with response_mode=transport_readback for bounded Regression evidence or response_mode=full for the rendered Professional Workspace. Product Review retains bounded Development Journal reporting without adding a public Action slot.',
+            'description': 'Official VECTRA Laboratory OpenAPI with 29 public operations. Use executeVectraBusinessDataOperation for canonical Business ABC, Category ABC and Network candidate evidence. Use executeVectraMemoryOperation for governed Assortment Introduction Outcome create/update/readback with immutable lineage. Product Review retains bounded Development Journal reporting without adding a public Action slot.',
         },
         'servers': [{'url': server_url}],
         'components': {
@@ -9619,6 +9645,7 @@ def _laboratory_facade_openapi_schema() -> dict:
         'x-vectra-business-abc-release': 'VECTRA-BUSINESS-ABC-STRONG-SKU-001-REV2',
         'x-vectra-network-sku-package-release': 'VECTRA-NETWORK-SKU-PACKAGE-BUSINESS-ABC-001',
         'x-vectra-category-abc-release': 'VECTRA-CATEGORY-ABC-ROLLING-6M-001',
+        'x-vectra-assortment-introduction-outcome-release': 'VECTRA-ASSORTMENT-INTRODUCTION-OUTCOME-001',
         'x-vectra-gpt-actions-operation-limit': {
             'limit': 30,
             'operation_count': len(_FACADE_ACTIONS),
@@ -11748,6 +11775,37 @@ def vectra_laboratory_facade_memory(request: dict = None, x_vectra_laboratory_ke
     _verify_laboratory_api_key(x_vectra_laboratory_key)
     operation_type, payload, approval, domain, session_id, request_id = _normalize_facade_request(request)
     try:
+        if operation_type in {
+            'create_assortment_outcome',
+            'record_assortment_expected_impact',
+            'record_assortment_checkpoint',
+            'record_assortment_evaluation',
+            'record_assortment_learning',
+            'get_assortment_outcome',
+            'list_assortment_outcomes',
+            'verify_assortment_outcome_repository',
+        }:
+            result = execute_vectra_assortment_outcome_operation(
+                operation_type,
+                {**payload, 'request_id': payload.get('request_id') or request_id},
+            )
+            next_actions = {
+                'create_assortment_outcome': 'Preserve the created Outcome id; record M1 only when actual data becomes available.',
+                'record_assortment_expected_impact': 'Keep the scenario immutable and record M1 actual when available.',
+                'record_assortment_checkpoint': 'Continue sequentially through M1, M2 and M3; do not treat M1 as a final result.',
+                'record_assortment_evaluation': 'Record Learning as an observation only; do not capitalize it automatically.',
+                'record_assortment_learning': 'Create a Knowledge Candidate only after sufficient evidence and separate Product Owner approval.',
+                'get_assortment_outcome': 'Use the read-only record and hash-linked lineage for professional review.',
+                'list_assortment_outcomes': 'Select an outcome_id for complete readback.',
+                'verify_assortment_outcome_repository': 'Issue Product Verification only when verification_status and readback_status are PASS.',
+            }
+            return json_response(_facade_response(
+                operation_type,
+                f'assortment_introduction_outcome.{operation_type}',
+                '/vectra/laboratory/facade/memory',
+                result,
+                next_action=next_actions.get(operation_type, ''),
+            ))
         if operation_type == 'get_runtime_snapshot':
             result = get_vectra_runtime_snapshot(refresh=False)
             return json_response(_facade_response(operation_type, 'observability.get_runtime_snapshot', '/vectra/laboratory/facade/memory', result, next_action='Use runtime_roots for SELF-AUDIT-RUNTIME-ROOTS-001 and do not infer missing lifecycle evidence.'))
